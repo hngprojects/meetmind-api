@@ -4,12 +4,38 @@ Thank you for contributing! This document outlines the standards and processes w
 
 ## Table of Contents
 
+- [How to Contribute](#how-to-contribute)
+  - [Reporting Bugs](#reporting-bugs)
+  - [Suggesting Features](#suggesting-features)
 - [Getting Started](#getting-started)
 - [Branch Naming Convention](#branch-naming-convention)
 - [Commit Message Convention](#commit-message-convention)
 - [Pull Request Process](#pull-request-process)
 - [Testing Requirements](#testing-requirements)
 - [Code Style](#code-style)
+- [Code of Conduct](#code-of-conduct)
+- [License](#license)
+
+---
+
+## How to Contribute
+
+### Reporting Bugs
+
+If you find a bug, please open an issue on [GitHub Issues](https://github.com/your-org/meetmind-be/issues) and include:
+
+- Steps to reproduce the issue
+- Expected vs actual behavior
+- Relevant logs or error messages
+- Your environment (OS, Python version)
+
+### Suggesting Features
+
+If you have an idea for a new feature, please open an issue on [GitHub Issues](https://github.com/your-org/meetmind-be/issues) and describe:
+
+- What problem the feature solves
+- How it should work
+- Any alternatives you considered
 
 ---
 
@@ -270,6 +296,18 @@ Examples:
 - Use `async/await` for all I/O operations
 - Keep functions focused — one responsibility per function
 - Place business logic in `app/services/`, not in endpoint handlers
+
+---
+
+## Code of Conduct
+
+This project adheres to the [Contributor Covenant Code of Conduct](https://www.contributor-covenant.org/version/2/0/code_of_conduct/). By participating, you are expected to uphold this code.
+
+---
+
+## License
+
+By contributing, you agree that your contributions will be licensed under the same license as the project.
 
 ---
 
