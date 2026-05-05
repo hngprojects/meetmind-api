@@ -5,7 +5,7 @@ High-level architecture of the MeetMind platform — an intelligent meeting agen
 ```mermaid
 ---
 config:
-  layout: elk
+  layout: dagre
 ---
 flowchart TD
 
