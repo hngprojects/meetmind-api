@@ -1,3 +1,4 @@
+import uuid
 import hashlib
 import secrets
 import bcrypt
@@ -73,7 +74,7 @@ class AuthService:
         return jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
 
     @staticmethod
-    async def create_refresh_token(db: AsyncSession, user_id: str) -> str:
+    async def create_refresh_token(db: AsyncSession, user_id: uuid) -> str:
         raw = secrets.token_urlsafe(48)
         token_hash = _hash_token(raw)
         expires_at = _now() + timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
