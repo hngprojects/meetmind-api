@@ -51,8 +51,7 @@ class AuthService:
             password_hash=hashed_password
         )
         db.add(user)
-        await db.commit()
-        await db.refresh(user)
+        await db.flush()
         return user
     
     @staticmethod
@@ -74,7 +73,7 @@ class AuthService:
         return jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
 
     @staticmethod
-    async def create_refresh_token(db: AsyncSession, user_id: uuid) -> str:
+    async def create_refresh_token(db: AsyncSession, user_id: uuid.UUID) -> str:
         raw = secrets.token_urlsafe(48)
         token_hash = _hash_token(raw)
         expires_at = _now() + timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
