@@ -32,10 +32,18 @@ class SignupRequest(BaseModel):
         return v
 
 
+class SignupResponseData(BaseModel):
+    id: str
+    email: EmailStr
+    name: str
+    access_token: str
+    refresh_token: str
+
+
 class SignupResponse(BaseModel):
     status_code: int
     message: str
-    data: dict
+    data: SignupResponseData
 
 
 class ErrorResponse(BaseModel):

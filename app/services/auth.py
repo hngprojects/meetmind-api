@@ -1,11 +1,23 @@
+import hashlib
+import secrets
 import bcrypt
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from fastapi import HTTPException
+from datetime import datetime, timedelta, timezone
 
-from app.models.user import User
+from jose import jwt
+from fastapi import HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import settings
+from app.core.exceptions import UserAlreadyExistsException
+from app.models.user import User, RefreshToken
 from app.schemas.auth import SignupRequest
 
+def _now() -> datetime:
+	return datetime.now(timezone.utc)
+
+def _hash_token(raw: str) -> str:
+    return hashlib.sha256(raw.encode()).hexdigest()
 
 class AuthService:
     @staticmethod
@@ -26,7 +38,7 @@ class AuthService:
     async def create_user(request: SignupRequest, db: AsyncSession) -> User:
         # Check if email exists
         if await AuthService.check_email_exists(request.email, db):
-            raise HTTPException(status_code=400, detail="Email already registered")
+            raise UserAlreadyExistsException(email=request.email)
 
         # Hash password
         hashed_password = await AuthService.hash_password(request.password)
@@ -41,3 +53,37 @@ class AuthService:
         await db.commit()
         await db.refresh(user)
         return user
+    
+    @staticmethod
+    async def create_access_token(user: User) -> str:
+        expire = _now() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        payload = {
+            "sub": str(user.id),
+            "name": user.name,
+            "email": user.email,
+            "exp": expire,
+            "iat": _now(),
+            "type": "access",
+        }
+        return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+    
+    @staticmethod
+    async def decode_access_token(token: str) -> dict:
+        """Raises JWTError if invalid or expired."""
+        return jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+
+    @staticmethod
+    async def create_refresh_token(db: AsyncSession, user_id: str) -> str:
+        raw = secrets.token_urlsafe(48)
+        token_hash = _hash_token(raw)
+        expires_at = _now() + timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
+    
+        rt = RefreshToken(
+            user_id=user_id,
+            token_hash=token_hash,
+            expires_at=expires_at,
+        )
+        db.add(rt)
+        await db.commit()
+        await db.refresh(rt)
+        return raw
