@@ -112,7 +112,7 @@ Embed via REST"]
     classDef agent fill:#f5f3ff,stroke:#a78bfa,color:#1e1b4b,stroke-width:1px
     classDef knowledge fill:#f0fdf4,stroke:#4ade80,color:#064e3b,stroke-width:1px
     classDef consumer fill:#fff7ed,stroke:#fb923c,color:#431407,stroke-width:1px
-    classDef db fill:#f0f9ff,stroke:#38bdf8,color:#0c4a6e,stroke-dasharray: 3 2
+    classDef db fill:#f0f9ff,stroke:#38bdf8,color:#0c4a6e,stroke-dasharray: 3 2\n    classDef decision fill:#fff7ed,stroke:#fb923c,color:#431407,stroke-width:1px
 
     class GMEET,ZOOM,CUSTOM platform
     class ADAPTER entry
