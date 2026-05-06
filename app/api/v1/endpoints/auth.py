@@ -20,6 +20,7 @@ async def signup(
     response: Response,
     db: AsyncSession = Depends(get_session)
 ) -> SignupResponse:
+    """Register a new user, issue auth tokens, and attach cookies to the response."""
     try:
         user = await AuthService.create_user(request, db)
         access_token = await AuthService.create_access_token(user)

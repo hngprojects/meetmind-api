@@ -17,6 +17,7 @@ def root() -> dict[str, str]:
 
 @app.exception_handler(HTTPException)
 async def custom_http_exception_handler(request: Request, exc: HTTPException):
+    """Convert FastAPI HTTPExceptions into structured JSON error responses."""
     return JSONResponse(
         status_code=exc.status_code,
         content=ErrorResponse(
@@ -27,6 +28,7 @@ async def custom_http_exception_handler(request: Request, exc: HTTPException):
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Convert FastAPI validation errors into structured JSON error responses."""
     errors = exc.errors()
     first_error = errors[0] if errors else {"loc": ["body"], "msg": "Unknown validation error"}
     field_name = " -> ".join(str(loc) for loc in first_error["loc"])

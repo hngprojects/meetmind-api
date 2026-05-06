@@ -12,7 +12,7 @@ from app.db.session import get_session
 
 
 def mock_get_session():
-    """Yield a mock DB session so no real DB connection is needed."""
+    """Yield a mock DB session so no real database interactions are avoided during tests."""
     session = MagicMock()
     session.add = MagicMock()
     session.commit = AsyncMock()
