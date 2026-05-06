@@ -28,7 +28,7 @@ async def custom_http_exception_handler(request: Request, exc: HTTPException):
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     errors = exc.errors()
-    first_error = errors[0]
+    first_error = errors[0] if errors else {"loc": ["body"], "msg": "Unknown validation error"}
     field_name = " -> ".join(str(loc) for loc in first_error["loc"])
     custom_message = f"Invalid input for {field_name}: {first_error['msg']}"
 
