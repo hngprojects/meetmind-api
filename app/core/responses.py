@@ -169,9 +169,9 @@ def error(
         A :class:`fastapi.responses.JSONResponse` with the standard error
         envelope.
     """
-    payload = {
-        "success": False,
-        "message": message,
-        "error": {"code": code, "details": details},
-    }
+    payload = APIErrorResponse(
+        success=False,
+        message=message,
+        error=APIErrorBody(code=code, details=details),
+    )
     return JSONResponse(status_code=status_code, content=jsonable_encoder(payload))
