@@ -1,8 +1,9 @@
 import os
+from app.core.config import settings
 
 os.environ.setdefault(
     "DATABASE_URL",
-    "postgresql+asyncpg://postgres:postgres@localhost:5432/test",
+    settings.TEST_DATABASE_URL,
 )
 
 import pytest  # noqa: E402

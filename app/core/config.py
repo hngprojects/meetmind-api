@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
 
     DATABASE_URL: PostgresDsn
+    TEST_DATABASE_URL: str
 
 
 @lru_cache
