@@ -24,9 +24,10 @@ async def handle_api_error(_: Request, exc: APIError):
 @app.exception_handler(StarletteHTTPException)
 async def handle_http_error(_: Request, exc: StarletteHTTPException):
     return error(
-        str(exc.detail),
+        exc.detail if isinstance(exc.detail, str) else "HTTP error",
         status_code=exc.status_code,
         code="http_error",
+        details=exc.detail if not isinstance(exc.detail, str) else None,
     )
 
 
