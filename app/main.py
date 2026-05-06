@@ -21,7 +21,7 @@ async def custom_http_exception_handler(request: Request, exc: HTTPException):
         status_code=exc.status_code,
         content=ErrorResponse(
             status_code=exc.status_code,
-            message=exc.detail
+            message=str(exc.detail)
         ).model_dump()
     )
 
