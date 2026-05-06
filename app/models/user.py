@@ -74,16 +74,15 @@ class UserMeetingPreferences(Base, UUIDPrimaryKey):
     updated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
-class UserInterviewPreferences(Base, UUIDPrimaryKey):
+class UserInterviewPreferences(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "user_interview_preferences"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
     default_interview_type: Mapped[str | None] = mapped_column(String(120))
-    default_duration_min: Mapped[int | None] = mapped_column(default=60)
+    default_duration_min: Mapped[int | None] = mapped_column(Integer, default=60)
     evaluation_focus: Mapped[str | None] = mapped_column(Text)
-    updated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
 class UserNotificationPreferences(Base, UUIDPrimaryKey):
