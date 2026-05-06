@@ -52,7 +52,7 @@ If you have an idea for a new feature, please open an issue on [GitHub Issues](h
    ```
 4. Run the development server:
    ```bash
-   uv run uvicorn app.main:app --reload
+   uv run fastapi dev app/main.py
    ```
 5. Run tests:
    ```bash
