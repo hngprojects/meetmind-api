@@ -1,14 +1,14 @@
 import uuid
-from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
+from datetime import datetime
 
-from app.models.base import Base, UUIDPrimaryKey
+from app.models.base import Base, TimestampMixin, UUIDPrimaryKey
 
 
-class Transcript(Base, UUIDPrimaryKey):
+class Transcript(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "transcripts"
 
     meeting_id: Mapped[uuid.UUID] = mapped_column(
@@ -16,13 +16,9 @@ class Transcript(Base, UUIDPrimaryKey):
     )
     raw_text: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str | None] = mapped_column(String(20), default="processing")
-    created_at: Mapped[datetime | None] = mapped_column(
-        DateTime, server_default=func.now()
-    )
-    updated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
-class TranscriptSegment(Base, UUIDPrimaryKey):
+class TranscriptSegment(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "transcript_segments"
     __table_args__ = (
         Index("ix_transcript_segments_transcript_seq", "transcript_id", "sequence_no"),
@@ -39,7 +35,7 @@ class TranscriptSegment(Base, UUIDPrimaryKey):
     sequence_no: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
-class MeetingSummary(Base, UUIDPrimaryKey):
+class MeetingSummary(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "meeting_summaries"
 
     meeting_id: Mapped[uuid.UUID] = mapped_column(
@@ -48,12 +44,9 @@ class MeetingSummary(Base, UUIDPrimaryKey):
     body: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str | None] = mapped_column(String(20), default="generating")
     generated_at: Mapped[datetime | None] = mapped_column(DateTime)
-    created_at: Mapped[datetime | None] = mapped_column(
-        DateTime, server_default=func.now()
-    )
 
 
-class SummaryKeypoint(Base, UUIDPrimaryKey):
+class SummaryKeypoint(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "summary_keypoints"
 
     summary_id: Mapped[uuid.UUID] = mapped_column(
@@ -64,7 +57,7 @@ class SummaryKeypoint(Base, UUIDPrimaryKey):
     sequence_no: Mapped[int | None] = mapped_column(Integer)
 
 
-class SummaryDecision(Base, UUIDPrimaryKey):
+class SummaryDecision(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "summary_decisions"
 
     summary_id: Mapped[uuid.UUID] = mapped_column(
@@ -75,7 +68,7 @@ class SummaryDecision(Base, UUIDPrimaryKey):
     sequence_no: Mapped[int | None] = mapped_column(Integer)
 
 
-class ActionItem(Base, UUIDPrimaryKey):
+class ActionItem(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "action_items"
 
     summary_id: Mapped[uuid.UUID] = mapped_column(

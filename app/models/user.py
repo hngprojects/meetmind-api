@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -21,7 +21,7 @@ class User(Base, UUIDPrimaryKey, TimestampMixin):
     role: Mapped[str | None] = mapped_column(String(60))
 
 
-class SSOProvider(Base, UUIDPrimaryKey):
+class SSOProvider(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "sso_providers"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -29,12 +29,9 @@ class SSOProvider(Base, UUIDPrimaryKey):
     )
     provider: Mapped[str] = mapped_column(String(30), nullable=False)
     provider_id: Mapped[str] = mapped_column(String(255), nullable=False)
-    created_at: Mapped[datetime | None] = mapped_column(
-        DateTime, server_default=func.now()
-    )
 
 
-class PasswordResetToken(Base, UUIDPrimaryKey):
+class PasswordResetToken(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "password_reset_tokens"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -43,12 +40,9 @@ class PasswordResetToken(Base, UUIDPrimaryKey):
     token_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     used_at: Mapped[datetime | None] = mapped_column(DateTime)
-    created_at: Mapped[datetime | None] = mapped_column(
-        DateTime, server_default=func.now()
-    )
 
 
-class ActiveSession(Base, UUIDPrimaryKey):
+class ActiveSession(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "active_sessions"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -57,12 +51,9 @@ class ActiveSession(Base, UUIDPrimaryKey):
     device_hint: Mapped[str | None] = mapped_column(String(120))
     ip_address: Mapped[str | None] = mapped_column(String(45))
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime)
-    created_at: Mapped[datetime | None] = mapped_column(
-        DateTime, server_default=func.now()
-    )
 
 
-class UserMeetingPreferences(Base, UUIDPrimaryKey):
+class UserMeetingPreferences(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "user_meeting_preferences"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -71,7 +62,6 @@ class UserMeetingPreferences(Base, UUIDPrimaryKey):
     unlimited_transcripts: Mapped[bool | None] = mapped_column(Boolean, default=True)
     join_condition: Mapped[str | None] = mapped_column(String(40))
     send_recap_to: Mapped[str | None] = mapped_column(String(40))
-    updated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
 class UserInterviewPreferences(Base, UUIDPrimaryKey, TimestampMixin):
@@ -85,7 +75,7 @@ class UserInterviewPreferences(Base, UUIDPrimaryKey, TimestampMixin):
     evaluation_focus: Mapped[str | None] = mapped_column(Text)
 
 
-class UserNotificationPreferences(Base, UUIDPrimaryKey):
+class UserNotificationPreferences(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "user_notification_preferences"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -95,10 +85,9 @@ class UserNotificationPreferences(Base, UUIDPrimaryKey):
     interview_completed: Mapped[bool | None] = mapped_column(Boolean, default=True)
     weekly_digest: Mapped[bool | None] = mapped_column(Boolean, default=True)
     product_updates: Mapped[bool | None] = mapped_column(Boolean, default=True)
-    updated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
-class UserPrivacySettings(Base, UUIDPrimaryKey):
+class UserPrivacySettings(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "user_privacy_settings"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -110,10 +99,9 @@ class UserPrivacySettings(Base, UUIDPrimaryKey):
     hide_private_manager_notes: Mapped[bool | None] = mapped_column(
         Boolean, default=True
     )
-    updated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
-class UserSecuritySettings(Base, UUIDPrimaryKey):
+class UserSecuritySettings(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "user_security_settings"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -121,4 +109,3 @@ class UserSecuritySettings(Base, UUIDPrimaryKey):
     )
     two_factor_enabled: Mapped[bool | None] = mapped_column(Boolean, default=False)
     two_factor_secret: Mapped[str | None] = mapped_column(Text)
-    updated_at: Mapped[datetime | None] = mapped_column(DateTime)

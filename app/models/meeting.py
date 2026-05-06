@@ -1,14 +1,14 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, UUIDPrimaryKey
+from app.models.base import Base, TimestampMixin, UUIDPrimaryKey
 
 
-class Meeting(Base, UUIDPrimaryKey):
+class Meeting(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "meetings"
 
     workspace_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -24,12 +24,9 @@ class Meeting(Base, UUIDPrimaryKey):
     )
     started_at: Mapped[datetime | None] = mapped_column(DateTime)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime)
-    created_at: Mapped[datetime | None] = mapped_column(
-        DateTime, server_default=func.now()
-    )
 
 
-class MeetingParticipant(Base, UUIDPrimaryKey):
+class MeetingParticipant(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "meeting_participants"
 
     meeting_id: Mapped[uuid.UUID] = mapped_column(
@@ -43,7 +40,7 @@ class MeetingParticipant(Base, UUIDPrimaryKey):
     joined_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
-class MeetingComment(Base, UUIDPrimaryKey):
+class MeetingComment(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "meeting_comments"
 
     meeting_id: Mapped[uuid.UUID] = mapped_column(
@@ -53,7 +50,3 @@ class MeetingComment(Base, UUIDPrimaryKey):
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime | None] = mapped_column(
-        DateTime, server_default=func.now()
-    )
-    updated_at: Mapped[datetime | None] = mapped_column(DateTime)

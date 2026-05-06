@@ -5,10 +5,10 @@ from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, UUIDPrimaryKey
+from app.models.base import Base, TimestampMixin, UUIDPrimaryKey
 
 
-class Workspace(Base, UUIDPrimaryKey):
+class Workspace(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "workspaces"
 
     name: Mapped[str] = mapped_column(String(120), nullable=False)
@@ -16,12 +16,9 @@ class Workspace(Base, UUIDPrimaryKey):
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id")
     )
-    created_at: Mapped[datetime | None] = mapped_column(
-        DateTime, server_default=func.now()
-    )
 
 
-class WorkspaceMember(Base, UUIDPrimaryKey):
+class WorkspaceMember(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "workspace_members"
     __table_args__ = (
         UniqueConstraint("workspace_id", "user_id"),
@@ -39,7 +36,7 @@ class WorkspaceMember(Base, UUIDPrimaryKey):
     )
 
 
-class WorkspaceInvite(Base, UUIDPrimaryKey):
+class WorkspaceInvite(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "workspace_invites"
 
     workspace_id: Mapped[uuid.UUID] = mapped_column(
@@ -51,6 +48,3 @@ class WorkspaceInvite(Base, UUIDPrimaryKey):
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str | None] = mapped_column(String(20), default="pending")
     expires_at: Mapped[datetime | None] = mapped_column(DateTime)
-    created_at: Mapped[datetime | None] = mapped_column(
-        DateTime, server_default=func.now()
-    )

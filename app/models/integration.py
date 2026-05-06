@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -23,7 +23,7 @@ class UserPlatformIntegration(Base, UUIDPrimaryKey, TimestampMixin):
     connected_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
-class Integration(Base, UUIDPrimaryKey):
+class Integration(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "integrations"
     __table_args__ = (
         UniqueConstraint("workspace_id", "provider"),
@@ -38,12 +38,9 @@ class Integration(Base, UUIDPrimaryKey):
     access_token: Mapped[str | None] = mapped_column(Text)
     config: Mapped[str | None] = mapped_column(Text)
     connected_at: Mapped[datetime | None] = mapped_column(DateTime)
-    created_at: Mapped[datetime | None] = mapped_column(
-        DateTime, server_default=func.now()
-    )
 
 
-class IntegrationChannel(Base, UUIDPrimaryKey):
+class IntegrationChannel(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "integration_channels"
 
     integration_id: Mapped[uuid.UUID] = mapped_column(
@@ -52,12 +49,9 @@ class IntegrationChannel(Base, UUIDPrimaryKey):
     channel_id: Mapped[str] = mapped_column(String(100), nullable=False)
     channel_name: Mapped[str | None] = mapped_column(String(100))
     ai_enabled: Mapped[bool | None] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime | None] = mapped_column(
-        DateTime, server_default=func.now()
-    )
 
 
-class IntegrationSettings(Base, UUIDPrimaryKey):
+class IntegrationSettings(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "integration_settings"
 
     integration_id: Mapped[uuid.UUID] = mapped_column(
@@ -74,10 +68,9 @@ class IntegrationSettings(Base, UUIDPrimaryKey):
     summary_channel_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("integration_channels.id")
     )
-    updated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
-class WaitlistSignup(Base, UUIDPrimaryKey):
+class WaitlistSignup(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "waitlist_signups"
 
     user_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -85,6 +78,3 @@ class WaitlistSignup(Base, UUIDPrimaryKey):
     )
     provider: Mapped[str] = mapped_column(String(30), nullable=False)
     notified_at: Mapped[datetime | None] = mapped_column(DateTime)
-    created_at: Mapped[datetime | None] = mapped_column(
-        DateTime, server_default=func.now()
-    )
