@@ -16,6 +16,9 @@ wheels/
 .idea/
 .DS_Store
 
+# database
+docker-compose.yml
+
 # Test / coverage
 .pytest_cache/
 .coverage
