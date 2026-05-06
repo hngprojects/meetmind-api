@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +10,8 @@ from app.core.config import settings
 from app.core.exceptions import UserAlreadyExistsException
 
 router = APIRouter()
+
+logger = logging.getLogger(__name__)
 
 
 @router.post("/signup", response_model=SignupResponse, status_code=status.HTTP_201_CREATED)
@@ -56,4 +59,5 @@ async def signup(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
         
     except Exception as e:
+        logger.exception(f"An unexpected error occurred during signup: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
