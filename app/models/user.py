@@ -54,7 +54,7 @@ class ActiveSession(Base, UUIDPrimaryKey):
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
-    refresh_token_hash: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    refresh_token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     device_hint: Mapped[str | None] = mapped_column(String(120))
     ip_address: Mapped[str | None] = mapped_column(String(45))
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime)
