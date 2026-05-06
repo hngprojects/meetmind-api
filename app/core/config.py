@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     DATABASE_URL: PostgresDsn
     TEST_DATABASE_URL: str
 
+    JWT_SECRET: str
+    JWT_ALGORITHM: str
+    ACCESS_TOKEN_EXPIRE_MINUTES: int
+    REFRESH_TOKEN_EXPIRE_MINUTES: int
+
 
 @lru_cache
 def get_settings() -> Settings:
