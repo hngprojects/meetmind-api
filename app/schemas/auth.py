@@ -13,8 +13,6 @@ class SignupRequest(BaseModel):
         if not v or not v.strip():
             raise ValueError('Name cannot be empty or whitespace-only')
 
-        if re.search(r'<[^>]+>', v):
-            raise ValueError('Name contains unsafe characters')
         return v.strip()
 
     @field_validator('password')
