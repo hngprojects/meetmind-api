@@ -8,7 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKey
 
 
-class UserPlatformIntegration(Base, UUIDPrimaryKey):
+class UserPlatformIntegration(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "user_platform_integrations"
     __table_args__ = (
         UniqueConstraint("user_id", "platform"),
@@ -21,7 +21,6 @@ class UserPlatformIntegration(Base, UUIDPrimaryKey):
     status: Mapped[str | None] = mapped_column(String(20), default="disconnected")
     access_token: Mapped[str | None] = mapped_column(Text)
     connected_at: Mapped[datetime | None] = mapped_column(DateTime)
-    updated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
 class Integration(Base, UUIDPrimaryKey):
