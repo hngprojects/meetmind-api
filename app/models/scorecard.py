@@ -1,14 +1,13 @@
 import uuid
-from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, UUIDPrimaryKey
+from app.models.base import Base, TimestampMixin, UUIDPrimaryKey
 
 
-class ScorecardCategory(Base, UUIDPrimaryKey):
+class ScorecardCategory(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "scorecard_categories"
 
     workspace_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -18,19 +17,15 @@ class ScorecardCategory(Base, UUIDPrimaryKey):
     sort_order: Mapped[int | None] = mapped_column(Integer)
 
 
-class InterviewScorecard(Base, UUIDPrimaryKey):
+class InterviewScorecard(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "interview_scorecards"
 
     interview_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("interviews.id"), nullable=False
     )
-    created_at: Mapped[datetime | None] = mapped_column(
-        DateTime, server_default=func.now()
-    )
-    updated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
-class ScorecardScore(Base, UUIDPrimaryKey):
+class ScorecardScore(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "scorecard_scores"
     __table_args__ = (
         UniqueConstraint("scorecard_id", "category_id"),
@@ -46,7 +41,7 @@ class ScorecardScore(Base, UUIDPrimaryKey):
     completed: Mapped[bool | None] = mapped_column(Boolean, default=False)
 
 
-class ScorecardQuestion(Base, UUIDPrimaryKey):
+class ScorecardQuestion(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "scorecard_questions"
 
     score_id: Mapped[uuid.UUID] = mapped_column(
@@ -56,7 +51,7 @@ class ScorecardQuestion(Base, UUIDPrimaryKey):
     sort_order: Mapped[int | None] = mapped_column(Integer)
 
 
-class ScorecardSignal(Base, UUIDPrimaryKey):
+class ScorecardSignal(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "scorecard_signals"
 
     score_id: Mapped[uuid.UUID] = mapped_column(

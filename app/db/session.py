@@ -1,3 +1,5 @@
+"""Async SQLAlchemy engine and session factory."""
+
 from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import (
@@ -18,5 +20,14 @@ AsyncSessionLocal = async_sessionmaker(
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
+    """Yield a request-scoped async database session.
+
+    Designed for use as a FastAPI dependency. The session is closed
+    automatically when the request finishes.
+
+    Yields:
+        An :class:`sqlalchemy.ext.asyncio.AsyncSession` bound to the
+        configured engine.
+    """
     async with AsyncSessionLocal() as session:
         yield session

@@ -1,8 +1,9 @@
 import pytest
 from sqlalchemy import select
 
-from app.models.user import User
+from app.core.responses import APIError
 from app.models.email_verification import EmailVerificationToken
+from app.models.user import User
 from app.services.verification_service import VerificationService
 
 
@@ -39,9 +40,8 @@ async def test_verify_email_success(db_session):
 
     token = await service.create_verification_token(db_session, user.id)
 
-    verified_user, error = await service.verify_email(db_session, token)
+    verified_user = await service.verify_email(db_session, token)
 
-    assert error is None
     assert verified_user.is_verified is True
 
 
@@ -49,10 +49,10 @@ async def test_verify_email_success(db_session):
 async def test_verify_email_invalid_token(db_session):
     service = VerificationService()
 
-    user, error = await service.verify_email(db_session, "invalidtoken")
+    with pytest.raises(APIError) as exc_info:
+        await service.verify_email(db_session, "invalidtoken")
 
-    assert user is None
-    assert error == "Invalid verification token"
+    assert exc_info.value.code == "invalid_verification_token"
 
 
 @pytest.mark.asyncio
@@ -63,12 +63,7 @@ async def test_resend_verification(db_session):
     db_session.add(user)
     await db_session.commit()
 
-    success, error = await service.resend_verification(
-        db_session, user.email
-    )
-
-    assert success is True
-    assert error is None
+    await service.resend_verification(db_session, user.email)
 
     result = await db_session.execute(
         select(EmailVerificationToken).where(
