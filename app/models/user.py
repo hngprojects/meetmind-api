@@ -19,6 +19,7 @@ class User(Base, UUIDPrimaryKey, TimestampMixin):
     job_title: Mapped[str | None] = mapped_column(String(80))
     company: Mapped[str | None] = mapped_column(String(120))
     role: Mapped[str | None] = mapped_column(String(60))
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
 
 class RefreshToken(Base, UUIDPrimaryKey):
     __tablename__ = "refresh_tokens"
