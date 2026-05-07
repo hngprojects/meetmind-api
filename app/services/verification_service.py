@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import status
@@ -14,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.responses import APIError
 from app.models.email_verification import EmailVerificationToken
 from app.models.user import User
+from app.services.email_service import send_verification_email
 
 TOKEN_EXPIRY_MINUTES = 30
 
@@ -56,33 +56,47 @@ class VerificationService:
     handlers render a consistent error envelope to clients.
     """
 
-    async def create_verification_token(
-        self, db: AsyncSession, user_id: uuid.UUID
-    ) -> str:
-        """Issue and persist a new verification token for a user.
+    async def create_verification_token(self, db: AsyncSession, user: User) -> str:
+        """Issue, persist, and email a verification token to the user.
+
+        Any previously unused tokens for the same user are invalidated before
+        the new one is created, ensuring only one active token exists at a time.
 
         Args:
             db: Active async database session.
-            user_id: Identifier of the user the token is being issued for.
+            user: The user to issue the token for.
 
         Returns:
-            The raw (un-hashed) token string to embed in the verification
-            link delivered to the user.
+            The raw (un-hashed) token string.
+
+        Raises:
+            Exception: If the email delivery service fails. Callers should
+                surface this as a safe 500.
         """
+        # Invalidate all outstanding unused tokens for this user (criterion 8).
+        result = await db.execute(
+            select(EmailVerificationToken).where(
+                EmailVerificationToken.user_id == user.id,
+                EmailVerificationToken.used_at.is_(None),
+            )
+        )
+        now = _now()
+        for old in result.scalars().all():
+            old.used_at = now
+
         raw_token = _generate_token()
         token_hash = _hash_token(raw_token)
-        expires_at = _now() + timedelta(minutes=TOKEN_EXPIRY_MINUTES)
+        expires_at = now + timedelta(minutes=TOKEN_EXPIRY_MINUTES)
 
         token = EmailVerificationToken(
-            user_id=user_id,
+            user_id=user.id,
             token_hash=token_hash,
             expires_at=expires_at,
         )
         db.add(token)
         await db.commit()
 
-        # TODO: replace with real email delivery
-        print(f"[EMAIL VERIFICATION LINK]: /api/v1/auth/verify-email?token={raw_token}")
+        await send_verification_email(user.email, user.name, raw_token)
 
         return raw_token
 
@@ -122,9 +136,10 @@ class VerificationService:
             )
         if _make_aware(record.expires_at) < _now():
             raise APIError(
-                "Verification link expired",
+                "Verification link has expired. Request a new one.",
                 status_code=status.HTTP_400_BAD_REQUEST,
                 code="verification_token_expired",
+                details={"next_step": "resend_verification"},
             )
 
         record.used_at = _now()
@@ -169,7 +184,7 @@ class VerificationService:
                 code="user_already_verified",
             )
 
-        await self.create_verification_token(db, user.id)
+        await self.create_verification_token(db, user)
 
 
 def _make_aware(value: datetime) -> datetime:
