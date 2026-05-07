@@ -34,7 +34,7 @@ async def test_verify_email_invalid_token_api(client):
     assert response.status_code == 400
     body = response.json()
     assert body["success"] is False
-    assert body["error"]["code"] == "email_verification_failed"
+    assert body["error"]["code"] == "invalid_verification_token"
 
 
 @pytest.mark.asyncio

@@ -1,50 +1,106 @@
+"""Email verification service: token issuance, validation, and resend flow."""
+
+from __future__ import annotations
+
 import hashlib
 import secrets
+import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import status
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.user import User
+from app.core.responses import APIError
 from app.models.email_verification import EmailVerificationToken
-
+from app.models.user import User
 
 TOKEN_EXPIRY_MINUTES = 30
 
 
 def _hash_token(token: str) -> str:
+    """Return a stable SHA-256 hex digest for a verification token.
+
+    Args:
+        token: Raw token string as issued to the user.
+
+    Returns:
+        Hex-encoded SHA-256 digest suitable for database lookup.
+    """
     return hashlib.sha256(token.encode()).hexdigest()
 
 
 def _generate_token() -> str:
+    """Generate a new cryptographically random URL-safe token.
+
+    Returns:
+        A 32-byte URL-safe token string.
+    """
     return secrets.token_urlsafe(32)
 
 
-class VerificationService:
+def _now() -> datetime:
+    """Return the current UTC timestamp as a timezone-aware datetime.
 
-    async def create_verification_token(self, db: AsyncSession, user_id):
+    Returns:
+        The current time in UTC.
+    """
+    return datetime.now(timezone.utc)
+
+
+class VerificationService:
+    """Coordinate email-verification token lifecycle for user accounts.
+
+    Provides token creation, redemption, and resend operations. All failure
+    modes raise :class:`app.core.responses.APIError` so the central exception
+    handlers render a consistent error envelope to clients.
+    """
+
+    async def create_verification_token(
+        self, db: AsyncSession, user_id: uuid.UUID
+    ) -> str:
+        """Issue and persist a new verification token for a user.
+
+        Args:
+            db: Active async database session.
+            user_id: Identifier of the user the token is being issued for.
+
+        Returns:
+            The raw (un-hashed) token string to embed in the verification
+            link delivered to the user.
+        """
         raw_token = _generate_token()
         token_hash = _hash_token(raw_token)
-
-        expires_at = datetime.utcnow() + timedelta(minutes=TOKEN_EXPIRY_MINUTES)
+        expires_at = _now() + timedelta(minutes=TOKEN_EXPIRY_MINUTES)
 
         token = EmailVerificationToken(
             user_id=user_id,
             token_hash=token_hash,
             expires_at=expires_at,
         )
-
         db.add(token)
         await db.commit()
 
-        # simulate email sending
+        # TODO: replace with real email delivery
         print(f"[EMAIL VERIFICATION LINK]: /api/v1/auth/verify-email?token={raw_token}")
 
         return raw_token
 
-    async def verify_email(self, db: AsyncSession, token: str):
-        token_hash = _hash_token(token)
+    async def verify_email(self, db: AsyncSession, token: str) -> User:
+        """Redeem a verification token and mark the owning user as verified.
 
+        Args:
+            db: Active async database session.
+            token: Raw verification token submitted by the client.
+
+        Returns:
+            The :class:`User` that has just been marked verified.
+
+        Raises:
+            APIError: If the token is unknown, already redeemed, expired, or
+                its owning user no longer exists.
+        """
+        token_hash = _hash_token(token)
         result = await db.execute(
             select(EmailVerificationToken).where(
                 EmailVerificationToken.token_hash == token_hash
@@ -53,44 +109,81 @@ class VerificationService:
         record = result.scalar_one_or_none()
 
         if not record:
-            return None, "Invalid verification token"
-
+            raise APIError(
+                "Invalid verification token",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="invalid_verification_token",
+            )
         if record.used_at:
-            return None, "Token already used"
+            raise APIError(
+                "Token already used",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="token_already_used",
+            )
+        if _make_aware(record.expires_at) < _now():
+            raise APIError(
+                "Verification link expired",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="verification_token_expired",
+            )
 
-        if record.expires_at < datetime.utcnow():
-            return None, "Verification link expired"
+        record.used_at = _now()
 
-        # mark token used
-        record.used_at = datetime.utcnow()
-
-        # mark user verified
-        result = await db.execute(
-            select(User).where(User.id == record.user_id)
-        )
+        result = await db.execute(select(User).where(User.id == record.user_id))
         user = result.scalar_one_or_none()
-
         if not user:
-            return None, "User not found"
+            raise APIError(
+                "User not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="user_not_found",
+            )
 
         user.is_verified = True
-
         await db.commit()
+        return user
 
-        return user, None
+    async def resend_verification(self, db: AsyncSession, email: str) -> None:
+        """Issue a fresh verification token for an unverified user.
 
-    async def resend_verification(self, db: AsyncSession, email: str):
-        result = await db.execute(
-            select(User).where(User.email == email)
-        )
+        Args:
+            db: Active async database session.
+            email: Email address of the account requesting a new token.
+
+        Raises:
+            APIError: If no user has the supplied email or the user is
+                already verified.
+        """
+        result = await db.execute(select(User).where(User.email == email))
         user = result.scalar_one_or_none()
 
         if not user:
-            return None, "User not found"
-
+            raise APIError(
+                "User not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="user_not_found",
+            )
         if user.is_verified:
-            return None, "User already verified"
+            raise APIError(
+                "User already verified",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="user_already_verified",
+            )
 
         await self.create_verification_token(db, user.id)
 
-        return True, None
+
+def _make_aware(value: datetime) -> datetime:
+    """Coerce a possibly naive datetime to a timezone-aware UTC datetime.
+
+    SQLite (used in tests) round-trips ``DateTime`` columns as naive values,
+    while Postgres preserves tzinfo. Normalize so comparisons are safe.
+
+    Args:
+        value: A naive or timezone-aware datetime.
+
+    Returns:
+        The same instant expressed in UTC with ``tzinfo`` set.
+    """
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value

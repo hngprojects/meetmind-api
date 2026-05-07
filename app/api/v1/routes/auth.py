@@ -1,4 +1,4 @@
-"""Authentication & session endpoints (login, register, password reset, SSO)."""
+"""Authentication & session endpoints (signup, email verification, etc.)."""
 
 import logging
 
@@ -25,12 +25,26 @@ async def signup(
     response: Response,
     db: AsyncSession = Depends(get_session),
 ):
-    """Register a new user, issue auth tokens, and attach cookies to the response."""
+    """Register a new user, issue auth tokens, and attach session cookies.
+
+    Args:
+        request: Validated signup payload (name, email, password).
+        response: FastAPI response object used to set auth cookies.
+        db: Async database session injected by FastAPI.
+
+    Returns:
+        A standardized success envelope containing the new user identifiers
+        and freshly issued ``access_token`` / ``refresh_token`` strings.
+
+    Raises:
+        APIError: ``user_already_exists`` if the email is already registered,
+            or ``internal_error`` for any unexpected failure.
+    """
     try:
         user = await AuthService.create_user(request, db)
-    except UserAlreadyExistsException as e:
+    except UserAlreadyExistsException as exc:
         raise APIError(
-            str(e),
+            str(exc),
             status_code=status.HTTP_400_BAD_REQUEST,
             code="user_already_exists",
         )
@@ -80,11 +94,17 @@ async def verify_email(
     payload: VerifyEmailRequest,
     db: AsyncSession = Depends(get_session),
 ):
-    """Verify a user's email address using a one-time token."""
-    user, err = await verification_service.verify_email(db, payload.token)
-    if err:
-        raise APIError(err, code="email_verification_failed")
+    """Verify a user's email address using a single-use token.
 
+    Args:
+        payload: Body containing the raw verification ``token``.
+        db: Async database session injected by FastAPI.
+
+    Returns:
+        A standardized success envelope with the verified user's ``id``
+        and ``email``.
+    """
+    user = await verification_service.verify_email(db, payload.token)
     return success(
         {"id": str(user.id), "email": user.email},
         message="Email verified successfully",
@@ -96,9 +116,14 @@ async def resend_verification(
     payload: ResendVerificationRequest,
     db: AsyncSession = Depends(get_session),
 ):
-    """Re-issue an email verification token for an unverified account."""
-    _, err = await verification_service.resend_verification(db, payload.email)
-    if err:
-        raise APIError(err, code="resend_verification_failed")
+    """Reissue a verification email for an unverified account.
 
+    Args:
+        payload: Body containing the user's ``email``.
+        db: Async database session injected by FastAPI.
+
+    Returns:
+        A standardized success envelope acknowledging the resend.
+    """
+    await verification_service.resend_verification(db, payload.email)
     return success(message="Verification email resent")

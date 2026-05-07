@@ -24,6 +24,15 @@ T = TypeVar("T")
 
 
 class PageMeta(BaseModel):
+    """Pagination block embedded in :class:`ResponseMeta`.
+
+    Attributes:
+        page: 1-based index of the current page.
+        page_size: Maximum number of items per page.
+        total: Total number of items across all pages.
+        total_pages: Total number of pages given ``page_size``.
+    """
+
     page: int
     page_size: int
     total: int
@@ -31,10 +40,25 @@ class PageMeta(BaseModel):
 
 
 class ResponseMeta(BaseModel):
+    """Optional ``meta`` envelope attached to a successful response.
+
+    Attributes:
+        pagination: Pagination details when the payload is a page of items.
+    """
+
     pagination: PageMeta | None = None
 
 
 class APIResponse(BaseModel, Generic[T]):
+    """Standardized success response envelope.
+
+    Attributes:
+        success: Always ``True`` for success responses.
+        message: Human-readable status message.
+        data: Endpoint-specific payload, or ``None`` for empty results.
+        meta: Optional metadata such as pagination.
+    """
+
     success: bool = True
     message: str = "OK"
     data: T | None = None
@@ -42,11 +66,26 @@ class APIResponse(BaseModel, Generic[T]):
 
 
 class APIErrorBody(BaseModel):
+    """Inner ``error`` block of the standardized error envelope.
+
+    Attributes:
+        code: Machine-readable error identifier (snake_case).
+        details: Optional structured payload (field errors, debug info...).
+    """
+
     code: str = Field(default="error")
     details: Any | None = None
 
 
 class APIErrorResponse(BaseModel):
+    """Standardized error response envelope.
+
+    Attributes:
+        success: Always ``False`` for error responses.
+        message: Human-readable error description shown to the client.
+        error: Structured error block with ``code`` and ``details``.
+    """
+
     success: bool = False
     message: str
     error: APIErrorBody
