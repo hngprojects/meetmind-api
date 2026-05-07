@@ -5,32 +5,54 @@ Wires the v1 router and registers the global exception handlers that map
 errors to the standardized response envelope.
 """
 
+import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
+from slowapi.errors import RateLimitExceeded
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.v1.router import api_router
 from app.core.config import settings
+from app.core.limiter import limiter
+from app.core.logging import setup_logging
 from app.core.responses import APIError, error, success
+from app.db.session import engine
 
-app = FastAPI(title=settings.PROJECT_NAME)
+setup_logging()
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    logger.info("Starting %s", settings.PROJECT_NAME)
+    yield
+    logger.info("Shutting down %s — disposing DB engine", settings.PROJECT_NAME)
+    await engine.dispose()
+
+
+app = FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
+app.state.limiter = limiter
 
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
 
+@app.exception_handler(RateLimitExceeded)
+async def handle_rate_limit_error(_: Request, exc: RateLimitExceeded):
+    return error(
+        "Too many requests — please slow down.",
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        code="rate_limit_exceeded",
+        details={"limit": str(exc.detail)},
+    )
+
+
 @app.exception_handler(APIError)
 async def handle_api_error(_: Request, exc: APIError):
-    """Render an :class:`APIError` as the standardized error envelope.
-
-    Args:
-        _: The incoming request (unused).
-        exc: The raised domain error carrying ``message``, ``status_code``,
-            ``code`` and optional ``details``.
-
-    Returns:
-        A :class:`fastapi.responses.JSONResponse` with the error envelope.
-    """
+    """Render an :class:`APIError` as the standardized error envelope."""
     return error(
         exc.message,
         status_code=exc.status_code,
@@ -41,16 +63,7 @@ async def handle_api_error(_: Request, exc: APIError):
 
 @app.exception_handler(StarletteHTTPException)
 async def handle_http_error(_: Request, exc: StarletteHTTPException):
-    """Render any uncaught HTTP exception as the standardized envelope.
-
-    Args:
-        _: The incoming request (unused).
-        exc: The Starlette/FastAPI HTTP exception.
-
-    Returns:
-        A :class:`fastapi.responses.JSONResponse` with ``code="http_error"``.
-        Non-string ``detail`` payloads are forwarded under ``error.details``.
-    """
+    """Render any uncaught HTTP exception as the standardized envelope."""
     return error(
         exc.detail if isinstance(exc.detail, str) else "HTTP error",
         status_code=exc.status_code,
@@ -61,16 +74,7 @@ async def handle_http_error(_: Request, exc: StarletteHTTPException):
 
 @app.exception_handler(RequestValidationError)
 async def handle_validation_error(_: Request, exc: RequestValidationError):
-    """Render Pydantic request validation failures using the error envelope.
-
-    Args:
-        _: The incoming request (unused).
-        exc: The raised :class:`RequestValidationError`.
-
-    Returns:
-        A :class:`fastapi.responses.JSONResponse` with HTTP ``422`` and the
-        per-field errors under ``error.details``.
-    """
+    """Render Pydantic request validation failures using the error envelope."""
     return error(
         "Request validation failed",
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -79,13 +83,20 @@ async def handle_validation_error(_: Request, exc: RequestValidationError):
     )
 
 
+@app.exception_handler(Exception)
+async def handle_unexpected_error(_: Request, exc: Exception):
+    """Catch-all for any unhandled exception — never expose internals."""
+    logger.exception("Unhandled exception: %s", exc)
+    return error(
+        "An unexpected error occurred",
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        code="internal_error",
+    )
+
+
 @app.get("/")
 def root():
-    """Root liveness endpoint used as a smoke test in tests and monitoring.
-
-    Returns:
-        A standardized success envelope identifying the running service.
-    """
+    """Root liveness endpoint."""
     return success(
         {"service": settings.PROJECT_NAME, "version": "v1"},
         message=f"{settings.PROJECT_NAME} is running",

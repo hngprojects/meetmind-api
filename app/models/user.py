@@ -64,7 +64,7 @@ class ActiveSession(Base, UUIDPrimaryKey, TimestampMixin):
     refresh_token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     device_hint: Mapped[str | None] = mapped_column(String(120))
     ip_address: Mapped[str | None] = mapped_column(String(45))
-    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class UserMeetingPreferences(Base, UUIDPrimaryKey, TimestampMixin):

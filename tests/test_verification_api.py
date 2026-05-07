@@ -11,7 +11,7 @@ async def test_verify_email_endpoint(client, db_session):
     await db_session.commit()
 
     service = VerificationService()
-    token = await service.create_verification_token(db_session, user.id)
+    token = await service.create_verification_token(db_session, user)
 
     response = await client.post(
         "/api/v1/auth/verify-email",

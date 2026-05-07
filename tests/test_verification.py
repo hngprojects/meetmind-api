@@ -15,7 +15,7 @@ async def test_create_verification_token(db_session):
     db_session.add(user)
     await db_session.commit()
 
-    token = await service.create_verification_token(db_session, user.id)
+    token = await service.create_verification_token(db_session, user)
 
     assert token is not None
 
@@ -38,7 +38,7 @@ async def test_verify_email_success(db_session):
     db_session.add(user)
     await db_session.commit()
 
-    token = await service.create_verification_token(db_session, user.id)
+    token = await service.create_verification_token(db_session, user)
 
     verified_user = await service.verify_email(db_session, token)
 

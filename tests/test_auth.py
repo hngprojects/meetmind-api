@@ -1,10 +1,11 @@
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-from app.models.user import User
-from app.core.exceptions import UserAlreadyExistsException
+import pytest
 
+from app.core.exceptions import UserAlreadyExistsException
+from app.models.user import User
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -32,6 +33,8 @@ CREATE_REFRESH = "app.services.auth.AuthService.create_refresh_token"
 
 FAKE_ACCESS  = "fake.access.token"
 FAKE_REFRESH = "fake.refresh.token"
+FAKE_REFRESH_EXPIRES = datetime.now(timezone.utc) + timedelta(days=7)
+FAKE_REFRESH_TUPLE = (FAKE_REFRESH, FAKE_REFRESH_EXPIRES)
 
 
 # ── Success ───────────────────────────────────────────────────────────────────
@@ -42,7 +45,7 @@ class TestSignupSuccess:
         user = make_user()
         with patch(CREATE_USER, new_callable=AsyncMock, return_value=user), \
              patch(CREATE_ACCESS, new_callable=AsyncMock, return_value=FAKE_ACCESS), \
-             patch(CREATE_REFRESH, new_callable=AsyncMock, return_value=FAKE_REFRESH):
+             patch(CREATE_REFRESH, new_callable=AsyncMock, return_value=FAKE_REFRESH_TUPLE):
             response = await client.post(SIGNUP_URL, json=VALID_PAYLOAD)
         body = response.json()
         data = body["data"]
@@ -55,6 +58,8 @@ class TestSignupSuccess:
         assert data["email"] == "john@example.com"
         assert data["name"] == "John Doe"
         assert "id" in data
+        assert "access_token_expires_at" in data
+        assert "refresh_token_expires_at" in data
 
 
 # ── Duplicate email ────────────────────────────────────────────────────────────
@@ -62,7 +67,8 @@ class TestSignupSuccess:
 class TestSignupDuplicateEmail:
     @pytest.mark.anyio
     async def test_returns_400_when_email_already_registered(self, client):
-        with patch(CREATE_USER, new_callable=AsyncMock, side_effect=UserAlreadyExistsException(email="john@example.com")):
+        exc = UserAlreadyExistsException(email="john@example.com")
+        with patch(CREATE_USER, new_callable=AsyncMock, side_effect=exc):
             response = await client.post(SIGNUP_URL, json=VALID_PAYLOAD)
         assert response.status_code == 400
 
@@ -136,7 +142,7 @@ class TestSignupPasswordValidation:
         user = make_user()
         with patch(CREATE_USER, new_callable=AsyncMock, return_value=user), \
              patch(CREATE_ACCESS, new_callable=AsyncMock, return_value=FAKE_ACCESS), \
-             patch(CREATE_REFRESH, new_callable=AsyncMock, return_value=FAKE_REFRESH):
+             patch(CREATE_REFRESH, new_callable=AsyncMock, return_value=FAKE_REFRESH_TUPLE):
             response = await client.post(SIGNUP_URL, json={**VALID_PAYLOAD, "password": "Secure1!"})
         assert response.status_code == 201
 

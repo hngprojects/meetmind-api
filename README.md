@@ -1,6 +1,6 @@
-# fastapi-starter
+# MeetMind Backend
 
-A standard FastAPI + Postgres starter using async SQLAlchemy 2.0, Alembic migrations, and `uv` for dependency management.
+AI-powered meeting intelligence platform. The backend manages users, workspaces, meetings, interviews, integrations, and an "Ask Mind" conversational Q&A layer over meeting transcripts.
 
 ---
 
@@ -11,8 +11,9 @@ A standard FastAPI + Postgres starter using async SQLAlchemy 2.0, Alembic migrat
 | Web framework | FastAPI (`fastapi[standard]`) |
 | Server | Uvicorn (via `fastapi dev` / `fastapi run`) |
 | ORM | SQLAlchemy 2.0 (async) |
-| DB driver | `asyncpg` |
+| DB driver | `asyncpg` (Postgres) |
 | Migrations | Alembic (async-aware) |
+| Auth | JWT via `python-jose` + bcrypt password hashing |
 | Config | `pydantic-settings` (reads `.env`) |
 | Package manager | `uv` |
 | Tests | `pytest` + `pytest-asyncio` + `httpx.AsyncClient` |
@@ -23,30 +24,58 @@ A standard FastAPI + Postgres starter using async SQLAlchemy 2.0, Alembic migrat
 ## Project structure
 
 ```
-fastapi-starter/
+meetmind-be/
 ├── app/
-│   ├── main.py                # FastAPI() instance, mounts the API router
+│   ├── main.py                        # FastAPI app, global exception handlers
 │   ├── core/
-│   │   └── config.py          # Settings (env-driven via pydantic-settings)
+│   │   ├── config.py                  # Settings loaded from .env
+│   │   ├── exceptions.py              # Domain exception hierarchy
+│   │   └── responses.py               # Standardized response envelope (success / error)
 │   ├── api/
-│   │   ├── deps.py            # Shared FastAPI dependencies (DB session, ...)
+│   │   ├── deps.py                    # Shared dependencies: DBSession, CurrentUser
 │   │   └── v1/
-│   │       ├── router.py      # Aggregates all v1 endpoint routers
-│   │       └── endpoints/
-│   │           └── health.py  # Sample DB-backed endpoint
+│   │       ├── router.py              # Aggregates all v1 domain routers
+│   │       └── routes/
+│   │           ├── health.py          # GET /health
+│   │           ├── auth.py            # POST /auth/signup, /verify-email, /resend-verification
+│   │           ├── users.py           # (stub) /users/*
+│   │           ├── workspaces.py      # (stub) /workspaces/*
+│   │           ├── meetings.py        # (stub) /meetings/*
+│   │           ├── interviews.py      # (stub) /interviews/*
+│   │           ├── integrations.py    # (stub) /integrations/*
+│   │           └── ask_mind.py        # (stub) /ask-mind/*
 │   ├── db/
-│   │   └── session.py         # Async engine + session factory
-│   ├── models/                # SQLAlchemy ORM models
-│   │   └── base.py            # DeclarativeBase
-│   ├── schemas/               # Pydantic request/response models
-│   └── services/              # Business logic layer
+│   │   └── session.py                 # Async engine + session factory + get_session()
+│   ├── models/
+│   │   ├── base.py                    # DeclarativeBase, UUIDPrimaryKey (v7), TimestampMixin
+│   │   ├── user.py                    # User, RefreshToken, SSOProvider, ActiveSession, preferences...
+│   │   ├── workspace.py               # Workspace, WorkspaceMember, WorkspaceInvite
+│   │   ├── meeting.py                 # Meeting, MeetingParticipant, MeetingComment
+│   │   ├── transcript.py              # Transcript, TranscriptSegment, MeetingSummary, ActionItem...
+│   │   ├── interview.py               # Candidate, Interview, InterviewTranscript, InterviewSummary...
+│   │   ├── scorecard.py               # ScorecardCategory, InterviewScorecard, ScorecardScore...
+│   │   ├── integration.py             # UserPlatformIntegration, Integration, IntegrationChannel...
+│   │   ├── email_verification.py      # EmailVerificationToken
+│   │   └── ask_mind.py                # AskMindSession, AskMindMessage, AskMindSuggestedPrompt
+│   ├── schemas/
+│   │   ├── auth.py                    # SignupRequest
+│   │   └── verification.py            # VerifyEmailRequest, ResendVerificationRequest
+│   └── services/
+│       ├── auth.py                    # AuthService: hashing, user creation, JWT issuance
+│       └── verification_service.py    # VerificationService: token lifecycle
 ├── alembic/
-│   ├── env.py                 # Wired to app.models.Base.metadata + settings
-│   ├── script.py.mako
-│   └── versions/              # Migration files land here
+│   ├── env.py                         # Wired to app.models.Base.metadata + settings
+│   └── versions/                      # Migration files
 ├── tests/
-│   ├── conftest.py            # AsyncClient fixture
-│   └── test_health.py
+│   ├── conftest.py                    # In-memory SQLite test DB, AsyncClient fixture
+│   ├── test_auth.py
+│   ├── test_health.py
+│   ├── test_models.py
+│   ├── test_verification.py
+│   └── test_verification_api.py
+├── docs/
+│   └── architecture/
+│       └── system-overview.md         # Mermaid architecture diagram
 ├── .env.example
 ├── alembic.ini
 ├── pyproject.toml
@@ -55,10 +84,11 @@ fastapi-starter/
 
 ### Why this layout
 
-- **`app/` package** — keeps imports absolute and clean (`from app.core.config import settings`).
-- **`api/v1/`** — versioning is free; add `v2/` later without touching `v1/`.
+- **`core/responses.py`** — single envelope for every response in the codebase. Clients always get `{success, message, data}` or `{success, message, error}`. No surprises.
+- **`api/deps.py`** — all shared FastAPI dependencies live here. Routes import `DBSession` and `CurrentUser` from one place.
 - **`models` / `schemas` / `services` split** — DB shape, API shape, and business logic stay decoupled. They diverge sooner than you'd think.
-- **`db/session.py` separate from `models/`** — engine setup is an infra concern; models are domain. Don't mix them.
+- **`db/session.py` separate from `models/`** — engine setup is infrastructure; models are domain.
+- **UUID v7 primary keys** — time-ordered, so rows sort by insertion order naturally and index locality is preserved.
 
 ---
 
@@ -68,7 +98,7 @@ fastapi-starter/
 
 - Python 3.13+
 - [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
-- A running Postgres instance (local, Docker, or remote)
+- A running Postgres instance (local, Docker, or Supabase)
 
 ### 2. Install
 
@@ -76,175 +106,279 @@ fastapi-starter/
 uv sync
 ```
 
-This installs both runtime and dev dependencies (`pytest`, `httpx`, etc.).
-
 ### 3. Configure
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` and set `DATABASE_URL`. The driver **must** be `postgresql+asyncpg`:
+Fill in `.env`:
 
 ```env
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/fastapi_starter
+DATABASE_URL=postgresql+asyncpg://user:password@host:5432/dbname
+
+JWT_SECRET=<generate: python3 -c "import secrets; print(secrets.token_hex(32))">
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+REFRESH_TOKEN_EXPIRE_MINUTES=10080
 ```
 
-### 4. Create the database
+`pydantic-settings` will fail loudly at startup if any required key is missing.
+
+### 4. Run migrations
 
 ```bash
-createdb fastapi_starter
-# or, with psql:
-psql -U postgres -c "CREATE DATABASE fastapi_starter;"
-```
-
-### 5. Run migrations
-
-The starter ships with no migrations. Once you add a model, generate the first one:
-
-```bash
-uv run alembic revision --autogenerate -m "init"
 uv run alembic upgrade head
 ```
 
-### 6. Start the dev server
+### 5. Start the dev server
 
 ```bash
 uv run fastapi dev app/main.py
 ```
 
-Open:
+- Root → `http://127.0.0.1:8000`
+- Health → `http://127.0.0.1:8000/api/v1/health`
+- Swagger UI → `http://127.0.0.1:8000/docs`
+- ReDoc → `http://127.0.0.1:8000/redoc`
 
-- App root → http://127.0.0.1:8000
-- Health check → http://127.0.0.1:8000/api/v1/health
-- Swagger UI → http://127.0.0.1:8000/docs
-- ReDoc → http://127.0.0.1:8000/redoc
+---
+
+## API overview
+
+All responses use a standardized envelope defined in `app/core/responses.py`.
+
+**Success**
+```json
+{ "success": true, "message": "...", "data": {}, "meta": null }
+```
+
+**Error**
+```json
+{ "success": false, "message": "...", "error": { "code": "snake_case_code", "details": null } }
+```
+
+### Live endpoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/` | No | Root liveness check |
+| `GET` | `/api/v1/health` | No | DB connectivity probe |
+| `POST` | `/api/v1/auth/signup` | No | Register user, issue JWT + refresh token |
+| `POST` | `/api/v1/auth/verify-email` | No | Redeem single-use email verification token |
+| `POST` | `/api/v1/auth/resend-verification` | No | Issue a fresh verification token |
+
+### Stub routers (registered, no endpoints yet)
+
+`/api/v1/users`, `/api/v1/workspaces`, `/api/v1/meetings`, `/api/v1/interviews`, `/api/v1/integrations`, `/api/v1/ask-mind`
+
+---
+
+## Authentication
+
+### How tokens are issued
+
+`POST /api/v1/auth/signup` returns both tokens in the response body and sets them as `httponly; secure; samesite=lax` cookies:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "...",
+    "email": "user@example.com",
+    "access_token": "<jwt>",
+    "refresh_token": "<opaque>"
+  }
+}
+```
+
+The access token is a signed JWT (HS256). The refresh token is an opaque random string — only its SHA-256 hash is stored in the database.
+
+### How to protect a route
+
+Import `CurrentUser` from `app.api.deps` and add it to the route signature. FastAPI resolves it automatically — no decorator, no middleware.
+
+```python
+from app.api.deps import CurrentUser
+from app.core.responses import success
+
+@router.get("/me")
+async def get_me(user: CurrentUser):
+    return success({"id": str(user.id), "email": user.email})
+```
+
+`CurrentUser` is defined as:
+
+```python
+CurrentUser = Annotated[User, Depends(get_current_user)]
+```
+
+`get_current_user` accepts the token from either:
+- The `access_token` httponly cookie (sent automatically by the browser after login)
+- An `Authorization: Bearer <token>` header (for API clients / Postman)
+
+Cookie takes priority. If neither is present or the token is invalid/expired, it raises a `401` error envelope automatically.
+
+### Public vs protected at a glance
+
+```python
+# Public — no auth dependency
+@router.get("/health")
+async def health(db: DBSession): ...
+
+# Protected — 401 if token missing or invalid
+@router.get("/me")
+async def get_me(user: CurrentUser): ...
+
+# Protected + DB access
+@router.get("/profile")
+async def get_profile(user: CurrentUser, db: DBSession): ...
+```
+
+### Adding extra guards
+
+Layer additional dependencies if needed:
+
+```python
+async def require_verified(user: CurrentUser) -> User:
+    if not user.is_verified:
+        raise APIError("Email not verified", status_code=403, code="unverified")
+    return user
+
+VerifiedUser = Annotated[User, Depends(require_verified)]
+```
 
 ---
 
 ## Running tests
 
+Tests use an in-memory SQLite database — no external DB needed.
+
 ```bash
 uv run pytest
 ```
 
-`pytest-asyncio` is set to `auto` mode in `pyproject.toml`, so async tests don't need a decorator. Tests use `httpx.AsyncClient` with `ASGITransport` — no live server required.
+`pytest-asyncio` is set to `auto` mode so async tests need no decorator. The `conftest.py` wires up an `AsyncClient` via `ASGITransport` and overrides the `get_session` dependency with a test-scoped SQLite session.
 
 ---
 
 ## Migrations workflow
 
-Migrations are the single source of truth for your schema. Treat them as code: review, commit, and never edit applied ones.
+### Current migration chain
+
+```
+cacd5554ba5a  create all tables (base)
+├── d44e91e81013  add refresh token table
+│   └── 8d114ef61fcc  make refresh token datetimes timezone-aware
+├── a8cbb47717b3  add refresh_token_hash to active_sessions
+│   └── 864df66fbeb7  add unique constraint on refresh_token_hash
+└── 64a8c4b4d071  add email verification tokens table
+5b25f8695307  merge all heads
+7ba4c8acd02e  sync schema with models (is_verified + missing timestamps)
+2cdac93874a4  make email_verification_token datetimes timezone-aware  ← HEAD
+```
 
 ### Typical cycle
 
 ```bash
 # 1. Edit a model in app/models/
 # 2. Generate a migration
-uv run alembic revision --autogenerate -m "add user table"
-
-# 3. Open alembic/versions/<hash>_add_user_table.py and REVIEW it.
-#    Autogenerate is not perfect — check column types, indexes, defaults.
-
+uv run alembic revision --autogenerate -m "describe the change"
+# 3. Review the generated file carefully before applying
 # 4. Apply
 uv run alembic upgrade head
 ```
+
+### Important: add new models to `app/models/__init__.py`
+
+Alembic discovers models by importing them. If a model file is not imported in `__init__.py`, Alembic won't see it and will either miss the table entirely or, worse, detect it as a table to drop.
+
+```python
+# app/models/__init__.py — every model must be listed here
+from app.models.my_new_model import MyNewModel
+```
+
+### Gotchas encountered in this project
+
+**Multiple heads** — branched migrations leave Alembic with multiple `HEAD` revisions. Before running `upgrade head`, merge them first:
+```bash
+uv run alembic merge heads -m "merge all heads"
+uv run alembic upgrade head
+```
+
+**Duplicate columns in branched migrations** — if two branches both autogenerated against the same base, they'll each try to add the same columns. Remove the duplicates from the later branch manually before applying.
+
+**`NOT NULL` column on existing rows** — autogenerate emits `nullable=False` without a server default, which fails if the table has data. Add `server_default` to the migration:
+```python
+# Before applying, change this:
+op.add_column('users', sa.Column('is_verified', sa.Boolean(), nullable=False))
+# To this:
+op.add_column('users', sa.Column('is_verified', sa.Boolean(), server_default=sa.text('false'), nullable=False))
+```
+
+**Timezone mismatch** — `DateTime` columns (naive) reject timezone-aware datetimes from Python. Use `DateTime(timezone=True)` on any column that stores a UTC timestamp, and regenerate the migration.
 
 ### Useful commands
 
 | Command | What it does |
 |---|---|
-| `alembic revision --autogenerate -m "msg"` | Diff models vs DB and write a migration |
-| `alembic revision -m "msg"` | Empty migration (write SQL by hand) |
 | `alembic upgrade head` | Apply all pending migrations |
-| `alembic upgrade +1` / `downgrade -1` | Step forward/back one revision |
-| `alembic current` | Show what's applied |
+| `alembic downgrade -1` | Roll back one migration |
+| `alembic current` | Show applied revision |
 | `alembic history` | Full migration chain |
-| `alembic downgrade base` | Wipe back to empty (dev only) |
+| `alembic merge heads -m "msg"` | Merge diverged heads into one |
+| `alembic downgrade base` | Wipe everything (dev only) |
 
-### Rules of thumb
+### Rules
 
-- **Always review** the autogenerated file before applying. Alembic misses enum changes, server-side defaults, and some index renames.
-- **Never edit a migration after it's been applied** to a shared environment. Write a new one instead.
-- **Fill in `downgrade()`**, even if you never plan to run it. It's the cheapest safety net you'll get.
-- **Run migrations during deploy, not at app startup**. Run `alembic upgrade head` in CI/CD before booting the new app.
-- **Commit `alembic/versions/`** to git so the migration chain stays consistent across machines.
+- Always **review** the autogenerated file before applying — Alembic misses enum changes, some index renames, and server-side defaults.
+- **Never edit** a migration that has been applied to a shared environment. Write a new one.
+- Run `alembic upgrade head` **during deploy**, not at app startup.
 
 ---
 
 ## Adding new code
 
-### A new endpoint
+### New endpoint
 
-1. Create the route module: `app/api/v1/endpoints/users.py`
-2. Define an `APIRouter()` and your routes
-3. Register it in `app/api/v1/router.py`:
+1. Add route handlers to the relevant file in `app/api/v1/routes/`
+2. Import and register in `app/api/v1/router.py` if it's a new domain (already done for existing stubs)
 
-   ```python
-   from app.api.v1.endpoints import health, users
+### New model
 
-   api_router.include_router(users.router, prefix="/users", tags=["users"])
-   ```
+1. Create or extend a file in `app/models/`
+2. Subclass `Base` (+ `UUIDPrimaryKey`, `TimestampMixin` as needed)
+3. Import the model in `app/models/__init__.py` so Alembic discovers it
+4. Generate and apply a migration
 
-### A new model
+### New schema
 
-1. Create `app/models/user.py`
-2. Subclass `Base` from `app.models.base`
-3. Re-export from `app/models/__init__.py` so Alembic discovers it:
+Add Pydantic request/response models to `app/schemas/`. Keep them separate from ORM models — the API shape and DB shape diverge quickly.
 
-   ```python
-   from app.models.base import Base
-   from app.models.user import User
+### New business logic
 
-   __all__ = ["Base", "User"]
-   ```
+Add it to `app/services/`. Routes should stay thin: validate input → call service → return envelope.
 
-4. Generate + apply a migration
+### New setting
 
-### A new Pydantic schema
-
-Put request/response models in `app/schemas/`. Keep them separate from ORM models — your API shape will not stay identical to your table shape.
-
-### Business logic
-
-Put non-trivial logic in `app/services/`. Endpoints should stay thin: parse input → call a service → return output.
-
----
-
-## Configuration
-
-All settings live in `app/core/config.py` and are loaded from environment variables (with `.env` as a fallback).
-
-To add a new setting:
-
-```python
-class Settings(BaseSettings):
-    ...
-    REDIS_URL: str
-    JWT_SECRET: str
-    ACCESS_TOKEN_TTL_MINUTES: int = 30
-```
-
-Then add it to `.env.example`. `pydantic-settings` will fail loudly at startup if a required setting is missing — which is what you want.
+Add the field to `Settings` in `app/core/config.py` and to `.env.example`. The app fails loudly at startup if the value is missing.
 
 ---
 
 ## Conventions
 
-- **Absolute imports only** (`from app.foo import bar`), never relative.
-- **Type hints everywhere.** FastAPI uses them for validation and OpenAPI generation.
-- **Endpoints return Pydantic models or dicts**, never raw ORM objects.
-- **Use `Annotated[..., Depends(...)]`** for dependencies (see `app/api/deps.py`).
-- **`async def` everything that touches I/O** (DB, HTTP, files). Sync `def` is fine for pure CPU work.
+- **Absolute imports only** (`from app.core.config import settings`), never relative.
+- **Type hints everywhere** — FastAPI uses them for validation and OpenAPI generation.
+- **Routes return `success()` / `paginated()`**, never raw dicts or ORM objects.
+- **Raise `APIError`** for all domain errors — the global handler converts them to the error envelope.
+- **`async def` for anything that touches I/O** (DB, HTTP, files). Sync `def` is fine for pure CPU work.
 
 ---
 
-## Production notes
+## Production checklist
 
-The starter is dev-friendly out of the box. Before deploying:
-
-- Replace `fastapi dev` with `fastapi run` (or `uvicorn app.main:app --workers N`).
-- Run `alembic upgrade head` as a deploy step, **before** new app instances boot.
-- Set `echo=False` on the engine (already the default) and configure pool size to match your worker count.
-- Add CORS, request logging, and any middleware you need in `app/main.py`.
-- Keep `.env` out of git (already in `.gitignore`); use your platform's secret store in production.
+- Replace `fastapi dev` with `fastapi run` (or `uvicorn app.main:app --workers N`)
+- Run `alembic upgrade head` as a deploy step before new instances boot
+- Configure DB pool size to match your worker count
+- Add CORS and request logging middleware in `app/main.py`
+- Store secrets in your platform's secret manager, not in `.env` files
