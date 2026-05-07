@@ -70,12 +70,13 @@ class TestBaseMetadata:
             "scorecard_scores",
             "scorecard_questions",
             "scorecard_signals",
+            "refresh_tokens"
         }
         actual = set(Base.metadata.tables.keys())
         assert expected.issubset(actual)
 
     def test_table_count(self):
-        assert len(Base.metadata.tables) == 42
+        assert len(Base.metadata.tables) == 43
 
 
 class TestUUIDPrimaryKeyMixin:

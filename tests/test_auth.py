@@ -1,0 +1,141 @@
+import pytest
+from unittest.mock import AsyncMock, patch, MagicMock
+from uuid import uuid4
+
+from app.models.user import User
+from app.core.exceptions import UserAlreadyExistsException
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def make_user(**kwargs) -> User:
+    user = MagicMock(spec=User)
+    user.id = kwargs.get("id", uuid4())
+    user.email = kwargs.get("email", "john@example.com")
+    user.name = kwargs.get("name", "John Doe")
+    user.password_hash = kwargs.get("password_hash", "hashed")
+    return user
+
+
+VALID_PAYLOAD = {
+    "name": "John Doe",
+    "email": "john@example.com",
+    "password": "SecurePass1",
+}
+
+SIGNUP_URL = "/api/v1/auth/signup"
+
+
+CREATE_USER    = "app.services.auth.AuthService.create_user"
+CREATE_ACCESS  = "app.services.auth.AuthService.create_access_token"
+CREATE_REFRESH = "app.services.auth.AuthService.create_refresh_token"
+
+FAKE_ACCESS  = "fake.access.token"
+FAKE_REFRESH = "fake.refresh.token"
+
+
+# ── Success ───────────────────────────────────────────────────────────────────
+
+class TestSignupSuccess:
+    @pytest.mark.anyio
+    async def test_response_body_shape(self, client):
+        user = make_user()
+        with patch(CREATE_USER, new_callable=AsyncMock, return_value=user), \
+             patch(CREATE_ACCESS, new_callable=AsyncMock, return_value=FAKE_ACCESS), \
+             patch(CREATE_REFRESH, new_callable=AsyncMock, return_value=FAKE_REFRESH):
+            response = await client.post(SIGNUP_URL, json=VALID_PAYLOAD)
+        body = response.json()
+        data = response.json()["data"]
+        assert body["status_code"] == 201
+        assert body["message"] == "Account created successfully"
+        assert "data" in body
+        assert data["access_token"] == FAKE_ACCESS
+        assert data["refresh_token"] == FAKE_REFRESH
+        assert data["email"] == "john@example.com"
+        assert data["name"] == "John Doe"
+        assert "id" in data
+
+
+# ── Duplicate email ────────────────────────────────────────────────────────────
+
+class TestSignupDuplicateEmail:
+    @pytest.mark.anyio
+    async def test_returns_400_when_email_already_registered(self, client):
+        with patch(CREATE_USER, new_callable=AsyncMock, side_effect=UserAlreadyExistsException(email="john@example.com")):
+            response = await client.post(SIGNUP_URL, json=VALID_PAYLOAD)
+        assert response.status_code == 400
+
+
+
+# ── Server error ──────────────────────────────────────────────────────────────
+
+class TestSignupServerError:
+    @pytest.mark.anyio
+    async def test_returns_500_on_unexpected_exception(self, client):
+        with patch(CREATE_USER, new_callable=AsyncMock, side_effect=Exception("DB went boom")):
+            response = await client.post(SIGNUP_URL, json=VALID_PAYLOAD)
+        assert response.status_code == 500
+
+
+# ── Input validation – name ────────────────────────────────────────────────────
+
+class TestSignupNameValidation:
+    @pytest.mark.anyio
+    async def test_missing_name_returns_422(self, client):
+        payload = {k: v for k, v in VALID_PAYLOAD.items() if k != "name"}
+        response = await client.post(SIGNUP_URL, json=payload)
+        assert response.status_code == 422
+
+# ── Input validation – email ───────────────────────────────────────────────────
+
+class TestSignupEmailValidation:
+    @pytest.mark.anyio
+    async def test_missing_email_returns_422(self, client):
+        payload = {k: v for k, v in VALID_PAYLOAD.items() if k != "email"}
+        response = await client.post(SIGNUP_URL, json=payload)
+        assert response.status_code == 422
+
+    @pytest.mark.anyio
+    async def test_invalid_email_format_returns_422(self, client):
+        response = await client.post(SIGNUP_URL, json={**VALID_PAYLOAD, "email": "not-an-email"})
+        assert response.status_code == 422
+
+
+# ── Input validation – password ────────────────────────────────────────────────
+
+class TestSignupPasswordValidation:
+    @pytest.mark.anyio
+    async def test_missing_password_returns_422(self, client):
+        payload = {k: v for k, v in VALID_PAYLOAD.items() if k != "password"}
+        response = await client.post(SIGNUP_URL, json=payload)
+        assert response.status_code == 422
+
+    @pytest.mark.anyio
+    async def test_password_too_short_returns_422(self, client):
+        response = await client.post(SIGNUP_URL, json={**VALID_PAYLOAD, "password": "Ab1"})
+        assert response.status_code == 422
+
+    @pytest.mark.anyio
+    async def test_password_without_uppercase_returns_422(self, client):
+        response = await client.post(SIGNUP_URL, json={**VALID_PAYLOAD, "password": "lowercase1"})
+        assert response.status_code == 422
+
+    @pytest.mark.anyio
+    async def test_password_without_lowercase_returns_422(self, client):
+        response = await client.post(SIGNUP_URL, json={**VALID_PAYLOAD, "password": "UPPERCASE1"})
+        assert response.status_code == 422
+
+    @pytest.mark.anyio
+    async def test_password_without_digit_returns_422(self, client):
+        response = await client.post(SIGNUP_URL, json={**VALID_PAYLOAD, "password": "NoDigitPass"})
+        assert response.status_code == 422
+
+    @pytest.mark.anyio
+    async def test_password_at_min_length_is_accepted(self, client):
+        user = make_user()
+        with patch(CREATE_USER, new_callable=AsyncMock, return_value=user), \
+             patch(CREATE_ACCESS, new_callable=AsyncMock, return_value=FAKE_ACCESS), \
+             patch(CREATE_REFRESH, new_callable=AsyncMock, return_value=FAKE_REFRESH):
+            response = await client.post(SIGNUP_URL, json={**VALID_PAYLOAD, "password": "Secure1!"})
+        assert response.status_code == 201
+

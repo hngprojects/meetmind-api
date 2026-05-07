@@ -21,6 +21,18 @@ class User(Base, UUIDPrimaryKey, TimestampMixin):
     role: Mapped[str | None] = mapped_column(String(60))
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
 
+class RefreshToken(Base, UUIDPrimaryKey):
+    __tablename__ = "refresh_tokens"
+ 
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    token_hash: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked: Mapped[bool | None] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 class SSOProvider(Base, UUIDPrimaryKey):
     __tablename__ = "sso_providers"
@@ -55,6 +67,7 @@ class ActiveSession(Base, UUIDPrimaryKey):
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
+    refresh_token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     device_hint: Mapped[str | None] = mapped_column(String(120))
     ip_address: Mapped[str | None] = mapped_column(String(45))
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime)
