@@ -68,7 +68,10 @@ class VerificationService:
         result = await db.execute(
             select(User).where(User.id == record.user_id)
         )
-        user = result.scalar_one()
+        user = result.scalar_one_or_none()
+
+        if not user:
+            return None, "User not found"
 
         user.is_verified = True
 
