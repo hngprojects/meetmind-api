@@ -1,6 +1,6 @@
 import uuid
 
-from app.models.base import Base, UUIDPrimaryKey, generate_uuid_v7
+from app.models.base import Base, generate_uuid_v7
 
 
 class TestUUIDv7Generation:
