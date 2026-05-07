@@ -45,8 +45,9 @@ class TestSignupSuccess:
              patch(CREATE_REFRESH, new_callable=AsyncMock, return_value=FAKE_REFRESH):
             response = await client.post(SIGNUP_URL, json=VALID_PAYLOAD)
         body = response.json()
-        data = response.json()["data"]
-        assert body["status_code"] == 201
+        data = body["data"]
+        assert response.status_code == 201
+        assert body["success"] is True
         assert body["message"] == "Account created successfully"
         assert "data" in body
         assert data["access_token"] == FAKE_ACCESS

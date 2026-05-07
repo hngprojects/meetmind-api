@@ -1,10 +1,8 @@
 import pytest
+
 from app.models.user import User
 from app.services.verification_service import VerificationService
 
-
-def extract_response(resp_json):
-    return resp_json["detail"] if "detail" in resp_json else resp_json
 
 @pytest.mark.asyncio
 async def test_verify_email_endpoint(client, db_session):
@@ -21,10 +19,9 @@ async def test_verify_email_endpoint(client, db_session):
     )
 
     assert response.status_code == 200
-    data = response.json()
-
-    assert data["status_code"] == 200
-    assert data["message"] == "Email verified successfully"
+    body = response.json()
+    assert body["success"] is True
+    assert body["message"] == "Email verified successfully"
 
 
 @pytest.mark.asyncio
@@ -35,10 +32,10 @@ async def test_verify_email_invalid_token_api(client):
     )
 
     assert response.status_code == 400
+    body = response.json()
+    assert body["success"] is False
+    assert body["error"]["code"] == "email_verification_failed"
 
-    data = extract_response(response.json())
-
-    assert data["status_code"] == 400
 
 @pytest.mark.asyncio
 async def test_resend_verification_api(client, db_session):
@@ -52,6 +49,6 @@ async def test_resend_verification_api(client, db_session):
     )
 
     assert response.status_code == 200
-    data = response.json()
-
-    assert data["status_code"] == 200
+    body = response.json()
+    assert body["success"] is True
+    assert body["message"] == "Verification email resent"

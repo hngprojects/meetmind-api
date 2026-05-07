@@ -5,7 +5,11 @@ os.environ.setdefault("DATABASE_URL", settings.TEST_DATABASE_URL)
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock
-import asyncio
+
+
+@pytest.fixture(scope="session")
+def anyio_backend():
+    return "asyncio"
 
 from sqlalchemy.ext.asyncio import (
     create_async_engine,
@@ -48,13 +52,6 @@ TestingSessionLocal = async_sessionmaker(
 )
 
 
-@pytest.fixture(scope="session")
-def event_loop():
-    loop = asyncio.get_event_loop()
-    yield loop
-    loop.close()
-
-
 #Create tables ONCE using SAME connection
 @pytest.fixture(scope="session", autouse=True)
 async def create_tables():
@@ -81,7 +78,7 @@ def override_get_session(db_session):
     app.dependency_overrides.clear()
 
 
-# HTTP client 
+# HTTP client
 @pytest.fixture
 async def client():
     transport = ASGITransport(app=app)
@@ -90,8 +87,3 @@ async def client():
         base_url="http://test",
     ) as ac:
         yield ac
-    #Another Dev's code
-    app.dependency_overrides[get_session] = mock_get_session
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
-    app.dependency_overrides.clear()
