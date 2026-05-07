@@ -1,14 +1,14 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, UUIDPrimaryKey
+from app.models.base import Base, TimestampMixin, UUIDPrimaryKey
 
 
-class Candidate(Base, UUIDPrimaryKey):
+class Candidate(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "candidates"
 
     workspace_id: Mapped[uuid.UUID] = mapped_column(
@@ -20,13 +20,9 @@ class Candidate(Base, UUIDPrimaryKey):
     avatar_initials: Mapped[str | None] = mapped_column(String(3))
     resume_url: Mapped[str | None] = mapped_column(Text)
     portfolio_url: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime | None] = mapped_column(
-        DateTime, server_default=func.now()
-    )
-    updated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
-class Interview(Base, UUIDPrimaryKey):
+class Interview(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "interviews"
     __table_args__ = (
         Index("ix_interviews_workspace_candidate", "workspace_id", "candidate_id"),
@@ -55,26 +51,18 @@ class Interview(Base, UUIDPrimaryKey):
     questions_asked: Mapped[int | None] = mapped_column(Integer)
     questions_total: Mapped[int | None] = mapped_column(Integer)
     rating: Mapped[int | None] = mapped_column(Integer)
-    created_at: Mapped[datetime | None] = mapped_column(
-        DateTime, server_default=func.now()
-    )
-    updated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
-class InterviewTranscript(Base, UUIDPrimaryKey):
+class InterviewTranscript(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "interview_transcripts"
 
     interview_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("interviews.id"), nullable=False
     )
     status: Mapped[str | None] = mapped_column(String(20), default="processing")
-    created_at: Mapped[datetime | None] = mapped_column(
-        DateTime, server_default=func.now()
-    )
-    updated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
-class InterviewTranscriptTurn(Base, UUIDPrimaryKey):
+class InterviewTranscriptTurn(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "interview_transcript_turns"
     __table_args__ = (
         Index("ix_interview_turns_transcript_seq", "transcript_id", "sequence_no"),
@@ -91,7 +79,7 @@ class InterviewTranscriptTurn(Base, UUIDPrimaryKey):
     is_ai_question: Mapped[bool | None] = mapped_column(Boolean, default=False)
 
 
-class InterviewSummary(Base, UUIDPrimaryKey):
+class InterviewSummary(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "interview_summaries"
 
     interview_id: Mapped[uuid.UUID] = mapped_column(
@@ -101,12 +89,9 @@ class InterviewSummary(Base, UUIDPrimaryKey):
     ai_assessment: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str | None] = mapped_column(String(20), default="generating")
     generated_at: Mapped[datetime | None] = mapped_column(DateTime)
-    created_at: Mapped[datetime | None] = mapped_column(
-        DateTime, server_default=func.now()
-    )
 
 
-class InterviewSkillToAssess(Base, UUIDPrimaryKey):
+class InterviewSkillToAssess(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "interview_skills_to_assess"
 
     summary_id: Mapped[uuid.UUID] = mapped_column(
@@ -116,7 +101,7 @@ class InterviewSkillToAssess(Base, UUIDPrimaryKey):
     sort_order: Mapped[int | None] = mapped_column(Integer)
 
 
-class InterviewHighlight(Base, UUIDPrimaryKey):
+class InterviewHighlight(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "interview_highlights"
 
     summary_id: Mapped[uuid.UUID] = mapped_column(
@@ -126,7 +111,7 @@ class InterviewHighlight(Base, UUIDPrimaryKey):
     sort_order: Mapped[int | None] = mapped_column(Integer)
 
 
-class InterviewRedFlag(Base, UUIDPrimaryKey):
+class InterviewRedFlag(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "interview_red_flags"
 
     summary_id: Mapped[uuid.UUID] = mapped_column(
