@@ -44,8 +44,8 @@ class TimestampMixin:
     """Mixin that adds created_at and updated_at columns."""
 
     created_at: Mapped[datetime | None] = mapped_column(
-        DateTime, server_default=func.now()
+        DateTime(timezone=True), server_default=func.now()
     )
     updated_at: Mapped[datetime | None] = mapped_column(
-        DateTime, onupdate=func.now(), nullable=True
+        DateTime(timezone=True), onupdate=func.now(), nullable=True
     )
