@@ -34,8 +34,8 @@ jobs:
             echo "→ Installing dependencies..."
             uv sync --frozen
 
-            echo "→ Running migrations..."
-            uv run alembic upgrade head
+            # echo "→ Running migrations..."
+            # uv run alembic upgrade head
 
             echo "→ Restarting service..."
             sudo systemctl restart meetmind-be
@@ -43,7 +43,7 @@ jobs:
             echo "→ Checking service status..."
             sudo systemctl is-active meetmind-be
 
-            echo "✅ Staging backend deployed: ${{ github.sha }}"
+            echo "Staging backend deployed: ${{ github.sha }}"
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Deploy Production
@@ -74,8 +74,8 @@ jobs:
             echo "→ Installing dependencies..."
             uv sync --frozen
 
-            echo "→ Running migrations..."
-            uv run alembic upgrade head
+            # echo "→ Running migrations..."
+            # uv run alembic upgrade head
 
             echo "→ Restarting service..."
             sudo systemctl restart meetmind-be
@@ -83,4 +83,4 @@ jobs:
             echo "→ Checking service status..."
             sudo systemctl is-active meetmind-be
 
-            echo "✅ Production backend deployed: ${{ github.sha }}"
+            echo "Production backend deployed: ${{ github.sha }}"
