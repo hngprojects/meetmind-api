@@ -1,0 +1,86 @@
+name: Backend CD
+
+on:
+  push:
+    branches: [staging, main]
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Deploy Staging — SSH in, pull latest, run migrations, restart service
+  # URL: https://api.staging.meetmind.hng14.com
+  # ─────────────────────────────────────────────────────────────────────────────
+  deploy-staging:
+    name: Deploy → Staging
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/staging'
+    environment:
+      name: staging
+      url: https://api.staging.meetmind.hng14.com
+
+    steps:
+      - name: Deploy to staging VPS
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/meetmind/backend
+
+            echo "→ Pulling latest code..."
+            git pull origin staging
+
+            echo "→ Installing dependencies..."
+            uv sync --frozen
+
+            echo "→ Running migrations..."
+            uv run alembic upgrade head
+
+            echo "→ Restarting service..."
+            sudo systemctl restart meetmind-be
+
+            echo "→ Checking service status..."
+            sudo systemctl is-active meetmind-be
+
+            echo "✅ Staging backend deployed: ${{ github.sha }}"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Deploy Production
+  # URL: https://api.meetmind.hng14.com
+  # ─────────────────────────────────────────────────────────────────────────────
+  deploy-production:
+    name: Deploy → Production
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: production
+      url: https://api.meetmind.hng14.com
+
+    steps:
+      - name: Deploy to production VPS
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/meetmind/backend
+
+            echo "→ Pulling latest code..."
+            git pull origin main
+
+            echo "→ Installing dependencies..."
+            uv sync --frozen
+
+            echo "→ Running migrations..."
+            uv run alembic upgrade head
+
+            echo "→ Restarting service..."
+            sudo systemctl restart meetmind-be
+
+            echo "→ Checking service status..."
+            sudo systemctl is-active meetmind-be
+
+            echo "✅ Production backend deployed: ${{ github.sha }}"
