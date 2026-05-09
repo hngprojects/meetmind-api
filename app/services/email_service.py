@@ -60,7 +60,7 @@ async def send_verification_email(email: str, name: str | None, token: str) -> N
         name: Recipient's display name, used in the greeting.
         token: Raw verification token to embed in the link.
     """
-    verify_url = f"{settings.FRONTEND_URL}/verify-email?token={token}"
+    verify_url = f"{settings.FRONTEND_URL.rstrip('/')}/verify-email?token={token}"
     greeting = f"Hi {name}," if name else "Hi,"
 
     try:
