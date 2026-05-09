@@ -189,18 +189,22 @@ class AuthService:
         now = _now()
         expires_at = now + timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
 
-        db.add(RefreshToken(
-            user_id=user_id,
-            token_hash=token_hash,
-            expires_at=expires_at,
-        ))
-        db.add(ActiveSession(
-            user_id=user_id,
-            refresh_token_hash=token_hash,
-            ip_address=ip_address,
-            device_hint=device_hint,
-            last_seen_at=now,
-        ))
+        db.add(
+            RefreshToken(
+                user_id=user_id,
+                token_hash=token_hash,
+                expires_at=expires_at,
+            )
+        )
+        db.add(
+            ActiveSession(
+                user_id=user_id,
+                refresh_token_hash=token_hash,
+                ip_address=ip_address,
+                device_hint=device_hint,
+                last_seen_at=now,
+            )
+        )
         await db.commit()
         return raw, expires_at
 
@@ -227,7 +231,9 @@ class AuthService:
 
         # Always run bcrypt — even when the user doesn't exist — so the
         # response time is indistinguishable between wrong-email and wrong-password.
-        stored_hash = user.password_hash if (user and user.password_hash) else _DUMMY_HASH
+        stored_hash = (
+            user.password_hash if (user and user.password_hash) else _DUMMY_HASH
+        )
         password_ok = await AuthService.verify_password(password, stored_hash)
 
         if not user or not user.password_hash or not password_ok:
@@ -277,7 +283,9 @@ class AuthService:
         return raw
 
     @staticmethod
-    async def reset_password(raw_token: str, new_password: str, db: AsyncSession) -> None:
+    async def reset_password(
+        raw_token: str, new_password: str, db: AsyncSession
+    ) -> None:
         """Validate a password reset token and update the user's password.
 
         Token validation (exists, not used, not expired) and the password +
@@ -297,11 +305,14 @@ class AuthService:
         """
         token_hash = _hash_token(raw_token)
         result = await db.execute(
-            select(PasswordResetToken).where(PasswordResetToken.token_hash == token_hash)
+            select(PasswordResetToken).where(
+                PasswordResetToken.token_hash == token_hash
+            )
         )
         rt = result.scalar_one_or_none()
 
-        # Single generic error for all failure modes — no signal about which check failed
+        # Single generic error for all failure modes
+        # no signal about which check failed
         _invalid = APIError(
             "This reset link is invalid or has expired.",
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -403,7 +414,11 @@ class AuthService:
         now = _now()
         new_expires_at = now + timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
 
-        db.add(RefreshToken(user_id=rt.user_id, token_hash=new_hash, expires_at=new_expires_at))
+        db.add(
+            RefreshToken(
+                user_id=rt.user_id, token_hash=new_hash, expires_at=new_expires_at
+            )
+        )
         rt.revoked = True
 
         # Update the active session to track the new token
@@ -417,17 +432,20 @@ class AuthService:
             if ip_address:
                 active_session.ip_address = ip_address
         else:
-            db.add(ActiveSession(
-                user_id=rt.user_id,
-                refresh_token_hash=new_hash,
-                ip_address=ip_address,
-                last_seen_at=now,
-            ))
+            db.add(
+                ActiveSession(
+                    user_id=rt.user_id,
+                    refresh_token_hash=new_hash,
+                    ip_address=ip_address,
+                    last_seen_at=now,
+                )
+            )
 
         await db.commit()
 
         access_token = await AuthService.create_access_token(user)
-        access_expires_at = now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        expiry_minutes = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_expires_at = now + expiry_minutes
 
         return {
             "access_token": access_token,
