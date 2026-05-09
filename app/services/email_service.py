@@ -21,7 +21,7 @@ async def send_password_reset_email(email: str, name: str | None, token: str) ->
         name: Recipient's display name, used in the greeting.
         token: Raw reset token to embed in the link.
     """
-    reset_url = f"{settings.APP_BASE_URL}/reset-password?token={token}"
+    reset_url = f"{settings.FRONTEND_URL}/reset-password?token={token}"
     greeting = f"Hi {name}," if name else "Hi,"
 
     try:
@@ -60,7 +60,7 @@ async def send_verification_email(email: str, name: str | None, token: str) -> N
         name: Recipient's display name, used in the greeting.
         token: Raw verification token to embed in the link.
     """
-    verify_url = f"{settings.APP_BASE_URL}/api/v1/auth/verify-email?token={token}"
+    verify_url = f"{settings.FRONTEND_URL}/verify-email?token={token}"
     greeting = f"Hi {name}," if name else "Hi,"
 
     try:

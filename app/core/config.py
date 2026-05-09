@@ -52,6 +52,8 @@ class Settings(BaseSettings):
 
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
 
+    FRONTEND_URL: str = "http://localhost:3000"
+
 
 @lru_cache
 def get_settings() -> Settings:
