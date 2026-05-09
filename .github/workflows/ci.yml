@@ -59,7 +59,7 @@ jobs:
           --health-retries 5
 
     env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/test_db
       ENVIRONMENT: test
       JWT_SECRET: ci-test-jwt-secret-key-for-testing-only
       JWT_ALGORITHM: HS256
