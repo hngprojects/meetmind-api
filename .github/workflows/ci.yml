@@ -87,7 +87,7 @@ jobs:
 
       - name: Check Alembic heads
         run: |
-          HEAD_COUNT=$(uv run alembic heads | grep -c "head" || true)
+          HEAD_COUNT=$(uv run alembic heads 2>/dev/null | wc -l)
           if [ "$HEAD_COUNT" -gt 1 ]; then
             echo "Multiple Alembic heads detected!"
             uv run alembic heads
