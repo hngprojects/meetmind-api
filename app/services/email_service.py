@@ -21,7 +21,7 @@ async def send_password_reset_email(email: str, name: str | None, token: str) ->
         name: Recipient's display name, used in the greeting.
         token: Raw reset token to embed in the link.
     """
-    reset_url = f"{settings.FRONTEND_URL}/reset-password?token={token}"
+    reset_url = f"{settings.FRONTEND_URL.rstrip('/')}/reset-password?token={token}"
     greeting = f"Hi {name}," if name else "Hi,"
 
     try:
