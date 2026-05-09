@@ -18,6 +18,7 @@ class TestUUIDv7Generation:
 
     def test_ids_are_time_ordered(self):
         import time
+
         id1 = generate_uuid_v7()
         time.sleep(0.002)  # ensure different millisecond
         id2 = generate_uuid_v7()
@@ -70,7 +71,7 @@ class TestBaseMetadata:
             "scorecard_scores",
             "scorecard_questions",
             "scorecard_signals",
-            "refresh_tokens"
+            "refresh_tokens",
         }
         actual = set(Base.metadata.tables.keys())
         assert expected.issubset(actual)
@@ -140,9 +141,7 @@ class TestUniqueConstraints:
     def test_workspace_members_has_composite_unique(self):
         table = Base.metadata.tables["workspace_members"]
         unique_constraints = [
-            c
-            for c in table.constraints
-            if c.__class__.__name__ == "UniqueConstraint"
+            c for c in table.constraints if c.__class__.__name__ == "UniqueConstraint"
         ]
         assert len(unique_constraints) >= 1
         col_names = {col.name for col in unique_constraints[0].columns}

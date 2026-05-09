@@ -3,7 +3,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import Cookie, Depends, Header, status
+from fastapi import Cookie, Depends, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 from sqlalchemy import select

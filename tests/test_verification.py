@@ -20,9 +20,7 @@ async def test_create_verification_token(db_session):
     assert token is not None
 
     result = await db_session.execute(
-        select(EmailVerificationToken).where(
-            EmailVerificationToken.user_id == user.id
-        )
+        select(EmailVerificationToken).where(EmailVerificationToken.user_id == user.id)
     )
     db_token = result.scalar_one_or_none()
 
@@ -66,9 +64,7 @@ async def test_resend_verification(db_session):
     await service.resend_verification(db_session, user.email)
 
     result = await db_session.execute(
-        select(EmailVerificationToken).where(
-            EmailVerificationToken.user_id == user.id
-        )
+        select(EmailVerificationToken).where(EmailVerificationToken.user_id == user.id)
     )
     tokens = result.scalars().all()
 

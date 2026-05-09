@@ -16,36 +16,38 @@ def setup_logging() -> None:
     Call this once before the FastAPI app is created so uvicorn inherits the
     configuration rather than overwriting it.
     """
-    logging.config.dictConfig({
-        "version": 1,
-        "disable_existing_loggers": False,
-        "formatters": {
-            "standard": {
-                "format": "%(asctime)s [%(levelname)-8s] %(name)s: %(message)s",
-                "datefmt": "%Y-%m-%dT%H:%M:%S",
+    logging.config.dictConfig(
+        {
+            "version": 1,
+            "disable_existing_loggers": False,
+            "formatters": {
+                "standard": {
+                    "format": "%(asctime)s [%(levelname)-8s] %(name)s: %(message)s",
+                    "datefmt": "%Y-%m-%dT%H:%M:%S",
+                },
             },
-        },
-        "handlers": {
-            "console": {
-                "class": "logging.StreamHandler",
-                "formatter": "standard",
-                "stream": "ext://sys.stdout",
+            "handlers": {
+                "console": {
+                    "class": "logging.StreamHandler",
+                    "formatter": "standard",
+                    "stream": "ext://sys.stdout",
+                },
             },
-        },
-        "root": {
-            "level": settings.LOG_LEVEL.upper(),
-            "handlers": ["console"],
-        },
-        "loggers": {
-            # Let uvicorn logs flow through the root handler/formatter
-            "uvicorn": {"propagate": True, "handlers": []},
-            "uvicorn.access": {"propagate": True, "handlers": []},
-            "uvicorn.error": {"propagate": True, "handlers": []},
-            # Silence per-statement SQL logs unless explicitly requested
-            "sqlalchemy.engine": {
-                "level": "WARNING",
-                "propagate": True,
-                "handlers": [],
+            "root": {
+                "level": settings.LOG_LEVEL.upper(),
+                "handlers": ["console"],
             },
-        },
-    })
+            "loggers": {
+                # Let uvicorn logs flow through the root handler/formatter
+                "uvicorn": {"propagate": True, "handlers": []},
+                "uvicorn.access": {"propagate": True, "handlers": []},
+                "uvicorn.error": {"propagate": True, "handlers": []},
+                # Silence per-statement SQL logs unless explicitly requested
+                "sqlalchemy.engine": {
+                    "level": "WARNING",
+                    "propagate": True,
+                    "handlers": [],
+                },
+            },
+        }
+    )

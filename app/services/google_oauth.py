@@ -55,13 +55,16 @@ async def exchange_code(code: str) -> dict:
         APIError: 401 if Google rejects or cannot validate the code.
     """
     async with httpx.AsyncClient() as client:
-        response = await client.post(_GOOGLE_TOKEN_URL, data={
-            "code": code,
-            "client_id": settings.GOOGLE_CLIENT_ID,
-            "client_secret": settings.GOOGLE_CLIENT_SECRET,
-            "redirect_uri": settings.GOOGLE_REDIRECT_URI,
-            "grant_type": "authorization_code",
-        })
+        response = await client.post(
+            _GOOGLE_TOKEN_URL,
+            data={
+                "code": code,
+                "client_id": settings.GOOGLE_CLIENT_ID,
+                "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                "redirect_uri": settings.GOOGLE_REDIRECT_URI,
+                "grant_type": "authorization_code",
+            },
+        )
 
     if response.status_code != 200:
         raise APIError(
@@ -155,9 +158,10 @@ async def find_or_create_user(google_user: dict, db: AsyncSession) -> User:
     # 2. Email collision with a password-based account — do NOT silently link
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
+    error_message = "An account with this email already exists. Please sign in."
     if user:
         raise APIError(
-            "An account with this email already exists. Please sign in with your password.",
+            error_message,
             status_code=status.HTTP_409_CONFLICT,
             code="email_conflict",
         )

@@ -25,11 +25,12 @@ async def send_password_reset_email(email: str, name: str | None, token: str) ->
     greeting = f"Hi {name}," if name else "Hi,"
 
     try:
-        resend.Emails.send({
-            "from": settings.EMAIL_FROM,
-            "to": email,
-            "subject": "Reset your MeetMind password",
-            "html": f"""
+        resend.Emails.send(
+            {
+                "from": settings.EMAIL_FROM,
+                "to": email,
+                "subject": "Reset your MeetMind password",
+                "html": f"""
                 <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
                     <h2 style="color:#1a1a1a">Reset your password</h2>
                     <p>{greeting}</p>
@@ -41,12 +42,14 @@ async def send_password_reset_email(email: str, name: str | None, token: str) ->
                         Reset password
                     </a>
                     <p style="margin-top:24px;color:#666;font-size:13px">
-                        If you didn't request a password reset, you can ignore this email.
+                        If you didn't request a password reset, 
+                        you can ignore this email.
                         Your password will not be changed.
                     </p>
                 </div>
             """,
-        })
+            }
+        )
     except Exception:
         logger.exception("Failed to send password reset email to %s", email)
         raise
@@ -64,11 +67,12 @@ async def send_verification_email(email: str, name: str | None, token: str) -> N
     greeting = f"Hi {name}," if name else "Hi,"
 
     try:
-        resend.Emails.send({
-            "from": settings.EMAIL_FROM,
-            "to": email,
-            "subject": "Verify your MeetMind email",
-            "html": f"""
+        resend.Emails.send(
+            {
+                "from": settings.EMAIL_FROM,
+                "to": email,
+                "subject": "Verify your MeetMind email",
+                "html": f"""
                 <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
                     <h2 style="color:#1a1a1a">Verify your email</h2>
                     <p>{greeting}</p>
@@ -80,12 +84,15 @@ async def send_verification_email(email: str, name: str | None, token: str) -> N
                         Verify email
                     </a>
                     <p style="margin-top:24px;color:#666;font-size:13px">
-                        If you didn't create a MeetMind account, you can ignore this email.
+                        If you didn't create a MeetMind account, 
+                        you can ignore this email.
                     </p>
                 </div>
             """,
-        })
+            }
+        )
     except Exception:
         logger.exception("Failed to send verification email to %s", email)
-        # Re-raise so callers can surface a safe 500 — provider details stay in logs only.
+        # Re-raise so callers can surface a safe 500
+        # provider details stay in logs only.
         raise
