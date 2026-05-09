@@ -94,9 +94,9 @@ class VerificationService:
             expires_at=expires_at,
         )
         db.add(token)
-        await db.commit()
 
         await send_verification_email(user.email, user.name, raw_token)
+        await db.commit()
 
         return raw_token
 
