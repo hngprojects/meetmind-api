@@ -38,10 +38,10 @@ jobs:
             # uv run alembic upgrade head
 
             echo "→ Restarting service..."
-            sudo systemctl restart meetmind-be
+            sudo systemctl restart meetmind-be-staging
 
             echo "→ Checking service status..."
-            sudo systemctl is-active meetmind-be
+            sudo systemctl is-active meetmind-be-staging
 
             echo "Staging backend deployed: ${{ github.sha }}"
 
