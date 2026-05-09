@@ -27,9 +27,7 @@ class InterviewScorecard(Base, UUIDPrimaryKey, TimestampMixin):
 
 class ScorecardScore(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "scorecard_scores"
-    __table_args__ = (
-        UniqueConstraint("scorecard_id", "category_id"),
-    )
+    __table_args__ = (UniqueConstraint("scorecard_id", "category_id"),)
 
     scorecard_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("interview_scorecards.id"), nullable=False

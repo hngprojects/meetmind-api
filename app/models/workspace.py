@@ -20,9 +20,7 @@ class Workspace(Base, UUIDPrimaryKey, TimestampMixin):
 
 class WorkspaceMember(Base, UUIDPrimaryKey, TimestampMixin):
     __tablename__ = "workspace_members"
-    __table_args__ = (
-        UniqueConstraint("workspace_id", "user_id"),
-    )
+    __table_args__ = (UniqueConstraint("workspace_id", "user_id"),)
 
     workspace_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False
