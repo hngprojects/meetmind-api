@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 import bcrypt
 from fastapi import status
 from jose import jwt
-from sqlalchemy import select
+from sqlalchemy import select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -344,23 +344,21 @@ class AuthService:
         # Security hardening:
         # after a successful password reset, revoke every active session
         # so stolen refresh tokens cannot continue accessing the account.
-        refresh_tokens = await db.execute(
-            select(RefreshToken).where(
+        # Revoke all refresh tokens for this user in a single statement
+        await db.execute(
+            update(RefreshToken)
+            .where(
                 RefreshToken.user_id == user.id,
                 RefreshToken.revoked.is_(False),
             )
+            .values(revoked=True)
         )
 
-        for token in refresh_tokens.scalars().all():
-            token.revoked = True
-
-        # Remove all active sessions
-        sessions = await db.execute(
-            select(ActiveSession).where(ActiveSession.user_id == user.id)
+        # Remove all active sessions for this user in a single statement
+        await db.execute(
+            delete(ActiveSession).where(ActiveSession.user_id == user.id)
         )
 
-        for session in sessions.scalars().all():
-            await db.delete(session)
         await db.commit()
         try:
             await send_password_reset_security_alert(

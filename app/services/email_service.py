@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from html import escape as escape_html
 
 import resend
 
@@ -11,6 +12,25 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 resend.api_key = settings.RESEND_API_KEY
+
+
+async def _send_email(email: str, subject: str, html: str) -> None:
+    """Centralized send helper that uses the async Resend client.
+
+    Keeps the try/except and logging in one place so callers remain thin.
+    """
+    try:
+        await resend.Emails.send_async(
+            {
+                "from": settings.EMAIL_FROM,
+                "to": email,
+                "subject": subject,
+                "html": html,
+            }
+        )
+    except Exception:
+        logger.exception("Failed to send email to %s", email)
+        raise
 
 
 async def send_password_reset_email(email: str, name: str | None, token: str) -> None:
@@ -22,15 +42,10 @@ async def send_password_reset_email(email: str, name: str | None, token: str) ->
         token: Raw reset token to embed in the link.
     """
     reset_url = f"{settings.FRONTEND_URL.rstrip('/')}/reset-password?token={token}"
-    greeting = f"Hi {name}," if name else "Hi,"
+    safe_name = escape_html(name) if name else None
+    greeting = f"Hi {safe_name}," if safe_name else "Hi,"
 
-    try:
-        resend.Emails.send(
-            {
-                "from": settings.EMAIL_FROM,
-                "to": email,
-                "subject": "Reset your MeetMind password",
-                "html": f"""
+    html = f"""
                 <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
                     <h2 style="color:#1a1a1a">Reset your password</h2>
                     <p>{greeting}</p>
@@ -47,12 +62,9 @@ async def send_password_reset_email(email: str, name: str | None, token: str) ->
                         Your password will not be changed.
                     </p>
                 </div>
-            """,
-            }
-        )
-    except Exception:
-        logger.exception("Failed to send password reset email to %s", email)
-        raise
+            """
+
+    await _send_email(email, "Reset your MeetMind password", html)
 
 
 async def send_verification_email(email: str, name: str | None, token: str) -> None:
@@ -64,15 +76,10 @@ async def send_verification_email(email: str, name: str | None, token: str) -> N
         token: Raw verification token to embed in the link.
     """
     verify_url = f"{settings.FRONTEND_URL.rstrip('/')}/verify-email?token={token}"
-    greeting = f"Hi {name}," if name else "Hi,"
+    safe_name = escape_html(name) if name else None
+    greeting = f"Hi {safe_name}," if safe_name else "Hi,"
 
-    try:
-        resend.Emails.send(
-            {
-                "from": settings.EMAIL_FROM,
-                "to": email,
-                "subject": "Verify your MeetMind email",
-                "html": f"""
+    html = f"""
                 <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
                     <h2 style="color:#1a1a1a">Verify your email</h2>
                     <p>{greeting}</p>
@@ -88,14 +95,9 @@ async def send_verification_email(email: str, name: str | None, token: str) -> N
                         you can ignore this email.
                     </p>
                 </div>
-            """,
-            }
-        )
-    except Exception:
-        logger.exception("Failed to send verification email to %s", email)
-        # Re-raise so callers can surface a safe 500
-        # provider details stay in logs only.
-        raise
+            """
+
+    await _send_email(email, "Verify your MeetMind email", html)
 
 
 async def send_password_reset_security_alert(
@@ -108,15 +110,10 @@ async def send_password_reset_security_alert(
         email: Recipient email address.
         name: Recipient display name.
     """
-    greeting = f"Hi {name}," if name else "Hi,"
+    safe_name = escape_html(name) if name else None
+    greeting = f"Hi {safe_name}," if safe_name else "Hi,"
 
-    try:
-        resend.Emails.send(
-            {
-                "from": settings.EMAIL_FROM,
-                "to": email,
-                "subject": "Your MeetMind password was changed",
-                "html": f"""
+    html = f"""
                 <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
                     <h2 style="color:#1a1a1a">Password changed successfully</h2>
 
@@ -136,12 +133,6 @@ async def send_password_reset_security_alert(
                         please contact support immediately.
                     </p>
                 </div>
-            """,
-            }
-        )
-    except Exception:
-        logger.exception(
-            "Failed to send password reset security alert to %s",
-            email,
-        )
-        raise
+            """
+
+    await _send_email(email, "Your MeetMind password was changed", html)

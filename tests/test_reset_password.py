@@ -52,6 +52,9 @@ async def test_password_reset_revokes_all_sessions_and_tokens(db_session):
         user,
     )
 
+    # create at least one refresh token/session so there is something to revoke
+    await AuthService.create_refresh_token(db_session, user.id)
+
     print("[SETUP] Created password reset token")
 
     with patch(
@@ -299,6 +302,7 @@ async def test_password_reset_succeeds_even_if_email_fails(db_session):
 
     with patch(
         "app.services.auth.send_password_reset_security_alert",
+        new_callable=AsyncMock,
         side_effect=Exception("Email service failure"),
     ):
         print("[ACTION] Resetting password with failing email service")
@@ -321,5 +325,27 @@ async def test_password_reset_succeeds_even_if_email_fails(db_session):
     print(f"[CHECK] Password updated despite email failure: {password_valid}")
 
     assert password_valid is True
+
+    # Verify reset token was marked used and refresh tokens/sessions were revoked
+    reset_result = await db_session.execute(
+        select(PasswordResetToken).where(PasswordResetToken.user_id == user.id)
+    )
+
+    reset_record = reset_result.scalar_one()
+    assert reset_record.used_at is not None
+
+    refresh_result = await db_session.execute(
+        select(RefreshToken).where(RefreshToken.user_id == user.id)
+    )
+
+    refresh_tokens = refresh_result.scalars().all()
+    assert all(token.revoked for token in refresh_tokens)
+
+    session_result = await db_session.execute(
+        select(ActiveSession).where(ActiveSession.user_id == user.id)
+    )
+
+    sessions = session_result.scalars().all()
+    assert len(sessions) == 0
 
     print("[SUCCESS] Password reset succeeds even if email sending fails")
