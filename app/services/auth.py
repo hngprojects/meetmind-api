@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 import bcrypt
 from fastapi import status
 from jose import jwt
-from sqlalchemy import select, update, delete
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -355,9 +355,7 @@ class AuthService:
         )
 
         # Remove all active sessions for this user in a single statement
-        await db.execute(
-            delete(ActiveSession).where(ActiveSession.user_id == user.id)
-        )
+        await db.execute(delete(ActiveSession).where(ActiveSession.user_id == user.id))
 
         await db.commit()
         try:
