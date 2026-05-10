@@ -91,8 +91,7 @@ jobs:
       - name: Run security audit (pip-audit)
         run: |
           echo "🔍 Running security audit..."
-          uv run pip-audit --vulnerability-service pypa 2>/dev/null || \
-          uv add --dev pip-audit && uv run pip-audit --vulnerability-service pypa
+          uv run pip-audit
           if [ $? -ne 0 ]; then
             echo ""
             echo "❌ CRITICAL: Vulnerabilities detected in dependencies!"
@@ -106,7 +105,6 @@ jobs:
             exit 1
           fi
           echo "✅ No vulnerabilities found"
-
       # ===== MIGRATION INTEGRITY =====
       - name: Check for multiple Alembic heads
         run: |
