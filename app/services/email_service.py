@@ -96,3 +96,50 @@ async def send_verification_email(email: str, name: str | None, token: str) -> N
         # Re-raise so callers can surface a safe 500
         # provider details stay in logs only.
         raise
+
+async def send_password_reset_security_alert(
+    email: str,
+    name: str | None,
+) -> None:
+    """Notify the user that all active sessions were revoked.
+
+    Args:
+        email: Recipient email address.
+        name: Recipient display name.
+    """
+    greeting = f"Hi {name}," if name else "Hi,"
+
+    try:
+        resend.Emails.send(
+            {
+                "from": settings.EMAIL_FROM,
+                "to": email,
+                "subject": "Your MeetMind password was changed",
+                "html": f"""
+                <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
+                    <h2 style="color:#1a1a1a">Password changed successfully</h2>
+
+                    <p>{greeting}</p>
+
+                    <p>
+                        Your MeetMind password was successfully changed.
+                    </p>
+
+                    <p>
+                        For security reasons, all active sessions on your
+                        account have been signed out and will require login again.
+                    </p>
+
+                    <p style="margin-top:24px;color:#666;font-size:13px">
+                        If you did not perform this action, please contact support immediately.
+                    </p>
+                </div>
+            """,
+            }
+        )
+    except Exception:
+        logger.exception(
+            "Failed to send password reset security alert to %s",
+            email,
+        )
+        raise 

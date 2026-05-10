@@ -13,11 +13,13 @@ from jose import jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import logging
 from app.core.config import settings
 from app.core.exceptions import UserAlreadyExistsException
 from app.core.responses import APIError
 from app.models.user import ActiveSession, PasswordResetToken, RefreshToken, User
 from app.schemas.auth import SignupRequest
+from app.services.email_service import send_password_reset_security_alert
 
 # Pre-computed once at import time. Used to run a constant-time bcrypt check
 # when no account matches the submitted email, preventing timing-based
@@ -25,6 +27,7 @@ from app.schemas.auth import SignupRequest
 _DUMMY_HASH: str = bcrypt.hashpw(b"__dummy__", bcrypt.gensalt()).decode()
 
 RESET_TOKEN_EXPIRY_MINUTES = 60
+logger = logging.getLogger(__name__)
 
 
 def _now() -> datetime:
@@ -338,7 +341,40 @@ class AuthService:
         # Write both changes in one commit — if the commit fails, both roll back
         user.password_hash = await AuthService.hash_password(new_password)
         rt.used_at = _now()
+        # Revoke every refresh token belonging to the user
+        # Security hardening:
+        # after a successful password reset, revoke every active session
+        # so stolen refresh tokens cannot continue accessing the account.
+        refresh_tokens = await db.execute(
+            select(RefreshToken).where(
+                RefreshToken.user_id == user.id,
+                RefreshToken.revoked.is_(False),
+            )
+        )
+
+        for token in refresh_tokens.scalars().all():
+            token.revoked = True
+
+        # Remove all active sessions
+        sessions = await db.execute(
+            select(ActiveSession).where(
+                ActiveSession.user_id == user.id
+            )
+        )
+
+        for session in sessions.scalars().all():
+            await db.delete(session)
         await db.commit()
+        try:
+            await send_password_reset_security_alert(
+                user.email,
+                user.name,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to send password reset security alert for user %s",
+                user.id,
+            )         
 
     @staticmethod
     def get_next_step(user: User) -> str:
