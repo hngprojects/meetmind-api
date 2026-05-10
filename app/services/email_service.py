@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import logging
 from html import escape as escape_html
+from typing import Optional
 
 import resend
+from fastapi import BackgroundTasks
 
 from app.core.config import settings
+from app.services.email_renderer import render_template
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +36,12 @@ async def _send_email(email: str, subject: str, html: str) -> None:
         raise
 
 
-async def send_password_reset_email(email: str, name: str | None, token: str) -> None:
+async def send_password_reset_email(
+    email: str,
+    name: str | None,
+    token: str,
+    background_tasks: Optional[BackgroundTasks] = None,
+) -> None:
     """Send a password reset link to a registered user.
 
     Args:
@@ -45,29 +53,24 @@ async def send_password_reset_email(email: str, name: str | None, token: str) ->
     safe_name = escape_html(name) if name else None
     greeting = f"Hi {safe_name}," if safe_name else "Hi,"
 
-    html = f"""
-                <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
-                    <h2 style="color:#1a1a1a">Reset your password</h2>
-                    <p>{greeting}</p>
-                    <p>Click the button below to reset your password.
-                       This link expires in 60 minutes.</p>
-                    <a href="{reset_url}"
-                       style="display:inline-block;padding:12px 24px;background:#6366f1;
-                              color:#fff;border-radius:6px;text-decoration:none;font-weight:600">
-                        Reset password
-                    </a>
-                    <p style="margin-top:24px;color:#666;font-size:13px">
-                        If you didn't request a password reset, 
-                        you can ignore this email.
-                        Your password will not be changed.
-                    </p>
-                </div>
-            """
+    html = render_template(
+        "emails/reset_password.html", reset_url=reset_url, greeting=greeting
+    )
 
-    await _send_email(email, "Reset your MeetMind password", html)
+    if background_tasks:
+        background_tasks.add_task(
+            _send_email, email, "Reset your MeetMind password", html
+        )
+    else:
+        await _send_email(email, "Reset your MeetMind password", html)
 
 
-async def send_verification_email(email: str, name: str | None, token: str) -> None:
+async def send_verification_email(
+    email: str,
+    name: str | None,
+    token: str,
+    background_tasks: Optional[BackgroundTasks] = None,
+) -> None:
     """Send an email verification link to a newly registered user.
 
     Args:
@@ -79,30 +82,20 @@ async def send_verification_email(email: str, name: str | None, token: str) -> N
     safe_name = escape_html(name) if name else None
     greeting = f"Hi {safe_name}," if safe_name else "Hi,"
 
-    html = f"""
-                <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
-                    <h2 style="color:#1a1a1a">Verify your email</h2>
-                    <p>{greeting}</p>
-                    <p>Click the button below to verify your email address.
-                       This link expires in 30 minutes.</p>
-                    <a href="{verify_url}"
-                       style="display:inline-block;padding:12px 24px;background:#6366f1;
-                              color:#fff;border-radius:6px;text-decoration:none;font-weight:600">
-                        Verify email
-                    </a>
-                    <p style="margin-top:24px;color:#666;font-size:13px">
-                        If you didn't create a MeetMind account, 
-                        you can ignore this email.
-                    </p>
-                </div>
-            """
+    html = render_template(
+        "emails/verify_email.html", verify_url=verify_url, greeting=greeting
+    )
 
-    await _send_email(email, "Verify your MeetMind email", html)
+    if background_tasks:
+        background_tasks.add_task(
+            _send_email, email, "Verify your MeetMind email", html
+        )
+    else:
+        await _send_email(email, "Verify your MeetMind email", html)
 
 
 async def send_password_reset_security_alert(
-    email: str,
-    name: str | None,
+    email: str, name: str | None, background_tasks: Optional[BackgroundTasks] = None
 ) -> None:
     """Notify the user that all active sessions were revoked.
 
@@ -113,26 +106,13 @@ async def send_password_reset_security_alert(
     safe_name = escape_html(name) if name else None
     greeting = f"Hi {safe_name}," if safe_name else "Hi,"
 
-    html = f"""
-                <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
-                    <h2 style="color:#1a1a1a">Password changed successfully</h2>
+    html = render_template(
+        "emails/password_changed_security_alert.html", greeting=greeting
+    )
 
-                    <p>{greeting}</p>
-
-                    <p>
-                        Your MeetMind password was successfully changed.
-                    </p>
-
-                    <p>
-                        For security reasons, all active sessions on your
-                        account have been signed out and will require login again.
-                    </p>
-
-                    <p style="margin-top:24px;color:#666;font-size:13px">
-                        If you did not perform this action, 
-                        please contact support immediately.
-                    </p>
-                </div>
-            """
-
-    await _send_email(email, "Your MeetMind password was changed", html)
+    if background_tasks:
+        background_tasks.add_task(
+            _send_email, email, "Your MeetMind password was changed", html
+        )
+    else:
+        await _send_email(email, "Your MeetMind password was changed", html)

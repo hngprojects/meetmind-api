@@ -287,7 +287,10 @@ class AuthService:
 
     @staticmethod
     async def reset_password(
-        raw_token: str, new_password: str, db: AsyncSession
+        raw_token: str,
+        new_password: str,
+        db: AsyncSession,
+        background_tasks=None,
     ) -> None:
         """Validate a password reset token and update the user's password.
 
@@ -360,8 +363,7 @@ class AuthService:
         await db.commit()
         try:
             await send_password_reset_security_alert(
-                user.email,
-                user.name,
+                user.email, user.name, background_tasks=background_tasks
             )
         except Exception:
             logger.exception(

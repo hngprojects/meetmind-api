@@ -48,6 +48,7 @@ async def signup(
     payload: SignupRequest,
     response: Response,
     db: AsyncSession = Depends(get_session),
+    background_tasks: BackgroundTasks = None,
 ):
     """Register a new user, issue auth tokens, and attach session cookies.
 
@@ -82,7 +83,9 @@ async def signup(
         )
 
     try:
-        await verification_service.create_verification_token(db, user)
+        await verification_service.create_verification_token(
+            db, user, background_tasks=background_tasks
+        )
         access_token = await AuthService.create_access_token(user)
         ip = request.client.host if request.client else None
         refresh_token, refresh_expires_at = await AuthService.create_refresh_token(
@@ -168,6 +171,7 @@ async def resend_verification(
     request: Request,
     payload: ResendVerificationRequest,
     db: AsyncSession = Depends(get_session),
+    background_tasks: BackgroundTasks = None,
 ):
     """Reissue a verification email for an unverified account.
 
@@ -179,7 +183,9 @@ async def resend_verification(
     Returns:
         A standardized success envelope acknowledging the resend.
     """
-    await verification_service.resend_verification(db, payload.email)
+    await verification_service.resend_verification(
+        db, payload.email, background_tasks=background_tasks
+    )
     return success(message="Verification email resent")
 
 
@@ -210,6 +216,7 @@ async def reset_password(
     request: Request,
     payload: ResetPasswordRequest,
     db: AsyncSession = Depends(get_session),
+    background_tasks: BackgroundTasks = None,
 ):
     """Validate a reset token and update the user's password.
 
@@ -231,7 +238,9 @@ async def reset_password(
         APIError: 500 for any unexpected DB or network failure.
     """
     try:
-        await AuthService.reset_password(payload.token, payload.password, db)
+        await AuthService.reset_password(
+            payload.token, payload.password, db, background_tasks=background_tasks
+        )
     except APIError:
         raise
     except Exception:
