@@ -1,6 +1,7 @@
 """
 Test cases for password reset functionality, focusing on security implications.
 """
+
 import pytest
 from unittest.mock import AsyncMock, patch
 
@@ -57,7 +58,6 @@ async def test_password_reset_revokes_all_sessions_and_tokens(db_session):
         "app.services.auth.send_password_reset_security_alert",
         new_callable=AsyncMock,
     ) as mock_email:
-
         print("[ACTION] Executing password reset")
 
         await AuthService.reset_password(
@@ -72,9 +72,7 @@ async def test_password_reset_revokes_all_sessions_and_tokens(db_session):
 
         print("[CHECK] Security alert email was triggered")
 
-    result = await db_session.execute(
-        select(User).where(User.id == user.id)
-    )
+    result = await db_session.execute(select(User).where(User.id == user.id))
 
     updated_user = result.scalar_one()
 
@@ -88,9 +86,7 @@ async def test_password_reset_revokes_all_sessions_and_tokens(db_session):
     assert password_valid is True
 
     reset_result = await db_session.execute(
-        select(PasswordResetToken).where(
-            PasswordResetToken.user_id == user.id
-        )
+        select(PasswordResetToken).where(PasswordResetToken.user_id == user.id)
     )
 
     reset_record = reset_result.scalar_one()
@@ -100,9 +96,7 @@ async def test_password_reset_revokes_all_sessions_and_tokens(db_session):
     assert reset_record.used_at is not None
 
     refresh_result = await db_session.execute(
-        select(RefreshToken).where(
-            RefreshToken.user_id == user.id
-        )
+        select(RefreshToken).where(RefreshToken.user_id == user.id)
     )
 
     refresh_tokens = refresh_result.scalars().all()
@@ -114,9 +108,7 @@ async def test_password_reset_revokes_all_sessions_and_tokens(db_session):
     assert all(token.revoked for token in refresh_tokens)
 
     session_result = await db_session.execute(
-        select(ActiveSession).where(
-            ActiveSession.user_id == user.id
-        )
+        select(ActiveSession).where(ActiveSession.user_id == user.id)
     )
 
     sessions = session_result.scalars().all()
@@ -165,7 +157,6 @@ async def test_old_refresh_tokens_fail_after_password_reset(db_session):
         "app.services.auth.send_password_reset_security_alert",
         new_callable=AsyncMock,
     ):
-
         print("[ACTION] Resetting password")
 
         await AuthService.reset_password(
@@ -182,10 +173,7 @@ async def test_old_refresh_tokens_fail_after_password_reset(db_session):
             db_session,
         )
 
-    print(
-        f"[CHECK] Refresh failed with code: "
-        f"{exc_info.value.code}"
-    )
+    print(f"[CHECK] Refresh failed with code: {exc_info.value.code}")
 
     assert exc_info.value.code == "unauthorized"
 
@@ -214,10 +202,7 @@ async def test_invalid_reset_token_fails_generically(db_session):
 
     assert error.code == "invalid_reset_token"
 
-    assert (
-        error.message
-        == "This reset link is invalid or has expired."
-    )
+    assert error.message == "This reset link is invalid or has expired."
 
     print("[SUCCESS] Generic token failure response confirmed")
 
@@ -246,17 +231,12 @@ async def test_password_reset_invalidates_multiple_sessions(db_session):
     await AuthService.create_refresh_token(db_session, user.id)
 
     before_result = await db_session.execute(
-        select(ActiveSession).where(
-            ActiveSession.user_id == user.id
-        )
+        select(ActiveSession).where(ActiveSession.user_id == user.id)
     )
 
     before_sessions = before_result.scalars().all()
 
-    print(
-        f"[CHECK] Active sessions before reset: "
-        f"{len(before_sessions)}"
-    )
+    print(f"[CHECK] Active sessions before reset: {len(before_sessions)}")
 
     assert len(before_sessions) == 3
 
@@ -269,7 +249,6 @@ async def test_password_reset_invalidates_multiple_sessions(db_session):
         "app.services.auth.send_password_reset_security_alert",
         new_callable=AsyncMock,
     ):
-
         print("[ACTION] Executing password reset")
 
         await AuthService.reset_password(
@@ -279,17 +258,12 @@ async def test_password_reset_invalidates_multiple_sessions(db_session):
         )
 
     after_result = await db_session.execute(
-        select(ActiveSession).where(
-            ActiveSession.user_id == user.id
-        )
+        select(ActiveSession).where(ActiveSession.user_id == user.id)
     )
 
     after_sessions = after_result.scalars().all()
 
-    print(
-        f"[CHECK] Active sessions after reset: "
-        f"{len(after_sessions)}"
-    )
+    print(f"[CHECK] Active sessions after reset: {len(after_sessions)}")
 
     assert len(after_sessions) == 0
 

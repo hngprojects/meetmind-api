@@ -97,6 +97,7 @@ async def send_verification_email(email: str, name: str | None, token: str) -> N
         # provider details stay in logs only.
         raise
 
+
 async def send_password_reset_security_alert(
     email: str,
     name: str | None,
@@ -142,4 +143,4 @@ async def send_password_reset_security_alert(
             "Failed to send password reset security alert to %s",
             email,
         )
-        raise 
+        raise

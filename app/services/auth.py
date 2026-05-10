@@ -357,9 +357,7 @@ class AuthService:
 
         # Remove all active sessions
         sessions = await db.execute(
-            select(ActiveSession).where(
-                ActiveSession.user_id == user.id
-            )
+            select(ActiveSession).where(ActiveSession.user_id == user.id)
         )
 
         for session in sessions.scalars().all():
@@ -374,7 +372,7 @@ class AuthService:
             logger.exception(
                 "Failed to send password reset security alert for user %s",
                 user.id,
-            )         
+            )
 
     @staticmethod
     def get_next_step(user: User) -> str:
