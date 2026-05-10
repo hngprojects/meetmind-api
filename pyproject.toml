@@ -16,6 +16,7 @@ dependencies = [
     "resend>=2.30.0",
     "httpx>=0.28.1",
     "slowapi>=0.1.9",
+    "mako>=1.3.12",
 ]
 
 [dependency-groups]
