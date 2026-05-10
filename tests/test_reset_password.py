@@ -2,9 +2,9 @@
 Test cases for password reset functionality, focusing on security implications.
 """
 
-import pytest
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from sqlalchemy import select
 
 from app.core.responses import APIError
@@ -268,3 +268,58 @@ async def test_password_reset_invalidates_multiple_sessions(db_session):
     assert len(after_sessions) == 0
 
     print("[SUCCESS] All active sessions were invalidated")
+
+
+@pytest.mark.asyncio
+async def test_password_reset_succeeds_even_if_email_fails(db_session):
+    """
+    Ensure password reset still succeeds even if
+    security alert email delivery fails.
+    """
+
+    user = User(
+        name="Nagato",
+        email="nagato@test.com",
+        password_hash=await AuthService.hash_password(
+            "OldPassword123",
+        ),
+        is_verified=True,
+    )
+
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+
+    reset_token = await AuthService.create_password_reset_token(
+        db_session,
+        user,
+    )
+
+    print("\n[SETUP] Created reset token")
+
+    with patch(
+        "app.services.auth.send_password_reset_security_alert",
+        side_effect=Exception("Email service failure"),
+    ):
+        print("[ACTION] Resetting password with failing email service")
+
+        await AuthService.reset_password(
+            reset_token,
+            "UpdatedPassword123",
+            db_session,
+        )
+
+    result = await db_session.execute(select(User).where(User.id == user.id))
+
+    updated_user = result.scalar_one()
+
+    password_valid = await AuthService.verify_password(
+        "UpdatedPassword123",
+        updated_user.password_hash,
+    )
+
+    print(f"[CHECK] Password updated despite email failure: {password_valid}")
+
+    assert password_valid is True
+
+    print("[SUCCESS] Password reset succeeds even if email sending fails")

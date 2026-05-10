@@ -132,7 +132,8 @@ async def send_password_reset_security_alert(
                     </p>
 
                     <p style="margin-top:24px;color:#666;font-size:13px">
-                        If you did not perform this action, please contact support immediately.
+                        If you did not perform this action, 
+                        please contact support immediately.
                     </p>
                 </div>
             """,

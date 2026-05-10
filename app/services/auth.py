@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -13,7 +14,6 @@ from jose import jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-import logging
 from app.core.config import settings
 from app.core.exceptions import UserAlreadyExistsException
 from app.core.responses import APIError
@@ -341,7 +341,6 @@ class AuthService:
         # Write both changes in one commit — if the commit fails, both roll back
         user.password_hash = await AuthService.hash_password(new_password)
         rt.used_at = _now()
-        # Revoke every refresh token belonging to the user
         # Security hardening:
         # after a successful password reset, revoke every active session
         # so stolen refresh tokens cannot continue accessing the account.
