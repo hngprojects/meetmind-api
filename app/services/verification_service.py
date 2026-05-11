@@ -108,7 +108,7 @@ class VerificationService:
             )
         else:
             await send_verification_email(user.email, user.name, raw_token)
-            
+
         await db.commit()
         return raw_token
 
