@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
 
     FRONTEND_URL: str = "http://localhost:3000"
+    # When true, the application will not call external email providers and
+    # will instead log emails locally. Useful for offline development and
+    # CI where sending real emails is undesirable.
+    MOCK_EMAILS: bool = False
 
 
 @lru_cache

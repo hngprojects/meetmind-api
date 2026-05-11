@@ -1,3 +1,14 @@
+# Local developer files
+nul
+local-config
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Node
+node_modules/
 # Python-generated files
 __pycache__/
 *.py[oc]

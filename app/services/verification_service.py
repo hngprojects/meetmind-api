@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from fastapi import status
+from fastapi import BackgroundTasks, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -56,7 +57,12 @@ class VerificationService:
     handlers render a consistent error envelope to clients.
     """
 
-    async def create_verification_token(self, db: AsyncSession, user: User) -> str:
+    async def create_verification_token(
+        self,
+        db: AsyncSession,
+        user: User,
+        background_tasks: BackgroundTasks | None = None,
+    ) -> str:
         """Issue, persist, and email a verification token to the user.
 
         Any previously unused tokens for the same user are invalidated before
@@ -95,9 +101,15 @@ class VerificationService:
         )
         db.add(token)
 
-        await send_verification_email(user.email, user.name, raw_token)
-        await db.commit()
+        sig = inspect.signature(send_verification_email)
+        if "background_tasks" in sig.parameters and background_tasks is not None:
+            await send_verification_email(
+                user.email, user.name, raw_token, background_tasks=background_tasks
+            )
+        else:
+            await send_verification_email(user.email, user.name, raw_token)
 
+        await db.commit()
         return raw_token
 
     async def verify_email(self, db: AsyncSession, token: str) -> User:
@@ -157,7 +169,12 @@ class VerificationService:
         await db.commit()
         return user
 
-    async def resend_verification(self, db: AsyncSession, email: str) -> None:
+    async def resend_verification(
+        self,
+        db: AsyncSession,
+        email: str,
+        background_tasks: BackgroundTasks | None = None,
+    ) -> None:
         """Issue a fresh verification token for an unverified user.
 
         Args:
@@ -184,7 +201,9 @@ class VerificationService:
                 code="user_already_verified",
             )
 
-        await self.create_verification_token(db, user)
+        await self.create_verification_token(
+            db, user, background_tasks=background_tasks
+        )
 
 
 def _make_aware(value: datetime) -> datetime:

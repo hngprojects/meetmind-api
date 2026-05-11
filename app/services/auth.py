@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -10,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 import bcrypt
 from fastapi import status
 from jose import jwt
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -18,6 +19,7 @@ from app.core.exceptions import UserAlreadyExistsException
 from app.core.responses import APIError
 from app.models.user import ActiveSession, PasswordResetToken, RefreshToken, User
 from app.schemas.auth import SignupRequest
+from app.services.email_service import send_password_reset_security_alert
 
 # Pre-computed once at import time. Used to run a constant-time bcrypt check
 # when no account matches the submitted email, preventing timing-based
@@ -25,6 +27,7 @@ from app.schemas.auth import SignupRequest
 _DUMMY_HASH: str = bcrypt.hashpw(b"__dummy__", bcrypt.gensalt()).decode()
 
 RESET_TOKEN_EXPIRY_MINUTES = 60
+logger = logging.getLogger(__name__)
 
 
 def _now() -> datetime:
@@ -284,7 +287,10 @@ class AuthService:
 
     @staticmethod
     async def reset_password(
-        raw_token: str, new_password: str, db: AsyncSession
+        raw_token: str,
+        new_password: str,
+        db: AsyncSession,
+        background_tasks=None,
     ) -> None:
         """Validate a password reset token and update the user's password.
 
@@ -312,7 +318,6 @@ class AuthService:
         rt = result.scalar_one_or_none()
 
         # Single generic error for all failure modes
-        # no signal about which check failed
         _invalid = APIError(
             "This reset link is invalid or has expired.",
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -338,7 +343,30 @@ class AuthService:
         # Write both changes in one commit — if the commit fails, both roll back
         user.password_hash = await AuthService.hash_password(new_password)
         rt.used_at = _now()
+
+        # after a successful password reset, revoke every active session
+        await db.execute(
+            update(RefreshToken)
+            .where(
+                RefreshToken.user_id == user.id,
+                RefreshToken.revoked.is_(False),
+            )
+            .values(revoked=True)
+        )
+
+        # Remove all active sessions for this user in a single statement
+        await db.execute(delete(ActiveSession).where(ActiveSession.user_id == user.id))
+
         await db.commit()
+        try:
+            await send_password_reset_security_alert(
+                user.email, user.name, background_tasks=background_tasks
+            )
+        except Exception:
+            logger.exception(
+                "Failed to send password reset security alert for user %s",
+                user.id,
+            )
 
     @staticmethod
     def get_next_step(user: User) -> str:
