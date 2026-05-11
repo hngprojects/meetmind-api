@@ -318,7 +318,6 @@ class AuthService:
         rt = result.scalar_one_or_none()
 
         # Single generic error for all failure modes
-        # no signal about which check failed
         _invalid = APIError(
             "This reset link is invalid or has expired.",
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -344,10 +343,8 @@ class AuthService:
         # Write both changes in one commit — if the commit fails, both roll back
         user.password_hash = await AuthService.hash_password(new_password)
         rt.used_at = _now()
-        # Security hardening:
+
         # after a successful password reset, revoke every active session
-        # so stolen refresh tokens cannot continue accessing the account.
-        # Revoke all refresh tokens for this user in a single statement
         await db.execute(
             update(RefreshToken)
             .where(

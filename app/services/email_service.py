@@ -16,12 +16,23 @@ logger = logging.getLogger(__name__)
 
 resend.api_key = settings.RESEND_API_KEY
 
+if settings.MOCK_EMAILS:
+    logger.info("Mock email delivery enabled (MOCK_EMAILS=true) — emails will be logged, not sent")
+
 
 async def _send_email(email: str, subject: str, html: str) -> None:
     """Centralized send helper that uses the async Resend client.
 
     Keeps the try/except and logging in one place so callers remain thin.
     """
+    # For dev environments we can bypass the external provider and simply
+    # log the email payload for inspection. This keeps background tasks and
+    # caller behavior identical while avoiding network calls.
+    if settings.MOCK_EMAILS:
+        logger.info("[MOCK EMAIL] to=%s subject=%s", email, subject)
+        logger.debug("[MOCK EMAIL] html=\n%s", html)
+        return
+
     try:
         await resend.Emails.send_async(
             {

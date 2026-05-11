@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy import select
+import logging
 
 from app.core.responses import APIError
 from app.models.user import (
@@ -15,6 +16,8 @@ from app.models.user import (
     User,
 )
 from app.services.auth import AuthService
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.mark.asyncio
@@ -40,28 +43,28 @@ async def test_password_reset_revokes_all_sessions_and_tokens(db_session):
     await db_session.commit()
     await db_session.refresh(user)
 
-    print("\n[SETUP] Created verified user")
+    logger.info("Created verified user")
 
     await AuthService.create_refresh_token(db_session, user.id)
     await AuthService.create_refresh_token(db_session, user.id)
 
-    print("[SETUP] Created two active refresh sessions")
+    logger.info("Created two active refresh sessions")
 
     reset_token = await AuthService.create_password_reset_token(
         db_session,
         user,
     )
 
-    # create at least one refresh token/session so there is something to revoke
+    # ensure at least one refresh token exists so the reset can revoke it
     await AuthService.create_refresh_token(db_session, user.id)
 
-    print("[SETUP] Created password reset token")
+    logger.info("Created password reset token")
 
     with patch(
         "app.services.auth.send_password_reset_security_alert",
         new_callable=AsyncMock,
     ) as mock_email:
-        print("[ACTION] Executing password reset")
+        logger.info("Executing password reset")
 
         await AuthService.reset_password(
             reset_token,
@@ -69,11 +72,11 @@ async def test_password_reset_revokes_all_sessions_and_tokens(db_session):
             db_session,
         )
 
-        print("[ASSERT] Password reset completed")
+        logger.info("Password reset completed")
 
         mock_email.assert_awaited_once()
 
-        print("[CHECK] Security alert email was triggered")
+        logger.info("Security alert email triggered")
 
     result = await db_session.execute(select(User).where(User.id == user.id))
 
@@ -84,7 +87,7 @@ async def test_password_reset_revokes_all_sessions_and_tokens(db_session):
         updated_user.password_hash,
     )
 
-    print(f"[CHECK] New password valid: {password_valid}")
+    logger.info("New password valid: %s", password_valid)
 
     assert password_valid is True
 
@@ -94,7 +97,7 @@ async def test_password_reset_revokes_all_sessions_and_tokens(db_session):
 
     reset_record = reset_result.scalar_one()
 
-    print(f"[CHECK] Reset token used_at: {reset_record.used_at}")
+    logger.info("Reset token used_at: %s", reset_record.used_at)
 
     assert reset_record.used_at is not None
 
@@ -106,7 +109,7 @@ async def test_password_reset_revokes_all_sessions_and_tokens(db_session):
 
     revoked_states = [token.revoked for token in refresh_tokens]
 
-    print(f"[CHECK] Refresh token revoked states: {revoked_states}")
+    logger.info("Refresh token revoked states: %s", revoked_states)
 
     assert all(token.revoked for token in refresh_tokens)
 
@@ -116,11 +119,11 @@ async def test_password_reset_revokes_all_sessions_and_tokens(db_session):
 
     sessions = session_result.scalars().all()
 
-    print(f"[CHECK] Remaining active sessions: {len(sessions)}")
+    logger.info("Remaining active sessions: %s", len(sessions))
 
     assert len(sessions) == 0
 
-    print("[SUCCESS] Password reset security flow works correctly")
+    logger.info("Password reset security flow passed")
 
 
 @pytest.mark.asyncio
@@ -140,27 +143,27 @@ async def test_old_refresh_tokens_fail_after_password_reset(db_session):
     await db_session.commit()
     await db_session.refresh(user)
 
-    print("\n[SETUP] Created verified user")
+    logger.info("Created verified user")
 
     old_refresh_token, _ = await AuthService.create_refresh_token(
         db_session,
         user.id,
     )
 
-    print("[SETUP] Created refresh token")
+    logger.info("Created refresh token")
 
     reset_token = await AuthService.create_password_reset_token(
         db_session,
         user,
     )
 
-    print("[SETUP] Created password reset token")
+    logger.info("Created password reset token")
 
     with patch(
         "app.services.auth.send_password_reset_security_alert",
         new_callable=AsyncMock,
     ):
-        print("[ACTION] Resetting password")
+        logger.info("Resetting password")
 
         await AuthService.reset_password(
             reset_token,
@@ -168,7 +171,7 @@ async def test_old_refresh_tokens_fail_after_password_reset(db_session):
             db_session,
         )
 
-    print("[ACTION] Attempting refresh using old token")
+    logger.info("Attempting refresh using old token")
 
     with pytest.raises(APIError) as exc_info:
         await AuthService.refresh_access_token(
@@ -176,11 +179,11 @@ async def test_old_refresh_tokens_fail_after_password_reset(db_session):
             db_session,
         )
 
-    print(f"[CHECK] Refresh failed with code: {exc_info.value.code}")
+    logger.info("Refresh failed with code: %s", exc_info.value.code)
 
     assert exc_info.value.code == "unauthorized"
 
-    print("[SUCCESS] Old refresh tokens are unusable after reset")
+    logger.info("Old refresh tokens are unusable after reset")
 
 
 @pytest.mark.asyncio
@@ -189,7 +192,7 @@ async def test_invalid_reset_token_fails_generically(db_session):
     Ensure invalid reset tokens do not leak validation details.
     """
 
-    print("\n[ACTION] Attempting password reset with fake token")
+    logger.info("Attempting password reset with fake token")
 
     with pytest.raises(APIError) as exc_info:
         await AuthService.reset_password(
@@ -200,14 +203,14 @@ async def test_invalid_reset_token_fails_generically(db_session):
 
     error = exc_info.value
 
-    print(f"[CHECK] Error code: {error.code}")
-    print(f"[CHECK] Error message: {error.message}")
+    logger.info("Error code: %s", error.code)
+    logger.info("Error message: %s", error.message)
 
     assert error.code == "invalid_reset_token"
 
     assert error.message == "This reset link is invalid or has expired."
 
-    print("[SUCCESS] Generic token failure response confirmed")
+    logger.info("Generic token failure response confirmed")
 
 
 @pytest.mark.asyncio
@@ -227,7 +230,7 @@ async def test_password_reset_invalidates_multiple_sessions(db_session):
     await db_session.commit()
     await db_session.refresh(user)
 
-    print("\n[SETUP] Created verified user")
+    logger.info("Created verified user")
 
     await AuthService.create_refresh_token(db_session, user.id)
     await AuthService.create_refresh_token(db_session, user.id)
@@ -239,7 +242,7 @@ async def test_password_reset_invalidates_multiple_sessions(db_session):
 
     before_sessions = before_result.scalars().all()
 
-    print(f"[CHECK] Active sessions before reset: {len(before_sessions)}")
+    logger.info("Active sessions before reset: %s", len(before_sessions))
 
     assert len(before_sessions) == 3
 
@@ -252,7 +255,7 @@ async def test_password_reset_invalidates_multiple_sessions(db_session):
         "app.services.auth.send_password_reset_security_alert",
         new_callable=AsyncMock,
     ):
-        print("[ACTION] Executing password reset")
+        logger.info("Executing password reset")
 
         await AuthService.reset_password(
             reset_token,
@@ -266,11 +269,11 @@ async def test_password_reset_invalidates_multiple_sessions(db_session):
 
     after_sessions = after_result.scalars().all()
 
-    print(f"[CHECK] Active sessions after reset: {len(after_sessions)}")
+    logger.info("Active sessions after reset: %s", len(after_sessions))
 
     assert len(after_sessions) == 0
 
-    print("[SUCCESS] All active sessions were invalidated")
+    logger.info("All active sessions were invalidated")
 
 
 @pytest.mark.asyncio
@@ -298,14 +301,14 @@ async def test_password_reset_succeeds_even_if_email_fails(db_session):
         user,
     )
 
-    print("\n[SETUP] Created reset token")
+    logger.info("Created reset token")
 
     with patch(
         "app.services.auth.send_password_reset_security_alert",
         new_callable=AsyncMock,
         side_effect=Exception("Email service failure"),
     ):
-        print("[ACTION] Resetting password with failing email service")
+        logger.info("Resetting password while email sending fails")
 
         await AuthService.reset_password(
             reset_token,
@@ -322,7 +325,7 @@ async def test_password_reset_succeeds_even_if_email_fails(db_session):
         updated_user.password_hash,
     )
 
-    print(f"[CHECK] Password updated despite email failure: {password_valid}")
+    logger.info("Password updated despite email failure: %s", password_valid)
 
     assert password_valid is True
 
@@ -348,4 +351,4 @@ async def test_password_reset_succeeds_even_if_email_fails(db_session):
     sessions = session_result.scalars().all()
     assert len(sessions) == 0
 
-    print("[SUCCESS] Password reset succeeds even if email sending fails")
+    logger.info("Password reset succeeds even when email delivery fails")
