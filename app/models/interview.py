@@ -46,7 +46,7 @@ class Interview(Base, UUIDPrimaryKey, TimestampMixin):
     scheduled_end: Mapped[datetime | None] = mapped_column(DateTime)
     duration_min: Mapped[int | None] = mapped_column(Integer)
     platform: Mapped[str | None] = mapped_column(String(30))
-    status: Mapped[str | None] = mapped_column(String(20), default="scheduled")
+    status: Mapped[str | None] = mapped_column(String(20), default="draft")
     ai_tone: Mapped[str | None] = mapped_column(String(20))
     questions_asked: Mapped[int | None] = mapped_column(Integer)
     questions_total: Mapped[int | None] = mapped_column(Integer)
@@ -85,6 +85,10 @@ class InterviewSummary(Base, UUIDPrimaryKey, TimestampMixin):
     interview_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("interviews.id"), nullable=False
     )
+    # Context injection fields — added for interview session management (Stage 5)
+    job_description: Mapped[str | None] = mapped_column(Text)
+    scoring_rubric: Mapped[str | None] = mapped_column(Text)
+    # Pre-existing fields
     custom_question: Mapped[str | None] = mapped_column(Text)
     ai_assessment: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str | None] = mapped_column(String(20), default="generating")
