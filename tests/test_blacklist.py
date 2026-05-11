@@ -30,9 +30,7 @@ async def test_logout_blacklists_access_token(client, db_session, mock_redis):
     """Logging out should add the access token JTI to the blacklist."""
     user, access_token = await _create_test_user(db_session, "bl@test.com")
 
-    _, refresh_expires_at = await AuthService.create_refresh_token(
-        db_session, user.id
-    )
+    _, refresh_expires_at = await AuthService.create_refresh_token(db_session, user.id)
 
     # We need the raw token — create it directly
     raw_refresh = secrets.token_urlsafe(48)
@@ -64,9 +62,7 @@ async def test_logout_blacklists_access_token(client, db_session, mock_redis):
     jti = claims["jti"]
 
     # Patch the lazy import inside blacklist_access_token_raw
-    with patch(
-        "app.core.redis.blacklist_token", new_callable=AsyncMock
-    ) as mock_bl:
+    with patch("app.core.redis.blacklist_token", new_callable=AsyncMock) as mock_bl:
         resp = await client.post(
             "/api/v1/auth/logout",
             json={
