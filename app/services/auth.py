@@ -51,6 +51,15 @@ def _hash_token(raw: str) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
+def _generate_jti() -> str:
+    """Return a cryptographically random JWT ID (``jti``) string.
+
+    Returns:
+        A URL-safe, base64-encoded random string of 16 bytes.
+    """
+    return secrets.token_urlsafe(16)
+
+
 class AuthService:
     """Encapsulate authentication primitives used by the auth routes.
 
@@ -136,13 +145,15 @@ class AuthService:
         Returns:
             The encoded JWT as a compact serialization string.
         """
-        expire = _now() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        now = _now()
+        expire = now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         payload = {
             "sub": str(user.id),
             "name": user.name,
             "email": user.email,
             "exp": expire,
-            "iat": _now(),
+            "iat": now,
+            "jti": _generate_jti(),
             "type": "access",
         }
         return jwt.encode(
