@@ -528,3 +528,31 @@ class AuthService:
             await db.delete(active_session)
 
         await db.commit()
+
+    @staticmethod
+    async def blacklist_access_token_raw(token: str) -> None:
+        """Blacklist an access token by its raw JWT string.
+
+        Decodes the ``jti`` and ``exp`` claims and stores the ``jti`` in
+        Redis with a TTL equal to the remaining token lifetime.
+
+        Args:
+            token: The raw JWT access token string.
+        """
+        from app.core.redis import blacklist_token
+
+        try:
+            payload = jwt.decode(
+                token,
+                settings.JWT_SECRET,
+                algorithms=[settings.JWT_ALGORITHM],
+                options={"verify_exp": False},
+            )
+            jti = payload.get("jti")
+            exp = payload.get("exp")
+            if not jti or not exp:
+                return
+            remaining = int(exp) - int(_now().timestamp())
+            await blacklist_token(jti, remaining)
+        except Exception:
+            logger.debug("Could not blacklist access token on logout")

@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str
     GOOGLE_REDIRECT_URI: str
 
+    REDIS_URL: str = "redis://127.0.0.1:6379/0"
+
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
 
     FRONTEND_URL: str = "http://localhost:3000"

@@ -83,6 +83,26 @@ def mock_send_verification_email():
         yield
 
 
+# Stub Redis so tests don't need a running Redis server
+@pytest.fixture(autouse=True)
+def mock_redis():
+    blacklisted: set[str] = set()
+
+    async def _blacklist(jti, expires_in):
+        if expires_in > 0:
+            blacklisted.add(jti)
+
+    async def _is_blacklisted(jti):
+        return jti in blacklisted
+
+    with (
+        patch("app.core.redis.blacklist_token", side_effect=_blacklist),
+        patch("app.core.redis.is_token_blacklisted", side_effect=_is_blacklisted),
+        patch("app.core.middleware.is_token_blacklisted", side_effect=_is_blacklisted),
+    ):
+        yield blacklisted
+
+
 # HTTP client
 @pytest.fixture
 async def client():

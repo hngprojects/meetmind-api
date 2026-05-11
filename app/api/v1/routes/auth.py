@@ -26,6 +26,7 @@ from app.models.user import User
 from app.schemas.auth import (
     ForgotPasswordRequest,
     LoginRequest,
+    LogoutRequest,
     RefreshTokenRequest,
     ResetPasswordRequest,
     SignupRequest,
@@ -416,14 +417,19 @@ async def refresh(
 
 @router.post("/logout")
 async def logout(
-    payload: RefreshTokenRequest,
+    payload: LogoutRequest,
     response: Response,
     db: AsyncSession = Depends(get_session),
 ):
-    """Revoke a refresh token and clear auth cookies.
+    """Revoke a refresh token, blacklist the access token, and clear cookies.
+
+    The access token's ``jti`` is added to the Redis blacklist so it is
+    rejected by the :class:`JWTBlacklistMiddleware` for the remainder of
+    its TTL, closing the window where a stolen access token could still be
+    used after logout.
 
     Args:
-        payload: Body containing the raw ``refresh_token`` to revoke.
+        payload: Body containing the ``access_token`` and ``refresh_token``.
         response: FastAPI response object used to clear auth cookies.
         db: Async database session injected by FastAPI.
 
@@ -431,9 +437,12 @@ async def logout(
         A standardized success envelope acknowledging the logout.
 
     Raises:
-        APIError: ``invalid_refresh_token`` if the token is not found.
+        APIError: ``invalid_refresh_token`` if the refresh token is not found.
     """
     await AuthService.logout(payload.refresh_token, db)
+
+    # Blacklist the access token so it cannot be reused
+    await AuthService.blacklist_access_token_raw(payload.access_token)
 
     response.delete_cookie("access_token")
     response.delete_cookie("refresh_token")
