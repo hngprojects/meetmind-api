@@ -56,6 +56,13 @@ class RefreshTokenRequest(BaseModel):
     refresh_token: str
 
 
+class LogoutRequest(BaseModel):
+    """Payload for logging out — both tokens required."""
+
+    access_token: str
+    refresh_token: str
+
+
 class SignupRequest(BaseModel):
     """Payload for registering a new user account.
 
