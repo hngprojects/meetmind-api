@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import StaticPool
 
 from app.db.session import get_session
-from app.main import app
+
+# Delay importing `app` until after tests have disabled the rate limiter
 from app.models.base import Base
 
 
@@ -31,8 +32,7 @@ def mock_get_session():
 # Force test DB
 TEST_DATABASE_URL = "sqlite+aiosqlite://"
 
-
-# Use StaticPool
+# Use StaticPool so all connections share the same in-memory database
 engine = create_async_engine(
     TEST_DATABASE_URL,
     connect_args={"check_same_thread": False},
@@ -46,10 +46,15 @@ TestingSessionLocal = async_sessionmaker(
 )
 
 
-# Create tables ONCE using SAME connection
+# Create ALL tables once for the entire session
 @pytest.fixture(scope="session", autouse=True)
 async def create_tables():
-    from app.models import email_verification, user  # noqa: F401
+    from app.models import (  # noqa: F401  # noqa: F401
+        email_verification,
+        interview,
+        user,
+        workspace,
+    )
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -65,12 +70,28 @@ async def db_session():
 # Override dependency to use test DB
 @pytest.fixture(autouse=True)
 def override_get_session(db_session):
+    from app.main import app
+
     async def _override():
         yield db_session
 
     app.dependency_overrides[get_session] = _override
     yield
     app.dependency_overrides.clear()
+
+
+# Disable rate limiting in tests by patching the limiter decorator to a no-op
+@pytest.fixture(autouse=True)
+def disable_rate_limiter():
+    from app.core import limiter as limiter_mod
+
+    # Make @limiter.limit(...) return the original function unmodified
+    original_limit = limiter_mod.limiter.limit
+    limiter_mod.limiter.limit = lambda *a, **k: lambda f: f
+    try:
+        yield
+    finally:
+        limiter_mod.limiter.limit = original_limit
 
 
 # Prevent real Resend API calls in every test
@@ -106,6 +127,8 @@ def mock_redis():
 # HTTP client
 @pytest.fixture
 async def client():
+    from app.main import app
+
     transport = ASGITransport(app=app)
     async with AsyncClient(
         transport=transport,
