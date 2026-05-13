@@ -26,6 +26,8 @@ from app.models.scorecard import (
     ScorecardScore,
     ScorecardSignal,
 )
+from app.models.subscription import EmailSubscription
+from app.models.support import SupportTicket
 from app.models.transcript import (
     ActionItem,
     MeetingSummary,
@@ -64,6 +66,9 @@ __all__ = [
     "UserNotificationPreferences",
     "UserPrivacySettings",
     "UserSecuritySettings",
+    # Subscriptions & Support
+    "EmailSubscription",
+    "SupportTicket",
     # Workspaces
     "Workspace",
     "WorkspaceMember",
