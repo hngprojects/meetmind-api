@@ -11,6 +11,8 @@ from app.api.v1.routes import (
     meetings,
     users,
     workspaces,
+	subscription,
+	support
 )
 
 api_router = APIRouter()
@@ -25,3 +27,7 @@ api_router.include_router(
     integrations.router, prefix="/integrations", tags=["Integrations"]
 )
 api_router.include_router(ask_mind.router, prefix="/ask-mind", tags=["Ask Mind"])
+api_router.include_router(
+    subscription.router, prefix="/subscriptions", tags=["Subscriptions"]
+)
+api_router.include_router(support.router, prefix="/support", tags=["Support"])
