@@ -5,11 +5,13 @@ from fastapi import APIRouter
 from app.api.v1.routes import (
     ask_mind,
     auth,
+    candidates,
     health,
     integrations,
     interviews,
     meetings,
     users,
+    waitlist,
     workspaces,
 	subscription,
 	support
@@ -31,3 +33,5 @@ api_router.include_router(
     subscription.router, prefix="/subscriptions", tags=["Subscriptions"]
 )
 api_router.include_router(support.router, prefix="/support", tags=["Support"])
+api_router.include_router(candidates.router, prefix="/candidates", tags=["Candidates"])
+api_router.include_router(waitlist.router, prefix="/waitlist", tags=["Waitlist"])
