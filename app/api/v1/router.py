@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from app.api.v1.routes import (
     ask_mind,
     auth,
+    candidates,
     health,
     integrations,
     interviews,
@@ -25,3 +26,4 @@ api_router.include_router(
     integrations.router, prefix="/integrations", tags=["Integrations"]
 )
 api_router.include_router(ask_mind.router, prefix="/ask-mind", tags=["Ask Mind"])
+api_router.include_router(candidates.router, prefix="/candidates", tags=["Candidates"])
