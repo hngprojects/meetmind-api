@@ -10,11 +10,11 @@ from app.api.v1.routes import (
     integrations,
     interviews,
     meetings,
+    subscription,
+    support,
     users,
     waitlist,
     workspaces,
-	subscription,
-	support
 )
 
 api_router = APIRouter()
