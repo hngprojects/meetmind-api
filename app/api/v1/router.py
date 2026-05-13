@@ -6,6 +6,7 @@ from app.api.v1.routes import (
     ask_mind,
     auth,
     candidates,
+    dashboard,
     health,
     integrations,
     interviews,
@@ -35,3 +36,4 @@ api_router.include_router(
 api_router.include_router(support.router, prefix="/support", tags=["Support"])
 api_router.include_router(candidates.router, prefix="/candidates", tags=["Candidates"])
 api_router.include_router(waitlist.router, prefix="/waitlist", tags=["Waitlist"])
+api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
