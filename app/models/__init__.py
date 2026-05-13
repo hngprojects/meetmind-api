@@ -46,6 +46,10 @@ from app.models.user import (
     UserPrivacySettings,
     UserSecuritySettings,
 )
+
+from app.models.subscription import EmailSubscription
+from app.models.support import SupportTicket
+
 from app.models.workspace import Workspace, WorkspaceInvite, WorkspaceMember
 
 __all__ = [
@@ -64,6 +68,9 @@ __all__ = [
     "UserNotificationPreferences",
     "UserPrivacySettings",
     "UserSecuritySettings",
+    # Subscriptions & Support
+    "EmailSubscription",
+    "SupportTicket",
     # Workspaces
     "Workspace",
     "WorkspaceMember",
