@@ -11,7 +11,6 @@ logger = logging.getLogger(__name__)
 
 
 class WaitlistService:
-
     @staticmethod
     async def signup(email: str, db: AsyncSession) -> WaitlistSignup:
         normalised = email.strip().lower()

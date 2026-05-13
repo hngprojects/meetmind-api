@@ -73,7 +73,9 @@ class WaitlistSignup(Base, UUIDPrimaryKey, TimestampMixin):
         UUID(as_uuid=True), ForeignKey("users.id")
     )
     email: Mapped[str] = mapped_column(
-        String(255), nullable=False, unique=True,
+        String(255),
+        nullable=False,
+        unique=True,
     )
     provider: Mapped[str] = mapped_column(String(30), nullable=False)
     notified_at: Mapped[datetime | None] = mapped_column(DateTime)

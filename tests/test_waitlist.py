@@ -1,13 +1,15 @@
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
+
 from app.models.integration import WaitlistSignup
+
 
 @pytest.mark.anyio
 class TestWaitlistAPI:
     """
     Tests for the public waitlist endpoint.
-    
+
     We test three main things:
     1. Successful signup (201)
     2. Duplicate prevention (400)
@@ -31,7 +33,9 @@ class TestWaitlistAPI:
         )
         assert result.scalar_one_or_none() is not None
 
-    async def test_waitlist_duplicate_signup_returns_400(self, client: AsyncClient, db_session):
+    async def test_waitlist_duplicate_signup_returns_400(
+        self, client: AsyncClient, db_session
+    ):
         email = "duplicate@example.com"
         db_session.add(WaitlistSignup(email=email, provider="email"))
         await db_session.commit()
@@ -60,5 +64,5 @@ class TestWaitlistAPI:
         """
         payload = {"email": "public_test@example.com"}
         response = await client.post("/api/v1/waitlist", json=payload)
-        
+
         assert response.status_code == 201

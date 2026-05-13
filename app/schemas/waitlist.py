@@ -2,7 +2,6 @@ from pydantic import BaseModel, EmailStr, Field
 
 
 class WaitlistRequest(BaseModel):
-
     email: EmailStr = Field(
         ...,
         description="Email address to register on the waitlist",
