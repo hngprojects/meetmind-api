@@ -1,0 +1,10 @@
+repos:
+  - repo: local
+    hooks:
+      - id: security-scan
+        name: Security Scan
+        entry: bash .husky/pre-commit
+        language: system
+        pass_filenames: false
+        always_run: true
+
