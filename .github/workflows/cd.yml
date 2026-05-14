@@ -34,9 +34,19 @@ jobs:
             echo "→ Installing dependencies..."
             uv sync --frozen
 
-            # echo "→ Running migrations..."
-            # uv run alembic upgrade head
+            echo "→ Running migrations..."
+            uv run alembic upgrade head
 
+            # Build Node.js Meet Media worker if present
+            if [ -d "meet-client" ]; then
+              echo "→ Building Node.js Meet worker..."
+              cd meet-client
+              npm install
+              npx tsc
+              cd ..
+              echo "✅ Meet worker built"
+            fi
+ 
             echo "→ Restarting service..."
             sudo systemctl restart meetmind-be-staging
 
@@ -74,8 +84,19 @@ jobs:
             echo "→ Installing dependencies..."
             uv sync --frozen
 
-            # echo "→ Running migrations..."
-            # uv run alembic upgrade head
+            echo "→ Running migrations..."
+            uv run alembic upgrade head
+
+            # Build Node.js Meet Media worker if present
+            if [ -d "meet-client" ]; then
+              echo "→ Building Node.js Meet worker..."
+              cd meet-client
+              npm install
+              npx tsc
+              cd ..
+              echo "✅ Meet worker built"
+            fi
+ 
 
             echo "→ Restarting service..."
             sudo systemctl restart meetmind-be
