@@ -12,11 +12,13 @@ from app.api.v1.routes import (
     interviews,
     meetings,
     onboarding,
+    sdk,
     subscription,
     support,
     users,
     waitlist,
     workspaces,
+    zoom_sdk,
 )
 
 api_router = APIRouter()
@@ -39,3 +41,5 @@ api_router.include_router(support.router, prefix="/support", tags=["Support"])
 api_router.include_router(candidates.router, prefix="/candidates", tags=["Candidates"])
 api_router.include_router(waitlist.router, prefix="/waitlist", tags=["Waitlist"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
+api_router.include_router(zoom_sdk.router, prefix="/zoom", tags=["Zoom SDK"])
+api_router.include_router(sdk.router, prefix="/sdk", tags=["SDK"])
