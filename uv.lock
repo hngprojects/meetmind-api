@@ -752,9 +752,11 @@ dependencies = [
     { name = "mako" },
     { name = "psycopg2-binary" },
     { name = "pydantic-settings" },
+    { name = "python-decouple" },
     { name = "python-jose" },
     { name = "redis" },
     { name = "resend" },
+    { name = "rtms", marker = "sys_platform != 'win32'" },
     { name = "slowapi" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "urllib3" },
@@ -782,9 +784,11 @@ requires-dist = [
     { name = "mako", specifier = ">=1.3.12" },
     { name = "psycopg2-binary", specifier = ">=2.9.12" },
     { name = "pydantic-settings", specifier = ">=2.7.0" },
+    { name = "python-decouple", specifier = ">=3.8" },
     { name = "python-jose", specifier = ">=3.5.0" },
     { name = "redis", specifier = ">=7.4.0" },
     { name = "resend", specifier = ">=2.30.0" },
+    { name = "rtms", marker = "sys_platform != 'win32'", specifier = "==1.1.0" },
     { name = "slowapi", specifier = ">=0.1.9" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36" },
     { name = "urllib3", specifier = ">=2.7.0" },
@@ -1153,6 +1157,15 @@ wheels = [
 ]
 
 [[package]]
+name = "python-decouple"
+version = "3.8"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e1/97/373dcd5844ec0ea5893e13c39a2c67e7537987ad8de3842fe078db4582fa/python-decouple-3.8.tar.gz", hash = "sha256:ba6e2657d4f376ecc46f77a3a615e058d93ba5e465c01bbe57289bfb7cce680f", size = 9612, upload-time = "2023-03-01T19:38:38.143Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a2/d4/9193206c4563ec771faf2ccf54815ca7918529fe81f6adb22ee6d0e06622/python_decouple-3.8-py3-none-any.whl", hash = "sha256:d0d45340815b25f4de59c974b855bb38d03151d81b037d9e3f463b0c9f8cbd66", size = 9947, upload-time = "2023-03-01T19:38:36.015Z" },
+]
+
+[[package]]
 name = "python-discovery"
 version = "1.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1360,6 +1373,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/da/8a/22b7beea3ee0d44b1916c0c1cb0ee3af23b700b6da9f04991899d0c555d4/rsa-4.9.1.tar.gz", hash = "sha256:e7bdbfdb5497da4c07dfd35530e1a902659db6ff241e39d9953cad06ebd0ae75", size = 29034, upload-time = "2025-04-16T09:51:18.218Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/64/8d/0133e4eb4beed9e425d9a98ed6e081a55d195481b7632472be1af08d2f6b/rsa-4.9.1-py3-none-any.whl", hash = "sha256:68635866661c6836b8d39430f97a996acbd61bfa49406748ea243539fe239762", size = 34696, upload-time = "2025-04-16T09:51:17.142Z" },
+]
+
+[[package]]
+name = "rtms"
+version = "1.1.0"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a9/37/fbe71afe4fdd6930f9aabfc4474cf1153e1655167899f3c3d565f824d99c/rtms-1.1.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:818728a5e8175830a1fb85ae143324b3c3f14ca6cde7f0b054e8e4ceb302fe16", size = 8365224, upload-time = "2026-04-16T11:59:19.792Z" },
+    { url = "https://files.pythonhosted.org/packages/10/d6/9acd362600c701d4677921f273806be64dbd0ff0552068ca75a0236081e6/rtms-1.1.0-cp313-cp313-manylinux_2_34_x86_64.whl", hash = "sha256:46bf6e2f132c3e0b99096a59fa0ee66f3717390861555344a67880366f4ad8a0", size = 5829713, upload-time = "2026-04-16T11:59:22.295Z" },
 ]
 
 [[package]]
