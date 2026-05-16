@@ -47,6 +47,7 @@ from app.models.user import (
     UserNotificationPreferences,
     UserPrivacySettings,
     UserSecuritySettings,
+    UserTrial,
 )
 from app.models.workspace import Workspace, WorkspaceInvite, WorkspaceMember
 
@@ -66,6 +67,7 @@ __all__ = [
     "UserNotificationPreferences",
     "UserPrivacySettings",
     "UserSecuritySettings",
+    "UserTrial",
     # Subscriptions & Support
     "EmailSubscription",
     "SupportTicket",
