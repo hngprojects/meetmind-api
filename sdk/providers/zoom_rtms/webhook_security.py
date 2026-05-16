@@ -36,9 +36,12 @@ def verify_zoom_signature(
         return False
 
     message = f"v0:{timestamp}:{raw_body.decode('utf-8')}"
-    expected = "v0=" + hmac.new(
-        secret_token.encode("utf-8"),
-        message.encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
+    expected = (
+        "v0="
+        + hmac.new(
+            secret_token.encode("utf-8"),
+            message.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+    )
     return hmac.compare_digest(expected, signature)

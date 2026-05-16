@@ -30,7 +30,9 @@ class SDKSession(SDKBase):
     wake_words_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="created")
     provider_session_id: Mapped[str | None] = mapped_column(String(255))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
@@ -73,7 +75,9 @@ class SDKTranscriptTurn(SDKBase):
     provider_stream_id: Mapped[str | None] = mapped_column(String(255))
     sequence_no: Mapped[int] = mapped_column(Integer, nullable=False)
     trigger_reason: Mapped[str | None] = mapped_column(String(60))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
 
     def to_dict(self) -> dict:
         return {
@@ -104,7 +108,9 @@ class SDKProviderEvent(SDKBase):
     session_id: Mapped[str | None] = mapped_column(String, index=True)
     provider_stream_id: Mapped[str | None] = mapped_column(String(255))
     payload_json: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
 
     def to_dict(self) -> dict:
         return {

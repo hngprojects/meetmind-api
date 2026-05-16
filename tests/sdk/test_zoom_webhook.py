@@ -29,11 +29,14 @@ def test_verify_zoom_signature_accepts_valid_signed_body():
     body = json.dumps({"event": "meeting.rtms_started"}).encode("utf-8")
     timestamp = str(int(time.time()))
     secret = "secret-token"
-    signature = "v0=" + hmac.new(
-        secret.encode("utf-8"),
-        f"v0:{timestamp}:{body.decode('utf-8')}".encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
+    signature = (
+        "v0="
+        + hmac.new(
+            secret.encode("utf-8"),
+            f"v0:{timestamp}:{body.decode('utf-8')}".encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+    )
 
     assert verify_zoom_signature(
         raw_body=body,

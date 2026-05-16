@@ -132,7 +132,8 @@ class SDKRepository:
 
     def next_sequence(self, session_id: str) -> int:
         value = self.db.execute(
-            select(func.coalesce(func.max(SDKTranscriptTurn.sequence_no), 0) + 1)
-            .where(SDKTranscriptTurn.session_id == session_id)
+            select(func.coalesce(func.max(SDKTranscriptTurn.sequence_no), 0) + 1).where(
+                SDKTranscriptTurn.session_id == session_id
+            )
         ).scalar_one()
         return int(value)

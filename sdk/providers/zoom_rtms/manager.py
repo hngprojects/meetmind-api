@@ -32,7 +32,9 @@ class ZoomRTMSManager:
         settings = get_sdk_settings()
         stream_id = rtms_stream_id(payload)
         if not stream_id:
-            raise ZoomRTMSRuntimeError("RTMS started payload did not include stream id.")
+            raise ZoomRTMSRuntimeError(
+                "RTMS started payload did not include stream id."
+            )
 
         repo = SDKRepository(db)
         session = repo.find_zoom_session(meeting_id(payload))
@@ -52,7 +54,8 @@ class ZoomRTMSManager:
             import rtms
         except ImportError as exc:
             raise ZoomRTMSRuntimeError(
-                "Zoom RTMS package is not installed. Install `rtms` on linux-x64 or darwin-arm64."
+                "Zoom RTMS package is not installed. Install `rtms` on "
+                "linux-x64 or darwin-arm64."
             ) from exc
 
         client = rtms.Client(executor=self.executor)
@@ -68,12 +71,22 @@ class ZoomRTMSManager:
                     frame_size=640,
                 )
             )
-        self._attach_callbacks(client=client, session_id=session.id, stream_id=stream_id)
+        self._attach_callbacks(
+            client=client, session_id=session.id, stream_id=stream_id
+        )
         join_payload = rtms_join_payload(payload)
-        client.join(join_payload, client=settings.zoom_client_id, secret=settings.zoom_client_secret)
+        client.join(
+            join_payload,
+            client=settings.zoom_client_id,
+            secret=settings.zoom_client_secret,
+        )
         self.clients[stream_id] = client
 
-        return {"session": session.to_dict(), "rtms_stream_id": stream_id, "joined": True}
+        return {
+            "session": session.to_dict(),
+            "rtms_stream_id": stream_id,
+            "joined": True,
+        }
 
     def stop_from_webhook(self, *, db: Session, payload: dict[str, Any]) -> dict:
         stream_id = rtms_stream_id(payload)
@@ -88,7 +101,11 @@ class ZoomRTMSManager:
         elif client and hasattr(client, "release"):
             client.release()
 
-        return {"session_id": session.id if session else None, "rtms_stream_id": stream_id, "stopped": True}
+        return {
+            "session_id": session.id if session else None,
+            "rtms_stream_id": stream_id,
+            "stopped": True,
+        }
 
     def _attach_callbacks(self, *, client, session_id: str, stream_id: str) -> None:
         def on_transcript(data, timestamp=None, metadata=None):
@@ -106,8 +123,14 @@ class ZoomRTMSManager:
                     session=session,
                     source="zoom_rtms",
                     role="human",
-                    speaker_name=getattr(metadata, "userName", None) or getattr(metadata, "user_name", None),
-                    speaker_id=str(getattr(metadata, "userId", "") or getattr(metadata, "user_id", "") or "") or None,
+                    speaker_name=getattr(metadata, "userName", None)
+                    or getattr(metadata, "user_name", None),
+                    speaker_id=str(
+                        getattr(metadata, "userId", "")
+                        or getattr(metadata, "user_id", "")
+                        or ""
+                    )
+                    or None,
                     content=content,
                     timestamp_ms=int(timestamp) if timestamp is not None else None,
                     provider_stream_id=stream_id,
@@ -123,13 +146,20 @@ class ZoomRTMSManager:
                 session = repo.get_session(session_id)
                 if not session:
                     return
+                content = f"[audio_chunk bytes={len(data) if data is not None else 0}]"
                 repo.add_transcript_turn(
                     session=session,
                     source="zoom_rtms_audio",
                     role="system",
-                    speaker_name=getattr(metadata, "userName", None) or getattr(metadata, "user_name", None),
-                    speaker_id=str(getattr(metadata, "userId", "") or getattr(metadata, "user_id", "") or "") or None,
-                    content=f"[audio_chunk bytes={len(data) if data is not None else 0}]",
+                    speaker_name=getattr(metadata, "userName", None)
+                    or getattr(metadata, "user_name", None),
+                    speaker_id=str(
+                        getattr(metadata, "userId", "")
+                        or getattr(metadata, "user_id", "")
+                        or ""
+                    )
+                    or None,
+                    content=content,
                     timestamp_ms=int(timestamp) if timestamp is not None else None,
                     provider_stream_id=stream_id,
                 )

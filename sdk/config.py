@@ -43,9 +43,7 @@ class SDKSettings:
         self.sdk_db_password: str = config("SDK_DB_PASSWORD", default="")
         self.sdk_db_host: str = config("SDK_DB_HOST", default="localhost")
         self.sdk_db_port: int = config("SDK_DB_PORT", default=5432, cast=int)
-        self.sdk_sqlite_path: str = config(
-            "SDK_SQLITE_PATH", default=".sdk/sdk.sqlite"
-        )
+        self.sdk_sqlite_path: str = config("SDK_SQLITE_PATH", default=".sdk/sdk.sqlite")
 
     @property
     def zoom_default_wake_words(self) -> list[str]:

@@ -25,8 +25,12 @@ def handle_zoom_webhook(*, db: Session, payload: dict[str, Any]) -> dict:
     raw_event = event_type(payload)
 
     if raw_event == URL_VALIDATION_EVENT:
-        plain_token = payload_object(payload).get("plainToken") or payload_object(payload).get("plain_token")
-        return zoom_url_validation_response(str(plain_token), settings.zoom_webhook_secret_token)
+        plain_token = payload_object(payload).get("plainToken") or payload_object(
+            payload
+        ).get("plain_token")
+        return zoom_url_validation_response(
+            str(plain_token), settings.zoom_webhook_secret_token
+        )
 
     normalized = normalize_event_name(raw_event)
     repo = SDKRepository(db)

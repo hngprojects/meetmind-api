@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 STARTED_EVENTS = {
     "meeting.rtms_started",
     "meeting.rtms.started",
