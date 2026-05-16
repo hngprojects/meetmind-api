@@ -51,9 +51,9 @@ class SDKSettings:
 
     def database_url(self) -> str:
         if self.sdk_database_url:
-            return self.sdk_database_url
+            return normalize_sync_database_url(self.sdk_database_url)
 
-        db_type = self.sdk_db_type.lower()
+        db_type = (self.sdk_db_type or "sqlite").lower()
         if db_type == "sqlite":
             sqlite_path = Path(self.sdk_sqlite_path)
             sqlite_path.parent.mkdir(parents=True, exist_ok=True)
@@ -84,6 +84,26 @@ def parse_csv(value: str | None) -> list[str]:
     if not value:
         return []
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def normalize_sync_database_url(database_url: str) -> str:
+    """Return a sync SQLAlchemy URL for SDK storage.
+
+    The main API uses async SQLAlchemy, so hosted environments often expose
+    `postgresql+asyncpg://...`. The SDK currently uses the sync ORM/session API,
+    so normalize known async drivers to their sync equivalents.
+    """
+
+    url = database_url.strip()
+    if url.startswith("postgresql+asyncpg://"):
+        return url.replace("postgresql+asyncpg://", "postgresql+psycopg2://", 1)
+    if url.startswith("mysql+aiomysql://") or url.startswith("mysql+asyncmy://"):
+        return url.replace("mysql+aiomysql://", "mysql+pymysql://", 1).replace(
+            "mysql+asyncmy://",
+            "mysql+pymysql://",
+            1,
+        )
+    return url
 
 
 @lru_cache
