@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
 from sdk.config import get_sdk_settings
@@ -28,7 +29,7 @@ async def zoom_rtms_webhook(request: Request, db: Session = Depends(get_sdk_db))
         )
 
     payload = await request.json()
-    return handle_zoom_webhook(db=db, payload=payload)
+    return await run_in_threadpool(handle_zoom_webhook, db=db, payload=payload)
 
 
 @router.post("/oauth/callback", response_model=OAuthCallbackResponse)
