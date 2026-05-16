@@ -13,7 +13,7 @@ def clear_sdk_env(monkeypatch):
         "SDK_SQLITE_PATH",
     ]
     for key in keys:
-        monkeypatch.delenv(key, raising=False)
+        monkeypatch.setenv(key, "")
 
 
 def test_database_url_prefers_explicit_override(monkeypatch):
@@ -44,6 +44,20 @@ def test_database_url_builds_postgres_from_discrete_env(monkeypatch):
     assert (
         SDKSettings().database_url()
         == "postgresql://sdk_user:sdk_pass@postgres.internal:5433/sdk_db"
+    )
+
+
+def test_database_url_uses_db_specific_default_ports(monkeypatch):
+    clear_sdk_env(monkeypatch)
+    monkeypatch.setenv("SDK_DB_TYPE", "mysql")
+    monkeypatch.setenv("SDK_DB_USER", "sdk_user")
+    monkeypatch.setenv("SDK_DB_PASSWORD", "sdk_pass")
+    monkeypatch.setenv("SDK_DB_HOST", "mysql.internal")
+    monkeypatch.setenv("SDK_DB_NAME", "sdk_db")
+
+    assert (
+        SDKSettings().database_url()
+        == "mysql+pymysql://sdk_user:sdk_pass@mysql.internal:3306/sdk_db"
     )
 
 

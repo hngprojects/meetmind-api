@@ -62,6 +62,7 @@ class SDKSession(SDKBase):
 
 class SDKTranscriptTurn(SDKBase):
     __tablename__ = "sdk_transcript_turns"
+    __table_args__ = (UniqueConstraint("session_id", "sequence_no"),)
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=new_id)
     session_id: Mapped[str] = mapped_column(String, index=True, nullable=False)

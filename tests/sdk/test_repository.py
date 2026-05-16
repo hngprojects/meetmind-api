@@ -42,3 +42,33 @@ def test_session_and_transcript_persist_in_sqlite(tmp_path):
         assert turns[0].trigger_reason == "wake_word:Hey Atlas"
     finally:
         db.close()
+
+
+def test_duplicate_provider_event_returns_existing_event(tmp_path):
+    engine = create_engine(f"sqlite:///{(tmp_path / 'sdk.sqlite').as_posix()}")
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    SDKBase.metadata.create_all(bind=engine)
+
+    db = TestingSessionLocal()
+    try:
+        repo = SDKRepository(db)
+        first = repo.record_provider_event(
+            provider="zoom",
+            event_id="event-1",
+            event_type="meeting.rtms_started",
+            session_id=None,
+            provider_stream_id="stream-1",
+            payload={"event": "meeting.rtms_started"},
+        )
+        second = repo.record_provider_event(
+            provider="zoom",
+            event_id="event-1",
+            event_type="meeting.rtms_started",
+            session_id=None,
+            provider_stream_id="stream-1",
+            payload={"event": "meeting.rtms_started"},
+        )
+
+        assert second.id == first.id
+    finally:
+        db.close()

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class CreateSDKSessionRequest(BaseModel):
@@ -14,6 +14,13 @@ class CreateSDKSessionRequest(BaseModel):
 
 class SpeakRequest(BaseModel):
     text: str = Field(min_length=1)
+
+    @field_validator("text")
+    @classmethod
+    def validate_text_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("text must not be blank")
+        return value
 
 
 class OAuthCallbackResponse(BaseModel):

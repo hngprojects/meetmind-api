@@ -19,7 +19,8 @@ def normalize_wake_words(wake_words: list[str] | None) -> list[str]:
 
 def detect_wake_word(text: str, wake_words: list[str]) -> str | None:
     lowered = text.lower()
-    for wake_word in sorted(wake_words, key=len, reverse=True):
+    candidates = [word.strip() for word in wake_words if word and word.strip()]
+    for wake_word in sorted(candidates, key=len, reverse=True):
         pattern = rf"\b{re.escape(wake_word.lower())}\b"
         if re.search(pattern, lowered):
             return wake_word

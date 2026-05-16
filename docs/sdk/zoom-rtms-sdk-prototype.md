@@ -17,7 +17,7 @@ ZOOM_CLIENT_SECRET=your_zoom_rtms_client_secret
 ZOOM_WEBHOOK_SECRET_TOKEN=your_zoom_webhook_secret_token
 ZOOM_OAUTH_REDIRECT_URL=https://<tunnel>/api/v1/zoom/oauth/callback
 ZOOM_RTMS_WEBHOOK_URL=https://<tunnel>/api/v1/zoom/rtms/webhook
-ZOOM_DEFAULT_WAKE_WORDS=MeetMind,Hey MeetMind
+ZOOM_DEFAULT_WAKE_WORDS="MeetMind,Hey MeetMind"
 ```
 
 For staging, either set `SDK_DATABASE_URL` directly or set:
@@ -43,25 +43,25 @@ SDK_DB_NAME=sdk
 
 1. Create an SDK session:
 
-```http
-POST /api/v1/sdk/sessions
-{
-  "platform": "zoom",
-  "meeting_id": "123456789",
-  "meeting_url": "https://zoom.us/j/123456789",
-  "agent_name": "MeetMind",
-  "wake_words": ["MeetMind", "Hey MeetMind"]
-}
-```
+   ```http
+   POST /api/v1/sdk/sessions
+   {
+     "platform": "zoom",
+     "meeting_id": "123456789",
+     "meeting_url": "https://zoom.us/j/123456789",
+     "agent_name": "MeetMind",
+     "wake_words": ["MeetMind", "Hey MeetMind"]
+   }
+   ```
 
 2. Start a real Zoom meeting configured for the RTMS app.
 3. Zoom sends `meeting.rtms_started` to `/api/v1/zoom/rtms/webhook`.
 4. The SDK starts a real `rtms.Client`, joins the RTMS stream, and persists transcript turns.
 5. Read transcript turns:
 
-```http
-GET /api/v1/sdk/sessions/{session_id}/transcript
-```
+   ```http
+   GET /api/v1/sdk/sessions/{session_id}/transcript
+   ```
 
 ## Current Scope
 

@@ -42,7 +42,7 @@ class SDKSettings:
         self.sdk_db_user: str = config("SDK_DB_USER", default="")
         self.sdk_db_password: str = config("SDK_DB_PASSWORD", default="")
         self.sdk_db_host: str = config("SDK_DB_HOST", default="localhost")
-        self.sdk_db_port: int = config("SDK_DB_PORT", default=5432, cast=int)
+        self.sdk_db_port_raw: str = config("SDK_DB_PORT", default="")
         self.sdk_sqlite_path: str = config("SDK_SQLITE_PATH", default=".sdk/sdk.sqlite")
 
     @property
@@ -60,19 +60,21 @@ class SDKSettings:
             return f"sqlite:///{sqlite_path.as_posix()}"
 
         if db_type in {"postgres", "postgresql"}:
+            port = int(self.sdk_db_port_raw) if self.sdk_db_port_raw else 5432
             user = quote_plus(self.sdk_db_user)
             password = quote_plus(self.sdk_db_password)
             return (
                 f"postgresql://{user}:{password}@{self.sdk_db_host}:"
-                f"{self.sdk_db_port}/{self.sdk_db_name}"
+                f"{port}/{self.sdk_db_name}"
             )
 
         if db_type == "mysql":
+            port = int(self.sdk_db_port_raw) if self.sdk_db_port_raw else 3306
             user = quote_plus(self.sdk_db_user)
             password = quote_plus(self.sdk_db_password)
             return (
                 f"mysql+pymysql://{user}:{password}@{self.sdk_db_host}:"
-                f"{self.sdk_db_port}/{self.sdk_db_name}"
+                f"{port}/{self.sdk_db_name}"
             )
 
         raise ValueError(f"Unsupported SDK_DB_TYPE: {self.sdk_db_type}")

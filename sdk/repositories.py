@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import json
+from collections import defaultdict
+from threading import Lock
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from sdk.config import get_sdk_settings
 from sdk.models import SDKProviderEvent, SDKSession, SDKTranscriptTurn
 from sdk.wake_words import normalize_wake_words
+
+_sequence_locks: defaultdict[str, Lock] = defaultdict(Lock)
 
 
 class SDKRepository:
@@ -79,24 +84,31 @@ class SDKRepository:
         provider_stream_id: str | None,
         trigger_reason: str | None = None,
     ) -> SDKTranscriptTurn:
-        sequence_no = self.next_sequence(session.id)
-        turn = SDKTranscriptTurn(
-            session_id=session.id,
-            platform=session.platform,
-            source=source,
-            role=role,
-            speaker_name=speaker_name,
-            speaker_id=speaker_id,
-            content=content,
-            timestamp_ms=timestamp_ms,
-            provider_stream_id=provider_stream_id,
-            sequence_no=sequence_no,
-            trigger_reason=trigger_reason,
-        )
-        self.db.add(turn)
-        self.db.commit()
-        self.db.refresh(turn)
-        return turn
+        with _sequence_locks[session.id]:
+            for _ in range(3):
+                sequence_no = self.next_sequence(session.id)
+                turn = SDKTranscriptTurn(
+                    session_id=session.id,
+                    platform=session.platform,
+                    source=source,
+                    role=role,
+                    speaker_name=speaker_name,
+                    speaker_id=speaker_id,
+                    content=content,
+                    timestamp_ms=timestamp_ms,
+                    provider_stream_id=provider_stream_id,
+                    sequence_no=sequence_no,
+                    trigger_reason=trigger_reason,
+                )
+                self.db.add(turn)
+                try:
+                    self.db.commit()
+                except IntegrityError:
+                    self.db.rollback()
+                    continue
+                self.db.refresh(turn)
+                return turn
+        raise RuntimeError("Could not assign transcript sequence number.")
 
     def list_transcript(self, session_id: str) -> list[SDKTranscriptTurn]:
         return list(
@@ -126,7 +138,25 @@ class SDKRepository:
             payload_json=json.dumps(payload),
         )
         self.db.add(event)
-        self.db.commit()
+        try:
+            self.db.commit()
+        except IntegrityError:
+            self.db.rollback()
+            if event_id is None:
+                raise
+            existing = (
+                self.db.execute(
+                    select(SDKProviderEvent)
+                    .where(SDKProviderEvent.provider == provider)
+                    .where(SDKProviderEvent.event_id == event_id)
+                    .limit(1)
+                )
+                .scalars()
+                .first()
+            )
+            if existing is None:
+                raise
+            return existing
         self.db.refresh(event)
         return event
 

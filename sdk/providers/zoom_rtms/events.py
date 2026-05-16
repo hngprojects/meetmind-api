@@ -44,6 +44,8 @@ def meeting_id(payload: dict[str, Any]) -> str | None:
         or obj.get("meetingId")
         or obj.get("meeting_number")
         or obj.get("meetingNumber")
+        or obj.get("meeting_uuid")
+        or obj.get("meetingUuid")
         or obj.get("uuid")
     )
     return str(value) if value is not None else None

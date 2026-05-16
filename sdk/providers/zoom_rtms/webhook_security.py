@@ -23,7 +23,7 @@ def verify_zoom_signature(
     tolerance_seconds: int = 300,
 ) -> bool:
     if not secret_token:
-        return True
+        return False
     if not timestamp or not signature:
         return False
 

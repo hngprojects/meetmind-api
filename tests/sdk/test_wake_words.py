@@ -13,3 +13,7 @@ def test_detect_wake_word_respects_configured_phrases():
 
     assert detect_wake_word("Can you help here, Hey Atlas?", wake_words) == "Hey Atlas"
     assert detect_wake_word("MeetMind should not trigger", wake_words) is None
+
+
+def test_detect_wake_word_ignores_blank_phrases():
+    assert detect_wake_word("This text has normal word boundaries.", [" ", ""]) is None
