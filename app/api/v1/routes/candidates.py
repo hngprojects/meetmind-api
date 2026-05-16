@@ -142,7 +142,6 @@ async def export_candidates(
     )
 
 
-
 @router.get("/{candidate_id}")
 async def get_candidate(
     candidate_id: UUID,

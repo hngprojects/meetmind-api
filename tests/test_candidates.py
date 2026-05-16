@@ -333,18 +333,14 @@ class TestCandidateGetByID:
         assert body["error"]["code"] == "candidate_not_found"
 
     @pytest.mark.anyio
-    async def test_get_returns_404_for_cross_workspace_access(
-        self, client, db_session
-    ):
+    async def test_get_returns_404_for_cross_workspace_access(self, client, db_session):
         """A candidate from another workspace is invisible — returns 404."""
         from app.services.auth import AuthService
 
         user_a, workspace_a = await create_user_with_workspace(db_session)
         user_b, workspace_b = await create_user_with_workspace(db_session)
 
-        candidate = await create_candidate(
-            db_session, workspace_a.id, "Chidi Okonkwo"
-        )
+        candidate = await create_candidate(db_session, workspace_a.id, "Chidi Okonkwo")
 
         token_b = await AuthService.create_access_token(user_b)
         response = await client.get(
