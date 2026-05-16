@@ -3,13 +3,10 @@
 import csv
 import io
 from collections.abc import AsyncGenerator
-from uuid import UUID
 
-from fastapi import status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.responses import APIError
 from app.models.interview import Candidate
 
 
