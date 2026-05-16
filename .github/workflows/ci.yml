@@ -22,8 +22,6 @@ jobs:
           POSTGRES_USER: ${{ secrets.TEST_POSTGRES_USER || 'postgres' }}
           POSTGRES_PASSWORD: ${{ secrets.TEST_POSTGRES_PASSWORD || 'postgres' }}
           POSTGRES_DB: ${{ secrets.TEST_POSTGRES_DB || 'test_db' }}
-        ports:
-          - 5432:5432
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -32,7 +30,7 @@ jobs:
 
     env:
       DATABASE_URL: postgresql+asyncpg://${{ secrets.TEST_POSTGRES_USER || 'postgres' }}:${{ secrets.TEST_POSTGRES_PASSWORD || 'postgres' }}@localhost:5432/${{ secrets.TEST_POSTGRES_DB || 'test_db' }}
-      APP_BASE_URL: http://localhost:8000
+      APP_BASE_URL: ${{ secrets.APP_BASE_URL || 'http://localhost:8000' }}
       ENVIRONMENT: test
       JWT_SECRET: ci-test-jwt-secret-key-for-testing-only
       JWT_ALGORITHM: HS256
