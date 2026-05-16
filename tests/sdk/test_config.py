@@ -23,6 +23,25 @@ def test_database_url_prefers_explicit_override(monkeypatch):
     assert SDKSettings().database_url() == "postgresql://user:pass@db:5432/sdk"
 
 
+def test_database_url_normalizes_asyncpg_override_for_sync_sdk(monkeypatch):
+    clear_sdk_env(monkeypatch)
+    monkeypatch.setenv(
+        "SDK_DATABASE_URL",
+        "postgresql+asyncpg://user:pass@db:5432/sdk",
+    )
+
+    assert SDKSettings().database_url() == "postgresql+psycopg2://user:pass@db:5432/sdk"
+
+
+def test_database_url_empty_db_type_falls_back_to_sqlite(monkeypatch, tmp_path):
+    clear_sdk_env(monkeypatch)
+    sqlite_path = tmp_path / "sdk.sqlite"
+    monkeypatch.setenv("SDK_DB_TYPE", "")
+    monkeypatch.setenv("SDK_SQLITE_PATH", str(sqlite_path))
+
+    assert SDKSettings().database_url() == f"sqlite:///{sqlite_path.as_posix()}"
+
+
 def test_database_url_uses_sqlite_path_for_local(monkeypatch, tmp_path):
     clear_sdk_env(monkeypatch)
     sqlite_path = tmp_path / "meetmind.sqlite"
