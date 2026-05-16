@@ -3,10 +3,13 @@
 import csv
 import io
 from collections.abc import AsyncGenerator
+from uuid import UUID
 
+from fastapi import status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.responses import APIError
 from app.models.interview import Candidate
 
 
@@ -108,3 +111,18 @@ class CandidateService:
                 ]
             )
             yield row_buffer.getvalue()
+
+
+    @staticmethod
+    async def get_by_id(candidate_id: UUID, db: AsyncSession) -> Candidate:
+        result = await db.execute(
+            select(Candidate).where(Candidate.id == candidate_id)
+        )
+        candidate = result.scalar_one_or_none()
+        if not candidate:
+            raise APIError(
+                "Candidate not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="candidate_not_found",
+            )
+        return candidate
