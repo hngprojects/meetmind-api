@@ -1,5 +1,7 @@
 # app/api/v1/routes/candidates.py
 
+import csv
+import io
 import math
 from datetime import datetime, timezone
 from uuid import UUID
@@ -9,9 +11,9 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DBSession
-from app.core.responses import success, APIError
+from app.core.responses import APIError, success
 from app.models.interview import Candidate
-from app.schemas.candidate import CandidateSearchResult, CandidateProfile
+from app.schemas.candidate import CandidateProfile, CandidateSearchResult
 from app.services.candidate import CandidateService
 from app.services.interview import _get_workspace
 
@@ -53,7 +55,7 @@ async def search_candidates(
     if not workspace_id:
         return success(
             data=[],
-            message=f"No workspace found for user — no candidates to search",
+            message="No workspace found for user — no candidates to search",
             meta={
                 "pagination": {
                     "page": page,
@@ -108,12 +110,11 @@ async def export_candidates(
     if not workspace_id:
         # No workspace — stream a CSV with only the header row
         async def _empty_csv():
-            import csv
-            import io
-
             buf = io.StringIO()
             w = csv.writer(buf)
-            w.writerow(["id", "full_name", "email", "phone", "workspace_id", "created_at"])
+            w.writerow(
+                ["id", "full_name", "email", "phone", "workspace_id", "created_at"]
+            )
             yield buf.getvalue()
 
         return StreamingResponse(
