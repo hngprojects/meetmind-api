@@ -15,7 +15,7 @@ jobs:
     if: github.ref == 'refs/heads/staging'
     environment:
       name: staging
-      url: https://api.staging.meetmind.hng14.com
+      url: ${{ vars.STAGING_URL }}
 
     steps:
       - name: Deploy to staging VPS
@@ -55,7 +55,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     environment:
       name: production
-      url: https://api.meetmind.hng14.com
+      url: ${{ vars.PROD_URL }}
 
     steps:
       - name: Deploy to production VPS
