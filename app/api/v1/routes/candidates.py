@@ -13,7 +13,7 @@ from app.core.responses import success, APIError
 from app.models.interview import Candidate
 from app.schemas.candidate import CandidateSearchResult, CandidateProfile
 from app.services.candidate import CandidateService
-from app.services.interview import _get_or_create_workspace
+from app.services.interview import _get_workspace
 
 router = APIRouter()
 
@@ -48,7 +48,21 @@ async def search_candidates(
 
     # Get the user's workspace to scope the query
     # Every candidate belongs to a workspace — we never leak cross-workspace data
-    workspace_id = await _get_or_create_workspace(db, current_user)
+    workspace_id = await _get_workspace(db, current_user)
+
+    if not workspace_id:
+        return success(
+            data=[],
+            message=f"No workspace found for user — no candidates to search",
+            meta={
+                "pagination": {
+                    "page": page,
+                    "page_size": page_size,
+                    "total": 0,
+                    "total_pages": 0,
+                }
+            },
+        )
 
     candidates, total = await CandidateService.search(
         db=db,
@@ -86,10 +100,29 @@ async def export_candidates(
     q: str | None = Query(default=None, description="Optional search filter"),
 ):
 
-    workspace_id = await _get_or_create_workspace(db, current_user)
+    workspace_id = await _get_workspace(db, current_user)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
     filename = f"candidates_{timestamp}.csv"
+
+    if not workspace_id:
+        # No workspace — stream a CSV with only the header row
+        async def _empty_csv():
+            import csv
+            import io
+
+            buf = io.StringIO()
+            w = csv.writer(buf)
+            w.writerow(["id", "full_name", "email", "phone", "workspace_id", "created_at"])
+            yield buf.getvalue()
+
+        return StreamingResponse(
+            content=_empty_csv(),
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}",
+            },
+        )
 
     # The generator is created here but NOT awaited yet
     # StreamingResponse will consume it lazily as it streams the response
@@ -132,16 +165,24 @@ async def get_candidate(
     without raising. Idential to scalar_one_or_none() for the single-PK case.
 
     WHY workspace scoping?
-    Every candidate belongs to a workspace. _get_or_create_workspace resolves
-    the current user's workspace via WorkspaceMember. Cross-workspace
-    candidates are invisible — prevents data leakage.
+    Every candidate belongs to a workspace. _get_workspace resolves the
+    current user's workspace via WorkspaceMember. Cross-workspace candidates
+    are invisible — prevents data leakage.
 
     WHY CandidateProfile.model_validate(candidate)?
     model_validate reads ORM attributes because from_attributes=True is set
     in the schema. This avoids manually mapping every field.
     """
 
-    workspace_id = await _get_or_create_workspace(db, current_user)
+    workspace_id = await _get_workspace(db, current_user)
+
+    if not workspace_id:
+        raise APIError(
+            "Candidate not found",
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="candidate_not_found",
+        )
+
     candidate = await db.scalar(
         select(Candidate).where(
             Candidate.id == candidate_id,
