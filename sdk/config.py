@@ -97,12 +97,10 @@ def normalize_sync_database_url(database_url: str) -> str:
     url = database_url.strip()
     if url.startswith("postgresql+asyncpg://"):
         return url.replace("postgresql+asyncpg://", "postgresql+psycopg2://", 1)
-    if url.startswith("mysql+aiomysql://") or url.startswith("mysql+asyncmy://"):
-        return url.replace("mysql+aiomysql://", "mysql+pymysql://", 1).replace(
-            "mysql+asyncmy://",
-            "mysql+pymysql://",
-            1,
-        )
+    if url.startswith("mysql+aiomysql://"):
+        return url.replace("mysql+aiomysql://", "mysql+pymysql://", 1)
+    if url.startswith("mysql+asyncmy://"):
+        return url.replace("mysql+asyncmy://", "mysql+pymysql://", 1)
     return url
 
 
