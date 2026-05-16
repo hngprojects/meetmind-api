@@ -1,6 +1,6 @@
 # tests/test_candidates.py
 """
-Tests for candidate search and export endpoints.
+Tests for candidate search, get-by-ID, and export endpoints.
 
 Test naming follows the repo convention:
 test_<action>_<expected_outcome>_<condition>
@@ -14,6 +14,7 @@ from app.models.interview import Candidate
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
 
+CANDIDATE_URL = "/api/v1/candidates"
 SEARCH_URL = "/api/v1/candidates/search"
 EXPORT_URL = "/api/v1/candidates/export"
 
@@ -281,3 +282,96 @@ class TestCandidateExport:
         first_line = response.text.split("\n")[0]
         assert "full_name" in first_line
         assert "email" in first_line
+
+
+# ─── Get Candidate by ID Tests ──────────────────────────────────────────────
+
+
+class TestCandidateGetByID:
+    @pytest.mark.anyio
+    async def test_get_returns_200_with_candidate_data(self, client, db_session):
+        """Fetching an existing candidate by UUID returns 200 with full profile."""
+        from app.services.auth import AuthService
+
+        user, workspace = await create_user_with_workspace(db_session)
+        token = await AuthService.create_access_token(user)
+
+        candidate = await create_candidate(
+            db_session, workspace.id, "Adaobi Nwosu", "adaobi@example.com"
+        )
+
+        response = await client.get(
+            f"{CANDIDATE_URL}/{candidate.id}",
+            headers=auth_header(token),
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["success"] is True
+        data = body["data"]
+        assert data["id"] == str(candidate.id)
+        assert data["full_name"] == "Adaobi Nwosu"
+        assert data["email"] == "adaobi@example.com"
+        assert data["workspace_id"] == str(workspace.id)
+
+    @pytest.mark.anyio
+    async def test_get_returns_404_for_nonexistent_id(self, client, db_session):
+        """Fetching a UUID that does not exist returns 404."""
+        from app.services.auth import AuthService
+
+        user, workspace = await create_user_with_workspace(db_session)
+        token = await AuthService.create_access_token(user)
+
+        missing_id = uuid.uuid4()
+        response = await client.get(
+            f"{CANDIDATE_URL}/{missing_id}",
+            headers=auth_header(token),
+        )
+
+        assert response.status_code == 404
+        body = response.json()
+        assert body["error"]["code"] == "candidate_not_found"
+
+    @pytest.mark.anyio
+    async def test_get_returns_404_for_cross_workspace_access(
+        self, client, db_session
+    ):
+        """A candidate from another workspace is invisible — returns 404."""
+        from app.services.auth import AuthService
+
+        user_a, workspace_a = await create_user_with_workspace(db_session)
+        user_b, workspace_b = await create_user_with_workspace(db_session)
+
+        candidate = await create_candidate(
+            db_session, workspace_a.id, "Chidi Okonkwo"
+        )
+
+        token_b = await AuthService.create_access_token(user_b)
+        response = await client.get(
+            f"{CANDIDATE_URL}/{candidate.id}",
+            headers=auth_header(token_b),
+        )
+
+        assert response.status_code == 404
+
+    @pytest.mark.anyio
+    async def test_get_returns_422_for_invalid_uuid(self, client, db_session):
+        """A non-UUID path parameter returns 422."""
+        from app.services.auth import AuthService
+
+        user, workspace = await create_user_with_workspace(db_session)
+        token = await AuthService.create_access_token(user)
+
+        response = await client.get(
+            f"{CANDIDATE_URL}/not-a-uuid",
+            headers=auth_header(token),
+        )
+
+        assert response.status_code == 422
+
+    @pytest.mark.anyio
+    async def test_get_returns_401_without_token(self, client, db_session):
+        """An unauthenticated request returns 401."""
+        candidate_id = uuid.uuid4()
+        response = await client.get(f"{CANDIDATE_URL}/{candidate_id}")
+        assert response.status_code == 401
