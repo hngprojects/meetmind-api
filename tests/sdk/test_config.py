@@ -33,6 +33,26 @@ def test_database_url_normalizes_asyncpg_override_for_sync_sdk(monkeypatch):
     assert SDKSettings().database_url() == "postgresql+psycopg2://user:pass@db:5432/sdk"
 
 
+def test_database_url_normalizes_aiomysql_override_for_sync_sdk(monkeypatch):
+    clear_sdk_env(monkeypatch)
+    monkeypatch.setenv(
+        "SDK_DATABASE_URL",
+        "mysql+aiomysql://user:pass@db:3306/sdk",
+    )
+
+    assert SDKSettings().database_url() == "mysql+pymysql://user:pass@db:3306/sdk"
+
+
+def test_database_url_normalizes_asyncmy_override_for_sync_sdk(monkeypatch):
+    clear_sdk_env(monkeypatch)
+    monkeypatch.setenv(
+        "SDK_DATABASE_URL",
+        "mysql+asyncmy://user:pass@db:3306/sdk",
+    )
+
+    assert SDKSettings().database_url() == "mysql+pymysql://user:pass@db:3306/sdk"
+
+
 def test_database_url_empty_db_type_falls_back_to_sqlite(monkeypatch, tmp_path):
     clear_sdk_env(monkeypatch)
     sqlite_path = tmp_path / "sdk.sqlite"
