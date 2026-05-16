@@ -127,16 +127,16 @@ async def get_candidate(
     FastAPI validates UUID path parameters automatically and returns 422 for
     non-UUID values before the handler runs — garbage IDs never hit the DB.
 
-    WHY scalar_one_or_none()?
+    WHY db.scalar()?
     Unwraps the first column of the first row and returns None if no results
-    without raising. Idiomatic SQLAlchemy 2.x for optional single-row fetches.
+    without raising. Idential to scalar_one_or_none() for the single-PK case.
 
     WHY workspace scoping?
     Every candidate belongs to a workspace. _get_or_create_workspace resolves
     the current user's workspace via WorkspaceMember. Cross-workspace
     candidates are invisible — prevents data leakage.
 
-    WHY CandidateProfileOut.model_validate(candidate)?
+    WHY CandidateProfile.model_validate(candidate)?
     model_validate reads ORM attributes because from_attributes=True is set
     in the schema. This avoids manually mapping every field.
     """
