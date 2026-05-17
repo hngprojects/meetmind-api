@@ -2,15 +2,18 @@
 
 import math
 from datetime import datetime, timezone
+from uuid import UUID
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DBSession
-from app.core.responses import success
-from app.schemas.candidate import CandidateSearchResult
+from app.core.responses import success, APIError
+from app.models.interview import Candidate
+from app.schemas.candidate import CandidateSearchResult, CandidateProfile
 from app.services.candidate import CandidateService
-from app.services.interview import _get_or_create_workspace
+from app.services.interview import _get_workspace
 
 router = APIRouter()
 
@@ -45,7 +48,7 @@ async def search_candidates(
 
     # Get the user's workspace to scope the query
     # Every candidate belongs to a workspace — we never leak cross-workspace data
-    workspace_id = await _get_or_create_workspace(db, current_user)
+    workspace_id = await _get_workspace(db, current_user)
 
     candidates, total = await CandidateService.search(
         db=db,
@@ -83,7 +86,7 @@ async def export_candidates(
     q: str | None = Query(default=None, description="Optional search filter"),
 ):
 
-    workspace_id = await _get_or_create_workspace(db, current_user)
+    workspace_id = await _get_workspace(db, current_user)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
     filename = f"candidates_{timestamp}.csv"
@@ -102,4 +105,65 @@ async def export_candidates(
         headers={
             "Content-Disposition": f"attachment; filename={filename}",
         },
+    )
+
+
+@router.get("/{candidate_id}")
+async def get_candidate(
+    candidate_id: UUID,
+    db: DBSession,
+    current_user: CurrentUser,
+):
+    """
+    Get a single candidate's profile.
+
+    GET /api/v1/candidates/{candidate_id}
+
+    Returns all fields from the Candidate model — no nested interviews or
+    computed stats. Use the dedicated /interviews endpoints for that data.
+
+    WHY UUID for candidate_id?
+    FastAPI validates UUID path parameters automatically and returns 422 for
+    non-UUID values before the handler runs — garbage IDs never hit the DB.
+
+    WHY db.scalar()?
+    Unwraps the first column of the first row and returns None if no results
+    without raising. Idential to scalar_one_or_none() for the single-PK case.
+
+    WHY workspace scoping?
+    Every candidate belongs to a workspace. _get_workspace resolves the
+    current user's workspace via WorkspaceMember. Cross-workspace candidates
+    are invisible — prevents data leakage.
+
+    WHY CandidateProfile.model_validate(candidate)?
+    model_validate reads ORM attributes because from_attributes=True is set
+    in the schema. This avoids manually mapping every field.
+    """
+
+    workspace_id = await _get_workspace(db, current_user)
+
+    if not workspace_id:
+        raise APIError(
+            "Candidate not found",
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="candidate_not_found",
+        )
+
+    candidate = await db.scalar(
+        select(Candidate).where(
+            Candidate.id == candidate_id,
+            Candidate.workspace_id == workspace_id,
+        )
+    )
+
+    if not candidate:
+        raise APIError(
+            "Candidate not found",
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="candidate_not_found",
+        )
+
+    return success(
+        CandidateProfile.model_validate(candidate),
+        message="Candidate profile retrieved",
     )
