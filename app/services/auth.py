@@ -393,7 +393,7 @@ class AuthService:
         """
         if not user.is_verified:
             return "verify_email"
-        if not user.job_title or not user.company:
+        if not user.onboarding_completed:
             return "onboarding"
         return "dashboard"
 
