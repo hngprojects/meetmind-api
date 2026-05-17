@@ -8,6 +8,7 @@ from sqlalchemy import DateTime, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from sdk.db import SDKBase
+from sdk.security import decrypt_secret, encrypt_secret
 
 
 def new_id() -> str:
@@ -131,8 +132,8 @@ class SDKZoomOAuthToken(SDKBase):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=new_id)
     zoom_user_id: Mapped[str | None] = mapped_column(String(255), index=True)
-    access_token: Mapped[str] = mapped_column(Text, nullable=False)
-    refresh_token: Mapped[str | None] = mapped_column(Text)
+    access_token_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    refresh_token_encrypted: Mapped[str | None] = mapped_column(Text)
     token_type: Mapped[str] = mapped_column(
         String(60), nullable=False, default="bearer"
     )
@@ -144,3 +145,25 @@ class SDKZoomOAuthToken(SDKBase):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
+
+    @property
+    def access_token(self) -> str:
+        value = decrypt_secret(self.access_token_encrypted)
+        if value is None:
+            raise ValueError("Stored Zoom access token is empty.")
+        return value
+
+    @access_token.setter
+    def access_token(self, value: str) -> None:
+        encrypted_value = encrypt_secret(value)
+        if encrypted_value is None:
+            raise ValueError("Zoom access token cannot be empty.")
+        self.access_token_encrypted = encrypted_value
+
+    @property
+    def refresh_token(self) -> str | None:
+        return decrypt_secret(self.refresh_token_encrypted)
+
+    @refresh_token.setter
+    def refresh_token(self, value: str | None) -> None:
+        self.refresh_token_encrypted = encrypt_secret(value)

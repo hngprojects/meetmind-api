@@ -45,11 +45,33 @@ def test_zoom_oauth_client_uses_stored_access_token(db_session):
     assert ZoomOAuthClient(db_session).get_access_token() == "stored-access-token"
     token = repo.get_latest_zoom_oauth_token()
     assert token is not None
-    assert token.access_token != "stored-access-token"
-    assert token.access_token.startswith("fernet:")
+    assert token.access_token == "stored-access-token"
+    assert token.access_token_encrypted != "stored-access-token"
+    assert token.access_token_encrypted.startswith("fernet:")
+    assert token.refresh_token == "stored-refresh-token"
+    assert token.refresh_token_encrypted != "stored-refresh-token"
+
+
+def test_zoom_oauth_token_allows_null_refresh_token(db_session):
+    repo = SDKRepository(db_session)
+    repo.save_zoom_oauth_token(
+        access_token="stored-access-token",
+        refresh_token=None,
+        token_type="bearer",
+        scope="meeting:update:participant_rtms_app_status",
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
+    )
+
+    token = repo.get_latest_zoom_oauth_token()
+    assert token is not None
+    assert token.access_token == "stored-access-token"
+    assert token.refresh_token is None
+    assert token.refresh_token_encrypted is None
 
 
 def test_zoom_rtms_start_posts_expected_payload(monkeypatch, db_session):
+    monkeypatch.setenv("ZOOM_CLIENT_ID", "test-client-id")
+    get_sdk_settings.cache_clear()
     repo = SDKRepository(db_session)
     repo.save_zoom_oauth_token(
         access_token="stored-access-token",
@@ -79,7 +101,7 @@ def test_zoom_rtms_start_posts_expected_payload(monkeypatch, db_session):
     assert requests[0].headers["authorization"] == "Bearer stored-access-token"
     body = json.loads(requests[0].read().decode())
     assert body["action"] == "start"
-    assert body["settings"]["client_id"]
+    assert body["settings"]["client_id"] == "test-client-id"
 
 
 def test_zoom_rtms_start_maps_transport_errors(monkeypatch, db_session):

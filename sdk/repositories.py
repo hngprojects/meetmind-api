@@ -16,7 +16,6 @@ from sdk.models import (
     SDKTranscriptTurn,
     SDKZoomOAuthToken,
 )
-from sdk.security import decrypt_secret, encrypt_secret
 from sdk.wake_words import normalize_wake_words
 
 _sequence_locks: defaultdict[str, Lock] = defaultdict(Lock)
@@ -179,12 +178,12 @@ class SDKRepository:
     ) -> SDKZoomOAuthToken:
         token = SDKZoomOAuthToken(
             zoom_user_id=zoom_user_id,
-            access_token=encrypt_secret(access_token),
-            refresh_token=encrypt_secret(refresh_token),
             token_type=token_type,
             scope=scope,
             expires_at=expires_at,
         )
+        token.access_token = access_token
+        token.refresh_token = refresh_token
         self.db.add(token)
         self.db.commit()
         self.db.refresh(token)
@@ -214,13 +213,10 @@ class SDKRepository:
         return token
 
     def get_zoom_access_token_value(self, token: SDKZoomOAuthToken) -> str:
-        value = decrypt_secret(token.access_token)
-        if value is None:
-            raise RuntimeError("Stored Zoom access token is empty.")
-        return value
+        return token.access_token
 
     def get_zoom_refresh_token_value(self, token: SDKZoomOAuthToken) -> str | None:
-        return decrypt_secret(token.refresh_token)
+        return token.refresh_token
 
     def next_sequence(self, session_id: str) -> int:
         value = self.db.execute(
