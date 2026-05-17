@@ -52,9 +52,9 @@ async def search_candidates(
 
     if not workspace_id:
         raise APIError(
-            "Candidate not found",
+            "No workspace found",
             status_code=status.HTTP_404_NOT_FOUND,
-            code="candidate_not_found",
+            code="no_workspace_found",
         )
 
     candidates, total = await CandidateService.search(
@@ -97,9 +97,9 @@ async def export_candidates(
 
     if not workspace_id:
         raise APIError(
-            "Candidate not found",
+            "No workspace found",
             status_code=status.HTTP_404_NOT_FOUND,
-            code="candidate_not_found",
+            code="no_workspace_found",
         )
 
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
@@ -158,9 +158,9 @@ async def get_candidate(
 
     if not workspace_id:
         raise APIError(
-            "Candidate not found",
+            "No workspace found",
             status_code=status.HTTP_404_NOT_FOUND,
-            code="candidate_not_found",
+            code="no_workspace_found",
         )
 
     candidate = await db.scalar(
