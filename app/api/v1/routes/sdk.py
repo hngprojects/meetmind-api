@@ -92,7 +92,13 @@ def start_rtms_for_session(
     except ZoomOAuthError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     except ZoomRTMSControlError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": str(exc),
+                "zoom": exc.details,
+            },
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
