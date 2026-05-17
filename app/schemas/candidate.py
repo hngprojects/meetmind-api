@@ -58,7 +58,7 @@ class CandidateProfile(BaseModel):
     id: uuid.UUID
     workspace_id: uuid.UUID
     full_name: str
-    email: str | None
+    email: EmailStr | None
     phone: str | None
     avatar_initials: str | None
     resume_url: str | None
