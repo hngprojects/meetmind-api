@@ -29,6 +29,9 @@ wheels/
 
 # database
 docker-compose.override.yml
+.sdk/
+*.sqlite
+*.sqlite3
 
 # Test / coverage
 .pytest_cache/
