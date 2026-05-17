@@ -44,3 +44,25 @@ class CandidateSearchResult(BaseModel):
     # from_attributes=True tells Pydantic to read data from SQLAlchemy
     # model attributes instead of expecting a dict. Without this,
     # CandidateSearchResult.model_validate(candidate_orm_object) would fail.
+
+
+class CandidateProfile(BaseModel):
+    """
+    All fields from the Candidate model.
+
+    Returned by GET /candidates/{id}. No nested stats or interviews — just
+    the raw candidate record serialized via model_validate.
+    """
+
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    full_name: str
+    email: EmailStr | None
+    phone: str | None
+    avatar_initials: str | None
+    resume_url: str | None
+    portfolio_url: str | None
+    created_at: datetime | None
+    updated_at: datetime | None
+
+    model_config = {"from_attributes": True}
