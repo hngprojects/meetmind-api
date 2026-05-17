@@ -50,6 +50,13 @@ async def search_candidates(
     # Every candidate belongs to a workspace — we never leak cross-workspace data
     workspace_id = await _get_workspace(db, current_user)
 
+    if not workspace_id:
+        raise APIError(
+            "Candidate not found",
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="candidate_not_found",
+        )
+
     candidates, total = await CandidateService.search(
         db=db,
         q=q,
@@ -87,6 +94,13 @@ async def export_candidates(
 ):
 
     workspace_id = await _get_workspace(db, current_user)
+
+    if not workspace_id:
+        raise APIError(
+            "Candidate not found",
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="candidate_not_found",
+        )
 
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
     filename = f"candidates_{timestamp}.csv"
