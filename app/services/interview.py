@@ -19,6 +19,26 @@ from app.schemas.interview import (
 )
 
 
+
+async def _get_workspace(db: AsyncSession, user: User) -> uuid.UUID | None:
+    """Return the user's first workspace, or None if they don't have one.
+
+    Read-only — no side effects. Use this in GET endpoints where creating a
+    workspace on a read request would violate HTTP idempotency rules.
+
+    Args:
+        db: Active async database session.
+        user: The authenticated user.
+
+    Returns:
+        The workspace UUID, or None if the user has no workspace.
+    """
+    result = await db.execute(
+        select(WorkspaceMember.workspace_id).where(WorkspaceMember.user_id == user.id)
+    )
+    return result.scalar_one_or_none()
+
+
 async def _get_or_create_workspace(db: AsyncSession, user: User) -> uuid.UUID:
     """Return the user's first workspace, creating a default one if none exists.
 
