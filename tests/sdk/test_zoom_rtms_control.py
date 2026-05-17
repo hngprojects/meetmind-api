@@ -69,7 +69,7 @@ def test_zoom_oauth_token_allows_null_refresh_token(db_session):
     assert token.refresh_token_encrypted is None
 
 
-def test_zoom_rtms_start_posts_expected_payload(monkeypatch, db_session):
+def test_zoom_rtms_start_patches_expected_payload(monkeypatch, db_session):
     monkeypatch.setenv("ZOOM_CLIENT_ID", "test-client-id")
     get_sdk_settings.cache_clear()
     repo = SDKRepository(db_session)
@@ -86,12 +86,12 @@ def test_zoom_rtms_start_posts_expected_payload(monkeypatch, db_session):
         requests.append(request)
         return httpx.Response(202, json={"status": "requested"})
 
-    def fake_post(*args, **kwargs):
+    def fake_patch(*args, **kwargs):
         transport = httpx.MockTransport(handler)
         with httpx.Client(transport=transport) as client:
-            return client.post(*args, **kwargs)
+            return client.patch(*args, **kwargs)
 
-    monkeypatch.setattr(control.httpx, "post", fake_post)
+    monkeypatch.setattr(control.httpx, "patch", fake_patch)
 
     result = ZoomRTMSControlClient(db_session).start(meeting_id="86429575325")
 
@@ -114,10 +114,10 @@ def test_zoom_rtms_start_maps_transport_errors(monkeypatch, db_session):
         expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
     )
 
-    def fake_post(*args, **kwargs):
+    def fake_patch(*args, **kwargs):
         raise httpx.ConnectError("connection failed")
 
-    monkeypatch.setattr(control.httpx, "post", fake_post)
+    monkeypatch.setattr(control.httpx, "patch", fake_patch)
 
     with pytest.raises(ZoomRTMSControlError, match="Zoom RTMS request failed"):
         ZoomRTMSControlClient(db_session).start(meeting_id="86429575325")
