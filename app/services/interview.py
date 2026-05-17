@@ -36,7 +36,7 @@ async def _get_workspace(db: AsyncSession, user: User) -> uuid.UUID | None:
     result = await db.execute(
         select(WorkspaceMember.workspace_id).where(WorkspaceMember.user_id == user.id)
     )
-    return result.scalar_one_or_none()
+    return result.scalar()
 
 
 async def _get_or_create_workspace(db: AsyncSession, user: User) -> uuid.UUID:
