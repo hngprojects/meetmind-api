@@ -19,6 +19,13 @@ class SDKSettings:
 
         self.zoom_client_id: str = config("ZOOM_CLIENT_ID", default="")
         self.zoom_client_secret: str = config("ZOOM_CLIENT_SECRET", default="")
+        self.zoom_access_token: str = config("ZOOM_ACCESS_TOKEN", default="")
+        self.zoom_api_base_url: str = config(
+            "ZOOM_API_BASE_URL", default="https://api.zoom.us/v2"
+        )
+        self.zoom_oauth_token_url: str = config(
+            "ZOOM_OAUTH_TOKEN_URL", default="https://zoom.us/oauth/token"
+        )
         self.zoom_oauth_redirect_url: str = config(
             "ZOOM_OAUTH_REDIRECT_URL", default=""
         )

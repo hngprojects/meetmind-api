@@ -124,3 +124,23 @@ class SDKProviderEvent(SDKBase):
             "payload": json.loads(self.payload_json),
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
+
+
+class SDKZoomOAuthToken(SDKBase):
+    __tablename__ = "sdk_zoom_oauth_tokens"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_id)
+    zoom_user_id: Mapped[str | None] = mapped_column(String(255), index=True)
+    access_token: Mapped[str] = mapped_column(Text, nullable=False)
+    refresh_token: Mapped[str | None] = mapped_column(Text)
+    token_type: Mapped[str] = mapped_column(
+        String(60), nullable=False, default="bearer"
+    )
+    scope: Mapped[str | None] = mapped_column(Text)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from sdk.config import get_sdk_settings
 from sdk.db import get_sdk_db
+from sdk.providers.zoom_rtms.oauth import ZoomOAuthClient, ZoomOAuthError
 from sdk.providers.zoom_rtms.webhook import handle_zoom_webhook
 from sdk.providers.zoom_rtms.webhook_security import verify_zoom_signature
 from sdk.schemas import OAuthCallbackResponse
@@ -37,5 +38,18 @@ async def zoom_rtms_webhook(request: Request, db: Session = Depends(get_sdk_db))
 def zoom_oauth_callback(
     code: str | None = Query(default=None),
     state: str | None = Query(default=None),
+    db: Session = Depends(get_sdk_db),
 ):
-    return OAuthCallbackResponse(received=True, code_present=bool(code), state=state)
+    token_stored = False
+    if code:
+        try:
+            ZoomOAuthClient(db).exchange_code(code)
+        except ZoomOAuthError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        token_stored = True
+    return OAuthCallbackResponse(
+        received=True,
+        code_present=bool(code),
+        state=state,
+        token_stored=token_stored,
+    )
