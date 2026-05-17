@@ -58,13 +58,16 @@ class ZoomRTMSControlClient:
         if participant_user_id:
             body["settings"]["participant_user_id"] = participant_user_id
 
-        response = httpx.post(
-            f"{self.settings.zoom_api_base_url}/live_meetings/"
-            f"{meeting_id}/rtms_app/status",
-            headers={"Authorization": f"Bearer {access_token}"},
-            json=body,
-            timeout=20,
-        )
+        try:
+            response = httpx.post(
+                f"{self.settings.zoom_api_base_url}/live_meetings/"
+                f"{meeting_id}/rtms_app/status",
+                headers={"Authorization": f"Bearer {access_token}"},
+                json=body,
+                timeout=20,
+            )
+        except httpx.RequestError as exc:
+            raise ZoomRTMSControlError(f"Zoom RTMS request failed: {exc}") from exc
         response_payload = parse_zoom_response(response)
         if response.status_code >= 400:
             raise ZoomRTMSControlError(str(response_payload or response.text))

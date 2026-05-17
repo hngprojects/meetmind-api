@@ -30,6 +30,11 @@ class OAuthCallbackResponse(BaseModel):
     token_stored: bool = False
 
 
+class OAuthAuthorizeURLResponse(BaseModel):
+    authorization_url: str
+    state: str
+
+
 class StartRTMSRequest(BaseModel):
     participant_user_id: str | None = None
 

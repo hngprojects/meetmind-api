@@ -11,11 +11,13 @@ Use SQLite locally unless you intentionally want to point the SDK at Postgres.
 ```env
 SDK_DB_TYPE=sqlite
 SDK_SQLITE_PATH=.sdk/sdk.sqlite
+SDK_TOKEN_ENCRYPTION_KEY=<fernet-key>
 
 ZOOM_CLIENT_ID=your_zoom_rtms_client_id
 ZOOM_CLIENT_SECRET=your_zoom_rtms_client_secret
 ZOOM_API_BASE_URL=https://api.zoom.us/v2
 ZOOM_OAUTH_TOKEN_URL=https://zoom.us/oauth/token
+ZOOM_OAUTH_STATE_SECRET=<random-secret>
 ZOOM_WEBHOOK_SECRET_TOKEN=your_zoom_webhook_secret_token
 ZOOM_OAUTH_REDIRECT_URL=https://<tunnel>/api/v1/zoom/oauth/callback
 ZOOM_RTMS_WEBHOOK_URL=https://<tunnel>/api/v1/zoom/rtms/webhook
@@ -57,7 +59,12 @@ SDK_DB_NAME=sdk
    ```
 
 2. Start a real Zoom meeting configured for the RTMS app.
-3. Authorize the Zoom app with the generated Zoom OAuth URL.
+3. Generate and open the signed Zoom OAuth URL:
+
+   ```http
+   GET /api/v1/zoom/oauth/authorize-url
+   ```
+
 4. Ask the SDK to start RTMS:
 
    ```http

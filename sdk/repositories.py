@@ -16,6 +16,7 @@ from sdk.models import (
     SDKTranscriptTurn,
     SDKZoomOAuthToken,
 )
+from sdk.security import decrypt_secret, encrypt_secret
 from sdk.wake_words import normalize_wake_words
 
 _sequence_locks: defaultdict[str, Lock] = defaultdict(Lock)
@@ -178,8 +179,8 @@ class SDKRepository:
     ) -> SDKZoomOAuthToken:
         token = SDKZoomOAuthToken(
             zoom_user_id=zoom_user_id,
-            access_token=access_token,
-            refresh_token=refresh_token,
+            access_token=encrypt_secret(access_token),
+            refresh_token=encrypt_secret(refresh_token),
             token_type=token_type,
             scope=scope,
             expires_at=expires_at,
@@ -200,8 +201,10 @@ class SDKRepository:
 
     def get_latest_usable_zoom_oauth_token(self) -> SDKZoomOAuthToken | None:
         token = self.get_latest_zoom_oauth_token()
-        if token is None or token.expires_at is None:
-            return token
+        if token is None:
+            return None
+        if token.expires_at is None:
+            return None
         now = datetime.now(timezone.utc)
         expires_at = token.expires_at
         if expires_at.tzinfo is None:
@@ -209,6 +212,15 @@ class SDKRepository:
         if expires_at <= now:
             return None
         return token
+
+    def get_zoom_access_token_value(self, token: SDKZoomOAuthToken) -> str:
+        value = decrypt_secret(token.access_token)
+        if value is None:
+            raise RuntimeError("Stored Zoom access token is empty.")
+        return value
+
+    def get_zoom_refresh_token_value(self, token: SDKZoomOAuthToken) -> str | None:
+        return decrypt_secret(token.refresh_token)
 
     def next_sequence(self, session_id: str) -> int:
         value = self.db.execute(
