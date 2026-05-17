@@ -287,9 +287,9 @@ class TestCandidateExport:
 # ─── Get Single Candidate Tests ────────────────────────────────────────────────
 
 
-class TestCandidateGet:
+class TestCandidateGetByID:
     @pytest.mark.anyio
-    async def test_get_candidate_returns_200(self, client, db_session):
+    async def test_get_returns_200_with_candidate_data(self, client, db_session):
         from app.services.auth import AuthService
 
         user, workspace = await create_user_with_workspace(db_session)
@@ -316,13 +316,13 @@ class TestCandidateGet:
         assert "updated_at" in data
 
     @pytest.mark.anyio
-    async def test_get_candidate_returns_401_without_token(self, client):
+    async def test_get_returns_401_without_token(self, client):
         candidate_id = uuid.uuid4()
         response = await client.get(f"{GET_CANDIDATE_URL}/{candidate_id}")
         assert response.status_code == 401
 
     @pytest.mark.anyio
-    async def test_get_candidate_returns_422_invalid_uuid(self, client, db_session):
+    async def test_get_returns_422_for_invalid_uuid(self, client, db_session):
         from app.services.auth import AuthService
 
         user, _ = await create_user_with_workspace(db_session)
@@ -336,9 +336,7 @@ class TestCandidateGet:
         assert response.status_code == 422
 
     @pytest.mark.anyio
-    async def test_get_candidate_returns_404_when_no_workspace(
-        self, client, db_session
-    ):
+    async def test_get_returns_404_for_no_workspace(self, client, db_session):
         from app.services.auth import AuthService
 
         user = User(
@@ -361,9 +359,7 @@ class TestCandidateGet:
         assert body["error"]["code"] == "no_workspace_found"
 
     @pytest.mark.anyio
-    async def test_get_candidate_returns_404_when_not_found(
-        self, client, db_session
-    ):
+    async def test_get_returns_404_for_nonexistent_id(self, client, db_session):
         from app.services.auth import AuthService
 
         user, workspace = await create_user_with_workspace(db_session)
@@ -380,7 +376,7 @@ class TestCandidateGet:
         assert body["error"]["code"] == "candidate_not_found"
 
     @pytest.mark.anyio
-    async def test_get_candidate_returns_404_when_in_different_workspace(
+    async def test_get_returns_404_for_cross_workspace_access(
         self, client, db_session
     ):
         from app.services.auth import AuthService
