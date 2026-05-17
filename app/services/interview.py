@@ -33,10 +33,10 @@ async def _get_workspace(db: AsyncSession, user: User) -> uuid.UUID | None:
     Returns:
         The workspace UUID, or None if the user has no workspace.
     """
-    result = await db.execute(
+    workspace_id = await db.execute(
         select(WorkspaceMember.workspace_id).where(WorkspaceMember.user_id == user.id)
     )
-    return result.scalar()
+    return workspace_id.scalar_one_or_none()
 
 
 async def _get_or_create_workspace(db: AsyncSession, user: User) -> uuid.UUID:
