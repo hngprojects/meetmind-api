@@ -11,7 +11,7 @@ circular imports between models and routes.
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 
 
 class CandidateSearchResult(BaseModel):
@@ -32,7 +32,7 @@ class CandidateSearchResult(BaseModel):
 
     id: uuid.UUID
     full_name: str
-    email: EmailStr | None
+    email: str | None
     phone: str | None
     avatar_initials: str | None
     resume_url: str | None

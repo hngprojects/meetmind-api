@@ -1,7 +1,5 @@
 # app/api/v1/routes/candidates.py
 
-import csv
-import io
 import math
 from datetime import datetime, timezone
 from uuid import UUID
@@ -108,17 +106,8 @@ async def export_candidates(
     filename = f"candidates_{timestamp}.csv"
 
     if not workspace_id:
-        # No workspace — stream a CSV with only the header row
-        async def _empty_csv():
-            buf = io.StringIO()
-            w = csv.writer(buf)
-            w.writerow(
-                ["id", "full_name", "email", "phone", "workspace_id", "created_at"]
-            )
-            yield buf.getvalue()
-
         return StreamingResponse(
-            content=_empty_csv(),
+            content=iter(["id,full_name,email,phone,workspace_id,created_at\n"]),
             media_type="text/csv",
             headers={
                 "Content-Disposition": f"attachment; filename={filename}",
