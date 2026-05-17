@@ -59,7 +59,7 @@ class ZoomRTMSControlClient:
             body["settings"]["participant_user_id"] = participant_user_id
 
         try:
-            response = httpx.post(
+            response = httpx.patch(
                 f"{self.settings.zoom_api_base_url}/live_meetings/"
                 f"{meeting_id}/rtms_app/status",
                 headers={"Authorization": f"Bearer {access_token}"},

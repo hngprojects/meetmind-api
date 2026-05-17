@@ -85,3 +85,19 @@ SDK_DB_NAME=sdk
 v0.1 proves Zoom join/listen/transcript persistence through RTMS. Runtime RTMS is real; tests only simulate webhook payload parsing and database behavior.
 
 v0.2 speaking is intentionally represented as a bridge interface. Zoom RTMS receives media; speaking back into a Zoom call requires a Meeting SDK bridge, which should be implemented separately without coupling it to transcript ingestion.
+
+## Zoom RTMS Control
+
+The SDK starts RTMS with Zoom's live meeting RTMS status endpoint:
+
+```http
+PATCH /v2/live_meetings/{meetingId}/rtms_app/status
+{
+  "action": "start",
+  "settings": {
+    "client_id": "<zoom-client-id>"
+  }
+}
+```
+
+The meeting must be active, the Zoom app must be authorized by the meeting host or account, and the app must have the `meeting:update:participant_rtms_app_status` scope.
