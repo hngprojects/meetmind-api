@@ -16,6 +16,7 @@ from app.models.workspace import Workspace, WorkspaceMember
 
 SEARCH_URL = "/api/v1/candidates/search"
 EXPORT_URL = "/api/v1/candidates/export"
+GET_CANDIDATE_URL = "/api/v1/candidates"
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -281,3 +282,139 @@ class TestCandidateExport:
         first_line = response.text.split("\n")[0]
         assert "full_name" in first_line
         assert "email" in first_line
+
+
+# ─── Get Single Candidate Tests ────────────────────────────────────────────────
+
+
+class TestCandidateGet:
+    @pytest.mark.anyio
+    async def test_get_candidate_returns_200(self, client, db_session):
+        from app.services.auth import AuthService
+
+        user, workspace = await create_user_with_workspace(db_session)
+        token = await AuthService.create_access_token(user)
+        candidate = await create_candidate(
+            db_session, workspace.id, "Alice Wonder", "alice@test.com"
+        )
+
+        response = await client.get(
+            f"{GET_CANDIDATE_URL}/{candidate.id}",
+            headers=auth_header(token),
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["success"] is True
+        assert body["message"] == "Candidate profile retrieved"
+        data = body["data"]
+        assert data["id"] == str(candidate.id)
+        assert data["full_name"] == "Alice Wonder"
+        assert data["email"] == "alice@test.com"
+        assert data["workspace_id"] == str(workspace.id)
+        assert "created_at" in data
+        assert "updated_at" in data
+
+    @pytest.mark.anyio
+    async def test_get_candidate_returns_401_without_token(self, client):
+        candidate_id = uuid.uuid4()
+        response = await client.get(f"{GET_CANDIDATE_URL}/{candidate_id}")
+        assert response.status_code == 401
+
+    @pytest.mark.anyio
+    async def test_get_candidate_returns_422_invalid_uuid(self, client, db_session):
+        from app.services.auth import AuthService
+
+        user, _ = await create_user_with_workspace(db_session)
+        token = await AuthService.create_access_token(user)
+
+        response = await client.get(
+            f"{GET_CANDIDATE_URL}/not-a-uuid",
+            headers=auth_header(token),
+        )
+
+        assert response.status_code == 422
+
+    @pytest.mark.anyio
+    async def test_get_candidate_returns_404_when_no_workspace(
+        self, client, db_session
+    ):
+        from app.services.auth import AuthService
+
+        user = User(
+            name="Lonely User",
+            email=f"lonely-{uuid.uuid4()}@example.com",
+            is_verified=True,
+        )
+        db_session.add(user)
+        await db_session.commit()
+        token = await AuthService.create_access_token(user)
+
+        candidate_id = uuid.uuid4()
+        response = await client.get(
+            f"{GET_CANDIDATE_URL}/{candidate_id}",
+            headers=auth_header(token),
+        )
+
+        assert response.status_code == 404
+        body = response.json()
+        assert body["error"]["code"] == "no_workspace_found"
+
+    @pytest.mark.anyio
+    async def test_get_candidate_returns_404_when_not_found(
+        self, client, db_session
+    ):
+        from app.services.auth import AuthService
+
+        user, workspace = await create_user_with_workspace(db_session)
+        token = await AuthService.create_access_token(user)
+        missing_id = uuid.uuid4()
+
+        response = await client.get(
+            f"{GET_CANDIDATE_URL}/{missing_id}",
+            headers=auth_header(token),
+        )
+
+        assert response.status_code == 404
+        body = response.json()
+        assert body["error"]["code"] == "candidate_not_found"
+
+    @pytest.mark.anyio
+    async def test_get_candidate_returns_404_when_in_different_workspace(
+        self, client, db_session
+    ):
+        from app.services.auth import AuthService
+
+        user, workspace = await create_user_with_workspace(db_session)
+        token = await AuthService.create_access_token(user)
+        candidate = await create_candidate(
+            db_session, workspace.id, "Visible", "visible@test.com"
+        )
+
+        other_user = User(
+            name="Other User",
+            email=f"other-{uuid.uuid4()}@example.com",
+            is_verified=True,
+        )
+        db_session.add(other_user)
+        await db_session.flush()
+        other_workspace = Workspace(
+            name="Other Workspace", created_by=other_user.id
+        )
+        db_session.add(other_workspace)
+        await db_session.flush()
+        other_member = WorkspaceMember(
+            workspace_id=other_workspace.id, user_id=other_user.id, role="owner"
+        )
+        db_session.add(other_member)
+        await db_session.commit()
+        other_token = await AuthService.create_access_token(other_user)
+
+        response = await client.get(
+            f"{GET_CANDIDATE_URL}/{candidate.id}",
+            headers=auth_header(other_token),
+        )
+
+        assert response.status_code == 404
+        body = response.json()
+        assert body["error"]["code"] == "candidate_not_found"
