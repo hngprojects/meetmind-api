@@ -69,7 +69,7 @@ def test_zoom_oauth_token_allows_null_refresh_token(db_session):
     assert token.refresh_token_encrypted is None
 
 
-def test_zoom_rtms_start_posts_expected_payload(monkeypatch, db_session):
+def test_zoom_rtms_start_patches_expected_payload(monkeypatch, db_session):
     monkeypatch.setenv("ZOOM_CLIENT_ID", "test-client-id")
     get_sdk_settings.cache_clear()
     repo = SDKRepository(db_session)
