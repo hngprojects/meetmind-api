@@ -46,7 +46,6 @@ class CandidateSearchResult(BaseModel):
     # CandidateSearchResult.model_validate(candidate_orm_object) would fail.
 
 
-
 class CandidateProfile(BaseModel):
     """
     All fields from the Candidate model.

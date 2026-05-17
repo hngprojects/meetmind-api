@@ -19,7 +19,6 @@ from app.schemas.interview import (
 )
 
 
-
 async def _get_workspace(db: AsyncSession, user: User) -> uuid.UUID | None:
     """Return the user's first workspace, or None if they don't have one.
 

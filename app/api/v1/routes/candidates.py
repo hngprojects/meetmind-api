@@ -9,9 +9,9 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DBSession
-from app.core.responses import success, APIError
+from app.core.responses import APIError, success
 from app.models.interview import Candidate
-from app.schemas.candidate import CandidateSearchResult, CandidateProfile
+from app.schemas.candidate import CandidateProfile, CandidateSearchResult
 from app.services.candidate import CandidateService
 from app.services.interview import _get_workspace
 
