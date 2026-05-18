@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, HttpUrl, field_validator
-
-from app.models.interview import ParticipationMode
 
 # ── Request schemas ────────────────────────────────────────────────────────────
 
@@ -25,7 +24,7 @@ class CreateInterviewRequest(BaseModel):
     role_title: str | None = Field(default=None, max_length=120)
     platform: str | None = Field(default=None, max_length=30)
     ai_tone: str | None = Field(default=None, max_length=20)
-    participation_mode: ParticipationMode | None = None
+    participation_mode: Literal["passive", "standard", "proactive"] = "standard"
     criteria: list[str] = Field(..., min_length=1, max_length=10)
 
     @field_validator("criteria")
@@ -61,7 +60,7 @@ class InterviewResponse(BaseModel):
     meeting_link: str | None
     scheduled_start: datetime
     ai_tone: str | None
-    participation_mode: ParticipationMode | None
+    participation_mode: str | None
     criteria: list[str] = Field(default_factory=list)
     candidate_name: str
     candidate_email: str | None

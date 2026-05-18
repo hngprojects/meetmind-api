@@ -1,19 +1,11 @@
 import uuid
 from datetime import datetime
-from enum import StrEnum
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text
-from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKey
-
-
-class ParticipationMode(StrEnum):
-    PASSIVE = "passive"
-    STANDARD = "standard"
-    PROACTIVE = "proactive"
 
 
 class Candidate(Base, UUIDPrimaryKey, TimestampMixin):
@@ -58,7 +50,7 @@ class Interview(Base, UUIDPrimaryKey, TimestampMixin):
     status: Mapped[str | None] = mapped_column(String(20), default="draft")
     ai_tone: Mapped[str | None] = mapped_column(String(20))
     participation_mode: Mapped[str | None] = mapped_column(
-        SQLEnum(ParticipationMode), default=ParticipationMode.STANDARD
+        String(20), default="standard"
     )
     questions_asked: Mapped[int | None] = mapped_column(Integer)
     questions_total: Mapped[int | None] = mapped_column(Integer)
