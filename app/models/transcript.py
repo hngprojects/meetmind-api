@@ -43,7 +43,7 @@ class MeetingSummary(Base, UUIDPrimaryKey, TimestampMixin):
     )
     body: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str | None] = mapped_column(String(20), default="generating")
-    generated_at: Mapped[datetime | None] = mapped_column(DateTime)
+    generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class SummaryKeypoint(Base, UUIDPrimaryKey, TimestampMixin):

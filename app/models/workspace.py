@@ -45,4 +45,4 @@ class WorkspaceInvite(Base, UUIDPrimaryKey, TimestampMixin):
     )
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str | None] = mapped_column(String(20), default="pending")
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

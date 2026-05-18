@@ -23,7 +23,6 @@ from app.schemas.interview import (
     InterviewSummaryResponse,
 )
 
-
 def _extract_text_from_upload(upload: UploadFile) -> str:
     filename = (upload.filename or "").lower()
     data = upload.file.read()
