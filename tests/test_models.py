@@ -74,7 +74,7 @@ class TestBaseMetadata:
             "scorecard_signals",
             "refresh_tokens",
             "candidate_documents",
-            "document_chunks"
+            "document_chunks",
         }
         actual = set(Base.metadata.tables.keys())
         assert expected.issubset(actual)

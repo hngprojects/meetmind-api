@@ -1,14 +1,12 @@
 import uuid
 from typing import List
 
-from sqlalchemy import Column, Integer, String, Text, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
-from sqlalchemy.orm import Mapped, mapped_column
-
 from pgvector.sqlalchemy import Vector
+from sqlalchemy import ForeignKey, String, Text
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, UUIDPrimaryKey, TimestampMixin
+from app.models.base import Base, TimestampMixin, UUIDPrimaryKey
 
 
 class CandidateDocument(Base, UUIDPrimaryKey, TimestampMixin):
