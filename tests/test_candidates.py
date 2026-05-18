@@ -552,5 +552,4 @@ class TestCandidateDocumentUpload:
             )
 
         assert response.status_code == 500
-        # FIX: Assert directly against the string text to bypass structural differences
         assert "Database insertion failed" in response.text
