@@ -51,6 +51,8 @@ from app.models.user import (
 )
 from app.models.workspace import Workspace, WorkspaceInvite, WorkspaceMember
 
+from app.models.document import DocumentChunk, CandidateDocument
+
 __all__ = [
     "Base",
     "TimestampMixin",
@@ -111,4 +113,7 @@ __all__ = [
     "ScorecardScore",
     "ScorecardQuestion",
     "ScorecardSignal",
+    #Documents
+    "DocumentChunk", 
+    "CandidateDocument"
 ]
