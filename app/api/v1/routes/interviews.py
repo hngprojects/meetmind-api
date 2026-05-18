@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser
-from app.core.responses import success
+from app.core.responses import paginated, success
 from app.db.session import get_session
 from app.schemas.interview import CreateInterviewRequest
 from app.services.interview import InterviewService
@@ -51,11 +51,20 @@ async def create_interview(
 async def list_interviews(
     user: CurrentUser,
     status_filter: str | None = Query(default=None, alias="status"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
     db: AsyncSession = Depends(get_session),
 ):
     interviews = await InterviewService.list_interviews(db, user, status_filter)
-    return success(
-        [item.model_dump(mode="json") for item in interviews],
+    total = len(interviews)
+    start = (page - 1) * page_size
+    end = start + page_size
+    rows = [item.model_dump(mode="json") for item in interviews[start:end]]
+    return paginated(
+        rows,
+        page=page,
+        page_size=page_size,
+        total=total,
         message="Interview sessions retrieved successfully",
     )
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 from app.models.interview import ParticipationMode
 
@@ -18,7 +18,7 @@ class CreateInterviewRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     candidate_name: str = Field(..., min_length=1, max_length=120)
     candidate_email: str | None = Field(default=None)
-    meeting_link: str = Field(..., min_length=1)
+    meeting_link: HttpUrl
     scheduled_start: datetime
     job_description: str = Field(..., min_length=1)
     scoring_rubric: str = Field(..., min_length=1)
