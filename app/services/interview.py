@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import status
+from fastapi import UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.responses import APIError
-from app.models.interview import Candidate, Interview, InterviewSummary
+from app.models.interview import (
+    Candidate,
+    Interview,
+    InterviewSkillToAssess,
+    InterviewSummary,
+)
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.interview import (
@@ -19,19 +24,45 @@ from app.schemas.interview import (
 )
 
 
+def _extract_text_from_upload(upload: UploadFile) -> str:
+    filename = (upload.filename or "").lower()
+    data = upload.file.read()
+
+    if filename.endswith(".txt"):
+        return data.decode("utf-8", errors="ignore").strip()
+
+    if filename.endswith(".pdf"):
+        try:
+            from pypdf import PdfReader
+        except Exception as exc:  # pragma: no cover
+            raise APIError(
+                "PDF extraction dependency missing", code="pdf_dependency_missing"
+            ) from exc
+        from io import BytesIO
+
+        reader = PdfReader(BytesIO(data))
+        return "\n".join((page.extract_text() or "") for page in reader.pages).strip()
+
+    if filename.endswith(".docx"):
+        try:
+            from docx import Document
+        except Exception as exc:  # pragma: no cover
+            raise APIError(
+                "DOCX extraction dependency missing", code="docx_dependency_missing"
+            ) from exc
+        from io import BytesIO
+
+        doc = Document(BytesIO(data))
+        return "\n".join(p.text for p in doc.paragraphs).strip()
+
+    raise APIError(
+        "Unsupported file type. Use PDF, DOCX, or TXT",
+        status_code=status.HTTP_400_BAD_REQUEST,
+        code="unsupported_file_type",
+    )
+
+
 async def _get_workspace(db: AsyncSession, user: User) -> uuid.UUID | None:
-    """Return the user's first workspace, or None if they don't have one.
-
-    Read-only — no side effects. Use this in GET endpoints where creating a
-    workspace on a read request would violate HTTP idempotency rules.
-
-    Args:
-        db: Active async database session.
-        user: The authenticated user.
-
-    Returns:
-        The workspace UUID, or None if the user has no workspace.
-    """
     workspace_id = await db.execute(
         select(WorkspaceMember.workspace_id).where(WorkspaceMember.user_id == user.id)
     )
@@ -39,40 +70,77 @@ async def _get_workspace(db: AsyncSession, user: User) -> uuid.UUID | None:
 
 
 async def _get_or_create_workspace(db: AsyncSession, user: User) -> uuid.UUID:
-    """Return the user's first workspace, creating a default one if none exists.
-
-    Args:
-        db: Active async database session.
-        user: The authenticated user.
-
-    Returns:
-        The workspace UUID to scope the interview under.
-    """
     result = await db.execute(
         select(WorkspaceMember.workspace_id).where(WorkspaceMember.user_id == user.id)
     )
     workspace_id = result.scalar_one_or_none()
-
     if workspace_id:
         return workspace_id
 
-    # No workspace yet — create a default one for this user.
     workspace = Workspace(
-        name=f"{user.name or user.email}'s Workspace",
-        created_by=user.id,
+        name=f"{user.name or user.email}'s Workspace", created_by=user.id
     )
     db.add(workspace)
     await db.flush()
 
-    member = WorkspaceMember(
-        workspace_id=workspace.id,
-        user_id=user.id,
-        role="owner",
-    )
-    db.add(member)
+    db.add(WorkspaceMember(workspace_id=workspace.id, user_id=user.id, role="owner"))
     await db.flush()
-
     return workspace.id
+
+
+async def _hydrate_response(
+    db: AsyncSession, interview: Interview
+) -> InterviewResponse:
+    candidate = (
+        await db.execute(
+            select(Candidate).where(Candidate.id == interview.candidate_id)
+        )
+    ).scalar_one_or_none()
+    summary = (
+        await db.execute(
+            select(InterviewSummary).where(
+                InterviewSummary.interview_id == interview.id
+            )
+        )
+    ).scalar_one_or_none()
+    skills = (
+        (
+            await db.execute(
+                select(InterviewSkillToAssess)
+                .where(InterviewSkillToAssess.summary_id == summary.id)
+                .order_by(InterviewSkillToAssess.sort_order.asc())
+                if summary
+                else select(InterviewSkillToAssess).where(False)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    return InterviewResponse(
+        id=interview.id,
+        title=interview.role_title,
+        status=interview.status,
+        role_title=interview.role_title,
+        platform=interview.platform,
+        meeting_link=interview.meeting_link,
+        scheduled_start=interview.scheduled_start,
+        ai_tone=interview.ai_tone,
+        participation_mode=interview.participation_mode,
+        criteria=[s.skill for s in skills],
+        candidate_name=candidate.full_name if candidate else "Unknown",
+        candidate_email=candidate.email if candidate else None,
+        summary=InterviewSummaryResponse(
+            job_description=summary.job_description if summary else None,
+            scoring_rubric=summary.scoring_rubric if summary else None,
+            cv_text=summary.cv_text if summary else None,
+            ai_assessment=summary.ai_assessment if summary else None,
+            status=summary.status if summary else None,
+        )
+        if summary
+        else None,
+        created_at=interview.created_at,
+    )
 
 
 class InterviewService:
@@ -118,7 +186,10 @@ class InterviewService:
             interviewer_id=user.id,
             role_title=request.role_title or request.title,
             platform=request.platform,
+            meeting_link=request.meeting_link,
+            scheduled_start=request.scheduled_start,
             ai_tone=request.ai_tone,
+            participation_mode=request.participation_mode,
             status="draft",
         )
         db.add(interview)
@@ -132,25 +203,17 @@ class InterviewService:
             status="pending",
         )
         db.add(summary)
-        await db.commit()
+        await db.flush()
 
-        return InterviewResponse(
-            id=interview.id,
-            title=request.title,
-            status=interview.status,
-            role_title=interview.role_title,
-            platform=interview.platform,
-            ai_tone=interview.ai_tone,
-            candidate_name=candidate.full_name,
-            candidate_email=candidate.email,
-            summary=InterviewSummaryResponse(
-                job_description=summary.job_description,
-                scoring_rubric=summary.scoring_rubric,
-                ai_assessment=summary.ai_assessment,
-                status=summary.status,
-            ),
-            created_at=interview.created_at,
-        )
+        for idx, skill in enumerate(request.criteria, start=1):
+            db.add(
+                InterviewSkillToAssess(
+                    summary_id=summary.id, skill=skill, sort_order=idx
+                )
+            )
+
+        await db.commit()
+        return await _hydrate_response(db, interview)
 
     @staticmethod
     async def get_interview(
@@ -175,14 +238,12 @@ class InterviewService:
             APIError: 404 if the interview does not exist or does not belong
                 to the requesting user.
         """
-        result = await db.execute(
+        interview = await db.execute(
             select(Interview).where(
                 Interview.id == interview_id,
                 Interview.interviewer_id == user.id,
             )
-        )
-        interview = result.scalar_one_or_none()
-
+        ).scalar_one_or_none()
         if not interview:
             raise APIError(
                 "Interview not found",
@@ -190,36 +251,88 @@ class InterviewService:
                 code="interview_not_found",
             )
 
-        # Fetch candidate
-        candidate_result = await db.execute(
-            select(Candidate).where(Candidate.id == interview.candidate_id)
-        )
-        candidate = candidate_result.scalar_one_or_none()
+        await db.refresh(interview)
+        response = await _hydrate_response(db, interview)
 
-        # Fetch summary (context)
-        summary_result = await db.execute(
-            select(InterviewSummary).where(
-                InterviewSummary.interview_id == interview.id
+        response.title = interview.role_title
+        return response
+
+    @staticmethod
+    async def confirm_interview(
+        interview_id: uuid.UUID, db: AsyncSession, user: User
+    ) -> InterviewResponse:
+        interview = (
+            await db.execute(
+                select(Interview).where(
+                    Interview.id == interview_id, Interview.interviewer_id == user.id
+                )
+            )
+        ).scalar_one_or_none()
+        if not interview:
+            raise APIError(
+                "Interview not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="interview_not_found",
+            )
+        if interview.status != "draft":
+            raise APIError(
+                "Only draft interviews can be confirmed",
+                code="invalid_status_transition",
+            )
+        interview.status = "scheduled"
+        await db.commit()
+        return await _hydrate_response(db, interview)
+
+    @staticmethod
+    async def list_interviews(
+        db: AsyncSession, user: User, status_filter: str | None
+    ) -> list[InterviewResponse]:
+        query = (
+            select(Interview)
+            .where(Interview.interviewer_id == user.id)
+            .order_by(
+                Interview.scheduled_start.desc().nullslast(),
+                Interview.created_at.desc(),
             )
         )
-        summary = summary_result.scalar_one_or_none()
+        if status_filter:
+            query = query.where(Interview.status == status_filter)
+        interviews = (await db.execute(query)).scalars().all()
+        return [await _hydrate_response(db, interview) for interview in interviews]
 
-        return InterviewResponse(
-            id=interview.id,
-            title=interview.role_title,
-            status=interview.status,
-            role_title=interview.role_title,
-            platform=interview.platform,
-            ai_tone=interview.ai_tone,
-            candidate_name=candidate.full_name if candidate else "Unknown",
-            candidate_email=candidate.email if candidate else None,
-            summary=InterviewSummaryResponse(
-                job_description=summary.job_description if summary else None,
-                scoring_rubric=summary.scoring_rubric if summary else None,
-                ai_assessment=summary.ai_assessment if summary else None,
-                status=summary.status if summary else None,
+    @staticmethod
+    async def upload_interview_document(
+        interview_id: uuid.UUID, upload: UploadFile, db: AsyncSession, user: User
+    ) -> InterviewResponse:
+        interview = (
+            await db.execute(
+                select(Interview).where(
+                    Interview.id == interview_id, Interview.interviewer_id == user.id
+                )
             )
-            if summary
-            else None,
-            created_at=interview.created_at,
-        )
+        ).scalar_one_or_none()
+        if not interview:
+            raise APIError(
+                "Interview not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="interview_not_found",
+            )
+        summary = (
+            await db.execute(
+                select(InterviewSummary).where(
+                    InterviewSummary.interview_id == interview.id
+                )
+            )
+        ).scalar_one_or_none()
+        if not summary:
+            raise APIError(
+                "Interview summary not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="summary_not_found",
+            )
+        extracted_text = _extract_text_from_upload(upload)
+        summary.cv_text = (
+            summary.cv_text + "\n\n" if summary.cv_text else ""
+        ) + extracted_text
+        await db.commit()
+        return await _hydrate_response(db, interview)

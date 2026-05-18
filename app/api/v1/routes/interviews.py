@@ -4,7 +4,7 @@ and scorecard endpoints."""
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser
@@ -47,6 +47,19 @@ async def create_interview(
     )
 
 
+@router.get("", status_code=status.HTTP_200_OK)
+async def list_interviews(
+    user: CurrentUser,
+    status_filter: str | None = Query(default=None, alias="status"),
+    db: AsyncSession = Depends(get_session),
+):
+    interviews = await InterviewService.list_interviews(db, user, status_filter)
+    return success(
+        [item.model_dump(mode="json") for item in interviews],
+        message="Interview sessions retrieved successfully",
+    )
+
+
 @router.get("/{interview_id}", status_code=status.HTTP_200_OK)
 async def get_interview(
     interview_id: uuid.UUID,
@@ -72,4 +85,31 @@ async def get_interview(
     return success(
         interview.model_dump(mode="json"),
         message="Interview session retrieved successfully",
+    )
+
+
+@router.patch("/{interview_id}/confirm", status_code=status.HTTP_200_OK)
+async def confirm_interview(
+    interview_id: uuid.UUID, user: CurrentUser, db: AsyncSession = Depends(get_session)
+):
+    interview = await InterviewService.confirm_interview(interview_id, db, user)
+    return success(
+        interview.model_dump(mode="json"),
+        message="Interview session confirmed successfully",
+    )
+
+
+@router.post("/{interview_id}/upload", status_code=status.HTTP_200_OK)
+async def upload_interview_document(
+    interview_id: uuid.UUID,
+    user: CurrentUser,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_session),
+):
+    interview = await InterviewService.upload_interview_document(
+        interview_id, file, db, user
+    )
+    return success(
+        interview.model_dump(mode="json"),
+        message="Interview document uploaded successfully",
     )

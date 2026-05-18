@@ -1,11 +1,19 @@
 import uuid
 from datetime import datetime
+from enum import StrEnum
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKey
+
+
+class ParticipationMode(StrEnum):
+    PASSIVE = "passive"
+    STANDARD = "standard"
+    PROACTIVE = "proactive"
 
 
 class Candidate(Base, UUIDPrimaryKey, TimestampMixin):
@@ -46,8 +54,12 @@ class Interview(Base, UUIDPrimaryKey, TimestampMixin):
     scheduled_end: Mapped[datetime | None] = mapped_column(DateTime)
     duration_min: Mapped[int | None] = mapped_column(Integer)
     platform: Mapped[str | None] = mapped_column(String(30))
+    meeting_link: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str | None] = mapped_column(String(20), default="draft")
     ai_tone: Mapped[str | None] = mapped_column(String(20))
+    participation_mode: Mapped[str | None] = mapped_column(
+        SQLEnum(ParticipationMode), default=ParticipationMode.STANDARD
+    )
     questions_asked: Mapped[int | None] = mapped_column(Integer)
     questions_total: Mapped[int | None] = mapped_column(Integer)
     rating: Mapped[int | None] = mapped_column(Integer)
@@ -88,6 +100,7 @@ class InterviewSummary(Base, UUIDPrimaryKey, TimestampMixin):
     # Context injection fields — added for interview session management (Stage 5)
     job_description: Mapped[str | None] = mapped_column(Text)
     scoring_rubric: Mapped[str | None] = mapped_column(Text)
+    cv_text: Mapped[str | None] = mapped_column(Text)
     # Pre-existing fields
     custom_question: Mapped[str | None] = mapped_column(Text)
     ai_assessment: Mapped[str | None] = mapped_column(Text)
