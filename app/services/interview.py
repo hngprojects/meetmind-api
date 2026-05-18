@@ -9,7 +9,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.responses import APIError
-from app.models.interview import Candidate, Interview, InterviewSummary
+from app.models.interview import (
+    Candidate,
+    Interview,
+    InterviewSkillToAssess,
+    InterviewSummary,
+)
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.interview import (
@@ -75,6 +80,60 @@ async def _get_or_create_workspace(db: AsyncSession, user: User) -> uuid.UUID:
     return workspace.id
 
 
+async def _hydrate_response(
+    db: AsyncSession, interview: Interview
+) -> InterviewResponse:
+    candidate = (
+        await db.execute(
+            select(Candidate).where(Candidate.id == interview.candidate_id)
+        )
+    ).scalar_one_or_none()
+    summary = (
+        await db.execute(
+            select(InterviewSummary).where(
+                InterviewSummary.interview_id == interview.id
+            )
+        )
+    ).scalar_one_or_none()
+    skills = (
+        (
+            await db.execute(
+                select(InterviewSkillToAssess)
+                .where(InterviewSkillToAssess.summary_id == summary.id)
+                .order_by(InterviewSkillToAssess.sort_order.asc())
+                if summary
+                else select(InterviewSkillToAssess).where(False)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    return InterviewResponse(
+        id=interview.id,
+        title=interview.role_title,
+        status=interview.status,
+        role_title=interview.role_title,
+        platform=interview.platform,
+        meeting_link=interview.meeting_link,
+        scheduled_start=interview.scheduled_start,
+        ai_tone=interview.ai_tone,
+        participation_mode=interview.participation_mode,
+        criteria=[s.skill for s in skills],
+        candidate_name=candidate.full_name if candidate else "Unknown",
+        candidate_email=candidate.email if candidate else None,
+        summary=InterviewSummaryResponse(
+            job_description=summary.job_description if summary else None,
+            scoring_rubric=summary.scoring_rubric if summary else None,
+            ai_assessment=summary.ai_assessment if summary else None,
+            status=summary.status if summary else None,
+        )
+        if summary
+        else None,
+        created_at=interview.created_at,
+    )
+
+
 class InterviewService:
     """Encapsulate interview session creation and retrieval."""
 
@@ -118,7 +177,10 @@ class InterviewService:
             interviewer_id=user.id,
             role_title=request.role_title or request.title,
             platform=request.platform,
+            meeting_link=str(request.meeting_link),
+            scheduled_start=request.scheduled_start,
             ai_tone=request.ai_tone,
+            participation_mode=request.participation_mode,
             status="draft",
         )
         db.add(interview)
@@ -132,25 +194,19 @@ class InterviewService:
             status="pending",
         )
         db.add(summary)
-        await db.commit()
+        await db.flush()
 
-        return InterviewResponse(
-            id=interview.id,
-            title=request.title,
-            status=interview.status,
-            role_title=interview.role_title,
-            platform=interview.platform,
-            ai_tone=interview.ai_tone,
-            candidate_name=candidate.full_name,
-            candidate_email=candidate.email,
-            summary=InterviewSummaryResponse(
-                job_description=summary.job_description,
-                scoring_rubric=summary.scoring_rubric,
-                ai_assessment=summary.ai_assessment,
-                status=summary.status,
-            ),
-            created_at=interview.created_at,
-        )
+        for idx, skill in enumerate(request.criteria, start=1):
+            db.add(
+                InterviewSkillToAssess(
+                    summary_id=summary.id, skill=skill, sort_order=idx
+                )
+            )
+
+        await db.commit()
+        response = await _hydrate_response(db, interview)
+        response.title = request.title
+        return response
 
     @staticmethod
     async def get_interview(
@@ -175,13 +231,14 @@ class InterviewService:
             APIError: 404 if the interview does not exist or does not belong
                 to the requesting user.
         """
-        result = await db.execute(
-            select(Interview).where(
-                Interview.id == interview_id,
-                Interview.interviewer_id == user.id,
+        interview = (
+            await db.execute(
+                select(Interview).where(
+                    Interview.id == interview_id,
+                    Interview.interviewer_id == user.id,
+                )
             )
-        )
-        interview = result.scalar_one_or_none()
+        ).scalar_one_or_none()
 
         if not interview:
             raise APIError(
@@ -190,36 +247,50 @@ class InterviewService:
                 code="interview_not_found",
             )
 
-        # Fetch candidate
-        candidate_result = await db.execute(
-            select(Candidate).where(Candidate.id == interview.candidate_id)
-        )
-        candidate = candidate_result.scalar_one_or_none()
+        await db.refresh(interview)
+        response = await _hydrate_response(db, interview)
+        response.title = interview.role_title
+        return response
 
-        # Fetch summary (context)
-        summary_result = await db.execute(
-            select(InterviewSummary).where(
-                InterviewSummary.interview_id == interview.id
+    @staticmethod
+    async def confirm_interview(
+        interview_id: uuid.UUID, db: AsyncSession, user: User
+    ) -> InterviewResponse:
+        interview = (
+            await db.execute(
+                select(Interview).where(
+                    Interview.id == interview_id, Interview.interviewer_id == user.id
+                )
+            )
+        ).scalar_one_or_none()
+        if not interview:
+            raise APIError(
+                "Interview not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="interview_not_found",
+            )
+        if interview.status != "draft":
+            raise APIError(
+                "Only draft interviews can be confirmed",
+                code="invalid_status_transition",
+            )
+        interview.status = "scheduled"
+        await db.commit()
+        return await _hydrate_response(db, interview)
+
+    @staticmethod
+    async def list_interviews(
+        db: AsyncSession, user: User, status_filter: str | None
+    ) -> list[InterviewResponse]:
+        query = (
+            select(Interview)
+            .where(Interview.interviewer_id == user.id)
+            .order_by(
+                Interview.scheduled_start.desc().nullslast(),
+                Interview.created_at.desc(),
             )
         )
-        summary = summary_result.scalar_one_or_none()
-
-        return InterviewResponse(
-            id=interview.id,
-            title=interview.role_title,
-            status=interview.status,
-            role_title=interview.role_title,
-            platform=interview.platform,
-            ai_tone=interview.ai_tone,
-            candidate_name=candidate.full_name if candidate else "Unknown",
-            candidate_email=candidate.email if candidate else None,
-            summary=InterviewSummaryResponse(
-                job_description=summary.job_description if summary else None,
-                scoring_rubric=summary.scoring_rubric if summary else None,
-                ai_assessment=summary.ai_assessment if summary else None,
-                status=summary.status if summary else None,
-            )
-            if summary
-            else None,
-            created_at=interview.created_at,
-        )
+        if status_filter:
+            query = query.where(Interview.status == status_filter)
+        interviews = (await db.execute(query)).scalars().all()
+        return [await _hydrate_response(db, interview) for interview in interviews]

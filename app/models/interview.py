@@ -46,8 +46,12 @@ class Interview(Base, UUIDPrimaryKey, TimestampMixin):
     scheduled_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     duration_min: Mapped[int | None] = mapped_column(Integer)
     platform: Mapped[str | None] = mapped_column(String(30))
+    meeting_link: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str | None] = mapped_column(String(20), default="draft")
     ai_tone: Mapped[str | None] = mapped_column(String(20))
+    participation_mode: Mapped[str | None] = mapped_column(
+        String(20), default="standard"
+    )
     questions_asked: Mapped[int | None] = mapped_column(Integer)
     questions_total: Mapped[int | None] = mapped_column(Integer)
     rating: Mapped[int | None] = mapped_column(Integer)

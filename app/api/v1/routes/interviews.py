@@ -4,11 +4,11 @@ and scorecard endpoints."""
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser
-from app.core.responses import success
+from app.core.responses import paginated, success
 from app.db.session import get_session
 from app.schemas.interview import CreateInterviewRequest
 from app.services.interview import InterviewService
@@ -47,6 +47,28 @@ async def create_interview(
     )
 
 
+@router.get("", status_code=status.HTTP_200_OK)
+async def list_interviews(
+    user: CurrentUser,
+    status_filter: str | None = Query(default=None, alias="status"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    db: AsyncSession = Depends(get_session),
+):
+    interviews = await InterviewService.list_interviews(db, user, status_filter)
+    total = len(interviews)
+    start = (page - 1) * page_size
+    end = start + page_size
+    rows = [item.model_dump(mode="json") for item in interviews[start:end]]
+    return paginated(
+        rows,
+        page=page,
+        page_size=page_size,
+        total=total,
+        message="Interview sessions retrieved successfully",
+    )
+
+
 @router.get("/{interview_id}", status_code=status.HTTP_200_OK)
 async def get_interview(
     interview_id: uuid.UUID,
@@ -72,4 +94,15 @@ async def get_interview(
     return success(
         interview.model_dump(mode="json"),
         message="Interview session retrieved successfully",
+    )
+
+
+@router.patch("/{interview_id}/confirm", status_code=status.HTTP_200_OK)
+async def confirm_interview(
+    interview_id: uuid.UUID, user: CurrentUser, db: AsyncSession = Depends(get_session)
+):
+    interview = await InterviewService.confirm_interview(interview_id, db, user)
+    return success(
+        interview.model_dump(mode="json"),
+        message="Interview session confirmed successfully",
     )
