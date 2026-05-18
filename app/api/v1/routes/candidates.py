@@ -187,6 +187,7 @@ async def get_candidate(
 
 @router.post("/{candidate_id}/documents/upload")
 async def upload_candidate_document(
+    current_user: CurrentUser,
     candidate_id: UUID,
     db: DBSession,
     file: UploadFile = File(...)
