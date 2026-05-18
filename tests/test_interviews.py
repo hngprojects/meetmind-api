@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from httpx import AsyncClient
@@ -58,11 +59,15 @@ VALID_INTERVIEW_PAYLOAD = {
     "title": "Backend Engineer Interview",
     "candidate_name": "Jane Doe",
     "candidate_email": "jane@example.com",
+    "meeting_link": "https://meet.google.com/abc-defg-hij",
+    "scheduled_start": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
     "job_description": "Build scalable APIs using FastAPI and PostgreSQL.",
     "scoring_rubric": "Communication, API design, problem-solving, scalability.",
     "role_title": "Senior Backend Engineer",
     "platform": "zoom",
     "ai_tone": "professional",
+    "participation_mode": "standard",
+    "criteria": ["Communication", "Problem solving"],
 }
 
 
@@ -244,8 +249,13 @@ class TestCreateInterview:
         minimal = {
             "title": "Minimal Interview",
             "candidate_name": "John Smith",
+            "meeting_link": "https://zoom.us/j/123456789",
+            "scheduled_start": (
+                datetime.now(timezone.utc) + timedelta(days=2)
+            ).isoformat(),
             "job_description": "Write Python services.",
             "scoring_rubric": "Code quality, communication.",
+            "criteria": ["Code quality"],
         }
         response = await client.post(
             INTERVIEWS_URL,
@@ -409,3 +419,115 @@ class TestGetInterview:
             f"Body: {response.json()}"
         )
         logger.info("[result]  Unauthenticated retrieval correctly rejected  ✓")
+
+    @pytest.mark.anyio
+    async def test_create_returns_422_when_criteria_list_is_empty(
+        self, client: AsyncClient
+    ):
+        token = await signup_and_get_token(client, unique_user())
+        payload = dict(VALID_INTERVIEW_PAYLOAD)
+        payload["criteria"] = []
+        response = await client.post(
+            INTERVIEWS_URL, json=payload, headers=auth_headers(token)
+        )
+        assert response.status_code == 422
+
+    @pytest.mark.anyio
+    async def test_create_returns_422_when_criteria_exceeds_ten_items(
+        self, client: AsyncClient
+    ):
+        token = await signup_and_get_token(client, unique_user())
+        payload = dict(VALID_INTERVIEW_PAYLOAD)
+        payload["criteria"] = [f"c{i}" for i in range(11)]
+        response = await client.post(
+            INTERVIEWS_URL, json=payload, headers=auth_headers(token)
+        )
+        assert response.status_code == 422
+
+    @pytest.mark.anyio
+    async def test_create_returns_422_when_meeting_link_is_invalid_url(
+        self, client: AsyncClient
+    ):
+        token = await signup_and_get_token(client, unique_user())
+        payload = dict(VALID_INTERVIEW_PAYLOAD)
+        payload["meeting_link"] = "not-a-url"
+        response = await client.post(
+            INTERVIEWS_URL, json=payload, headers=auth_headers(token)
+        )
+        assert response.status_code == 422
+
+    @pytest.mark.anyio
+    async def test_create_returns_422_when_participation_mode_is_invalid(
+        self, client: AsyncClient
+    ):
+        token = await signup_and_get_token(client, unique_user())
+        payload = dict(VALID_INTERVIEW_PAYLOAD)
+        payload["participation_mode"] = "aggressive"
+        response = await client.post(
+            INTERVIEWS_URL, json=payload, headers=auth_headers(token)
+        )
+        assert response.status_code == 422
+
+
+class TestDocumentUpload:
+    @pytest.mark.anyio
+    async def test_upload_txt_file_extracts_text_and_returns_200(
+        self, client: AsyncClient
+    ):
+        token = await signup_and_get_token(client, unique_user())
+        create = await client.post(
+            INTERVIEWS_URL, json=VALID_INTERVIEW_PAYLOAD, headers=auth_headers(token)
+        )
+        interview_id = create.json()["data"]["id"]
+        files = {"file": ("cv.txt", b"Python developer", "text/plain")}
+        response = await client.post(
+            f"{INTERVIEWS_URL}/{interview_id}/upload",
+            files=files,
+            headers=auth_headers(token),
+        )
+        assert response.status_code == 200
+        assert "Python developer" in (
+            response.json()["data"]["summary"]["cv_text"] or ""
+        )
+
+    @pytest.mark.anyio
+    async def test_upload_returns_422_for_unsupported_file_type(
+        self, client: AsyncClient
+    ):
+        token = await signup_and_get_token(client, unique_user())
+        create = await client.post(
+            INTERVIEWS_URL, json=VALID_INTERVIEW_PAYLOAD, headers=auth_headers(token)
+        )
+        interview_id = create.json()["data"]["id"]
+        files = {"file": ("cv.csv", b"a,b", "text/csv")}
+        response = await client.post(
+            f"{INTERVIEWS_URL}/{interview_id}/upload",
+            files=files,
+            headers=auth_headers(token),
+        )
+        assert response.status_code == 422
+
+
+class TestConfirmAndListInterviews:
+    @pytest.mark.anyio
+    async def test_confirm_draft_interview_returns_200_and_status_becomes_scheduled(
+        self, client: AsyncClient
+    ):
+        token = await signup_and_get_token(client, unique_user())
+        create = await client.post(
+            INTERVIEWS_URL, json=VALID_INTERVIEW_PAYLOAD, headers=auth_headers(token)
+        )
+        interview_id = create.json()["data"]["id"]
+        confirm = await client.patch(
+            f"{INTERVIEWS_URL}/{interview_id}/confirm", headers=auth_headers(token)
+        )
+        assert confirm.status_code == 200
+        assert confirm.json()["data"]["status"] == "scheduled"
+
+    @pytest.mark.anyio
+    async def test_list_response_includes_pagination_meta(self, client: AsyncClient):
+        token = await signup_and_get_token(client, unique_user())
+        response = await client.get(INTERVIEWS_URL, headers=auth_headers(token))
+        assert response.status_code == 200
+        assert "meta" in response.json()
+        assert "pagination" in response.json()["meta"]

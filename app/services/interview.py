@@ -57,7 +57,7 @@ def _extract_text_from_upload(upload: UploadFile) -> str:
 
     raise APIError(
         "Unsupported file type. Use PDF, DOCX, or TXT",
-        status_code=status.HTTP_400_BAD_REQUEST,
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         code="unsupported_file_type",
     )
 
@@ -184,9 +184,9 @@ class InterviewService:
             workspace_id=workspace_id,
             candidate_id=candidate.id,
             interviewer_id=user.id,
-            role_title=request.role_title or request.title,
+            role_title=request.role_title,
             platform=request.platform,
-            meeting_link=request.meeting_link,
+            meeting_link=str(request.meeting_link),
             scheduled_start=request.scheduled_start,
             ai_tone=request.ai_tone,
             participation_mode=request.participation_mode,
@@ -213,7 +213,9 @@ class InterviewService:
             )
 
         await db.commit()
-        return await _hydrate_response(db, interview)
+        response = await _hydrate_response(db, interview)
+        response.title = request.title
+        return response
 
     @staticmethod
     async def get_interview(
@@ -238,10 +240,12 @@ class InterviewService:
             APIError: 404 if the interview does not exist or does not belong
                 to the requesting user.
         """
-        interview = await db.execute(
-            select(Interview).where(
-                Interview.id == interview_id,
-                Interview.interviewer_id == user.id,
+        interview = (
+            await db.execute(
+                select(Interview).where(
+                    Interview.id == interview_id,
+                    Interview.interviewer_id == user.id,
+                )
             )
         ).scalar_one_or_none()
         if not interview:
