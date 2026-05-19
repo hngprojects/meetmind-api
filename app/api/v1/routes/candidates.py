@@ -195,11 +195,11 @@ async def get_candidate(
 
 @router.post("/{candidate_id}/documents/upload")
 async def upload_candidate_document(
-    current_user: CurrentUser,
+    # current_user: CurrentUser,
     candidate_id: UUID,
     db: DBSession,
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
+    file: UploadFile = File(..., description="The document file (PDF, DOCX, TXT)"),
 ):
     content = await file.read()
 
@@ -213,7 +213,7 @@ async def upload_candidate_document(
     document = CandidateDocument(
         candidate_id=candidate_id,
         filename=file.filename,
-        status=DocumentStatus.PENDING,
+        status=DocumentStatus.PENDING.value,
     )
 
     db.add(document)
