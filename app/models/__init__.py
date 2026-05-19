@@ -1,5 +1,6 @@
 from app.models.ask_mind import AskMindMessage, AskMindSession, AskMindSuggestedPrompt
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKey
+from app.models.document import CandidateDocument, DocumentChunk
 from app.models.email_verification import EmailVerificationToken
 from app.models.integration import (
     Integration,
@@ -111,4 +112,7 @@ __all__ = [
     "ScorecardScore",
     "ScorecardQuestion",
     "ScorecardSignal",
+    # Documents
+    "DocumentChunk",
+    "CandidateDocument",
 ]
