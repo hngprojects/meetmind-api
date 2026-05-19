@@ -153,9 +153,7 @@ class TestCancelInterview:
         cancel = await client.post(cancel_url(iid), headers=auth_headers(token))
         assert cancel.status_code == 200
 
-        get = await client.get(
-            f"{INTERVIEWS_URL}/{iid}", headers=auth_headers(token)
-        )
+        get = await client.get(f"{INTERVIEWS_URL}/{iid}", headers=auth_headers(token))
         assert get.status_code == 200
         assert get.json()["data"]["status"] == "cancelled"
         logger.info("[result] Cancellation persisted and visible via GET  [OK]")
@@ -172,9 +170,7 @@ class TestCancelInterview:
         token = await signup_and_get_token(client, unique_user())
         fake_id = str(uuid.uuid4())
 
-        response = await client.post(
-            cancel_url(fake_id), headers=auth_headers(token)
-        )
+        response = await client.post(cancel_url(fake_id), headers=auth_headers(token))
         body = response.json()
         logger.info(
             "[not found] POST /interviews/%s/cancel → %d",
@@ -202,9 +198,7 @@ class TestCancelInterview:
 
         iid = await create_interview(client, token_a)
 
-        response = await client.post(
-            cancel_url(iid), headers=auth_headers(token_b)
-        )
+        response = await client.post(cancel_url(iid), headers=auth_headers(token_b))
         body = response.json()
         logger.info(
             "[cross-user] POST /interviews/%s/cancel (user B) → %d",

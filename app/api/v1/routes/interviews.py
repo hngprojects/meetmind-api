@@ -165,4 +165,3 @@ async def cancel_interview(
         interview.model_dump(mode="json"),
         message="Interview cancelled successfully",
     )
-
