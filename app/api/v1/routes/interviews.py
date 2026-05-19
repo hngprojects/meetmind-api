@@ -134,3 +134,35 @@ async def update_criteria(
         interview_id, payload, db, user
     )
     return success(result, message="Criteria updated successfully")
+
+
+@router.post("/{interview_id}/cancel", status_code=status.HTTP_200_OK)
+async def cancel_interview(
+    interview_id: uuid.UUID,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_session),
+):
+    """Cancel a scheduled or draft interview.
+
+    Transitions the interview status to ``cancelled``. Only the owning
+    interviewer may cancel their interview. Already-cancelled or completed
+    interviews are rejected with 409.
+
+    Args:
+        interview_id: UUID of the interview to cancel.
+        user: The authenticated user.
+        db: Async database session.
+
+    Returns:
+        A standardized success envelope with the cancelled interview session.
+
+    Raises:
+        APIError: 404 if the interview does not exist or belongs to another user.
+        APIError: 409 if the interview is already cancelled or completed.
+    """
+    interview = await InterviewService.cancel_interview(interview_id, db, user)
+    return success(
+        interview.model_dump(mode="json"),
+        message="Interview cancelled successfully",
+    )
+
