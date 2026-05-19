@@ -330,7 +330,7 @@ class TestCreateInterview:
         logger.info("[result]          Optional fields correctly default to null  ✓")
 
 
-# ── GET /interviews/{id} 
+# ── GET /interviews/{id} ───────────────────────────────────────────────────────
 
 
 class TestGetInterview:
