@@ -63,6 +63,7 @@ VALID_INTERVIEW_PAYLOAD = {
     "role_title": "Senior Backend Engineer",
     "platform": "zoom",
     "ai_tone": "professional",
+    "criteria": ["Communication", "API Design", "Problem Solving"],
 }
 
 
@@ -246,6 +247,7 @@ class TestCreateInterview:
             "candidate_name": "John Smith",
             "job_description": "Write Python services.",
             "scoring_rubric": "Code quality, communication.",
+            "criteria": ["Code Quality"],
         }
         response = await client.post(
             INTERVIEWS_URL,
@@ -409,3 +411,172 @@ class TestGetInterview:
             f"Body: {response.json()}"
         )
         logger.info("[result]  Unauthenticated retrieval correctly rejected  ✓")
+
+
+# ── Criteria validation on POST /interviews ────────────────────────────────────
+
+
+class TestCreateInterviewCriteria:
+    @pytest.mark.anyio
+    async def test_create_with_valid_criteria(self, client: AsyncClient):
+        token = await signup_and_get_token(client, unique_user())
+        response = await client.post(
+            INTERVIEWS_URL,
+            json=VALID_INTERVIEW_PAYLOAD,
+            headers=auth_headers(token),
+        )
+        assert response.status_code == 201
+        data = response.json()["data"]
+        assert data["criteria"] == ["Communication", "API Design", "Problem Solving"]
+
+    @pytest.mark.anyio
+    async def test_create_rejects_empty_criteria(self, client: AsyncClient):
+        token = await signup_and_get_token(client, unique_user())
+        payload = {**VALID_INTERVIEW_PAYLOAD, "criteria": []}
+        response = await client.post(
+            INTERVIEWS_URL, json=payload, headers=auth_headers(token)
+        )
+        assert response.status_code == 422
+
+    @pytest.mark.anyio
+    async def test_create_rejects_more_than_10_criteria(self, client: AsyncClient):
+        token = await signup_and_get_token(client, unique_user())
+        payload = {
+            **VALID_INTERVIEW_PAYLOAD,
+            "criteria": [f"Criterion {i}" for i in range(11)],
+        }
+        response = await client.post(
+            INTERVIEWS_URL, json=payload, headers=auth_headers(token)
+        )
+        assert response.status_code == 422
+
+    @pytest.mark.anyio
+    async def test_create_rejects_blank_criterion(self, client: AsyncClient):
+        token = await signup_and_get_token(client, unique_user())
+        payload = {**VALID_INTERVIEW_PAYLOAD, "criteria": ["Valid", "   "]}
+        response = await client.post(
+            INTERVIEWS_URL, json=payload, headers=auth_headers(token)
+        )
+        assert response.status_code == 422
+
+    @pytest.mark.anyio
+    async def test_create_rejects_criterion_over_80_chars(self, client: AsyncClient):
+        token = await signup_and_get_token(client, unique_user())
+        payload = {**VALID_INTERVIEW_PAYLOAD, "criteria": ["x" * 81]}
+        response = await client.post(
+            INTERVIEWS_URL, json=payload, headers=auth_headers(token)
+        )
+        assert response.status_code == 422
+
+
+# ── GET /interviews/{id} returns criteria ──────────────────────────────────────
+
+
+class TestGetInterviewCriteria:
+    @pytest.mark.anyio
+    async def test_get_returns_criteria(self, client: AsyncClient):
+        token = await signup_and_get_token(client, unique_user())
+        create = await client.post(
+            INTERVIEWS_URL,
+            json=VALID_INTERVIEW_PAYLOAD,
+            headers=auth_headers(token),
+        )
+        assert create.status_code == 201
+        interview_id = create.json()["data"]["id"]
+
+        get = await client.get(
+            f"{INTERVIEWS_URL}/{interview_id}", headers=auth_headers(token)
+        )
+        assert get.status_code == 200
+        data = get.json()["data"]
+        assert data["criteria"] == ["Communication", "API Design", "Problem Solving"]
+
+
+# ── PUT /interviews/{id}/criteria ──────────────────────────────────────────────
+
+CRITERIA_URL = lambda iid: f"{INTERVIEWS_URL}/{iid}/criteria"  # noqa: E731
+
+
+class TestUpdateCriteria:
+    @pytest.mark.anyio
+    async def test_update_criteria_on_draft(self, client: AsyncClient):
+        token = await signup_and_get_token(client, unique_user())
+        create = await client.post(
+            INTERVIEWS_URL,
+            json=VALID_INTERVIEW_PAYLOAD,
+            headers=auth_headers(token),
+        )
+        iid = create.json()["data"]["id"]
+
+        response = await client.put(
+            CRITERIA_URL(iid),
+            json={"criteria": ["Leadership", "Teamwork"]},
+            headers=auth_headers(token),
+        )
+        assert response.status_code == 200
+        assert response.json()["data"]["criteria"] == ["Leadership", "Teamwork"]
+
+    @pytest.mark.anyio
+    async def test_update_criteria_reflected_in_get(self, client: AsyncClient):
+        token = await signup_and_get_token(client, unique_user())
+        create = await client.post(
+            INTERVIEWS_URL,
+            json=VALID_INTERVIEW_PAYLOAD,
+            headers=auth_headers(token),
+        )
+        iid = create.json()["data"]["id"]
+
+        await client.put(
+            CRITERIA_URL(iid),
+            json={"criteria": ["Updated Skill"]},
+            headers=auth_headers(token),
+        )
+
+        get = await client.get(
+            f"{INTERVIEWS_URL}/{iid}", headers=auth_headers(token)
+        )
+        assert get.json()["data"]["criteria"] == ["Updated Skill"]
+
+    @pytest.mark.anyio
+    async def test_update_returns_404_for_other_user(self, client: AsyncClient):
+        token_a = await signup_and_get_token(client, unique_user("crit_a"))
+        token_b = await signup_and_get_token(client, unique_user("crit_b"))
+
+        create = await client.post(
+            INTERVIEWS_URL,
+            json=VALID_INTERVIEW_PAYLOAD,
+            headers=auth_headers(token_a),
+        )
+        iid = create.json()["data"]["id"]
+
+        response = await client.put(
+            CRITERIA_URL(iid),
+            json={"criteria": ["Hacked"]},
+            headers=auth_headers(token_b),
+        )
+        assert response.status_code == 404
+
+    @pytest.mark.anyio
+    async def test_update_returns_401_without_token(self, client: AsyncClient):
+        fake_id = str(uuid.uuid4())
+        response = await client.put(
+            CRITERIA_URL(fake_id), json={"criteria": ["Test"]}
+        )
+        assert response.status_code == 401
+
+    @pytest.mark.anyio
+    async def test_update_rejects_empty_criteria(self, client: AsyncClient):
+        token = await signup_and_get_token(client, unique_user())
+        create = await client.post(
+            INTERVIEWS_URL,
+            json=VALID_INTERVIEW_PAYLOAD,
+            headers=auth_headers(token),
+        )
+        iid = create.json()["data"]["id"]
+
+        response = await client.put(
+            CRITERIA_URL(iid),
+            json={"criteria": []},
+            headers=auth_headers(token),
+        )
+        assert response.status_code == 422
