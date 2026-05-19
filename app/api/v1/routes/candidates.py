@@ -1,16 +1,22 @@
 # app/api/v1/routes/candidates.py
-
 import math
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    File,
+    Query,
+    UploadFile,
+    status,
+)
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DBSession
 from app.core.responses import APIError, success
-from app.models.document import CandidateDocument, DocumentChunk
+from app.models.document import CandidateDocument, DocumentStatus
 from app.models.interview import Candidate
 from app.schemas.candidate import CandidateProfile, CandidateSearchResult
 from app.services.candidate import CandidateService
@@ -18,6 +24,8 @@ from app.services.document_service import DocumentService
 from app.services.interview import _get_workspace
 
 router = APIRouter()
+
+MAX_FILE_SIZE = 10 * 1024 * 1024
 
 
 @router.get("/search")
@@ -190,42 +198,36 @@ async def upload_candidate_document(
     current_user: CurrentUser,
     candidate_id: UUID,
     db: DBSession,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
 ):
-
     content = await file.read()
 
-    raw_text = await DocumentService.extract_text(file.filename, content)
-    if not raw_text.strip():
-        raise HTTPException(
-            status_code=400, detail="Document contains no readable text"
+    if len(content) > MAX_FILE_SIZE:
+        raise APIError(
+            "File too large",
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            code="file_too_large",
         )
 
-    text_chunks = DocumentService.chunk_text(raw_text)
+    document = CandidateDocument(
+        candidate_id=candidate_id,
+        filename=file.filename,
+        status=DocumentStatus.PENDING,
+    )
 
-    embeddings = await DocumentService.get_embedding(text_chunks)
+    db.add(document)
 
-    try:
-        doc_record = CandidateDocument(
-            candidate_id=candidate_id, filename=file.filename
-        )
-        db.add(doc_record)
-        await db.flush()
+    await db.commit()
+    await db.refresh(document)
 
-        chunk_records = []
-        for text, embedding in zip(text_chunks, embeddings):
-            chunk_records.append(
-                DocumentChunk(
-                    document_id=doc_record.id, text_content=text, embedding=embedding
-                )
-            )
+    background_tasks.add_task(
+        DocumentService.process_document,
+        document_id=document.id,
+        filename=file.filename,
+        content=content,
+    )
 
-        db.add_all(chunk_records)
-        await db.commit()
-        return success(
-            message="Upload successful",
-        )
-
-    except Exception:
-        await db.rollback()
-        raise HTTPException(status_code=500, detail="Database insertion failed")
+    return success(
+        message="Document uploaded successfully. Processing started.",
+    )

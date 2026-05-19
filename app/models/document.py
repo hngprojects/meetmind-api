@@ -1,12 +1,27 @@
 import uuid
+from enum import Enum
 from typing import List
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import ENUM, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKey
+
+
+class DocumentStatus(str, Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+DOCUMENT_STATUS_ENUM = ENUM(
+    DocumentStatus,
+    name="document_status",
+    create_type=False,
+)
 
 
 class CandidateDocument(Base, UUIDPrimaryKey, TimestampMixin):
@@ -16,6 +31,13 @@ class CandidateDocument(Base, UUIDPrimaryKey, TimestampMixin):
         UUID(as_uuid=True), ForeignKey("candidates.id"), nullable=False
     )
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[DocumentStatus] = mapped_column(
+        DOCUMENT_STATUS_ENUM,
+        nullable=False,
+        default=DocumentStatus.PENDING,
+        server_default=DocumentStatus.PENDING.value,
+    )
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     chunks: Mapped[List["DocumentChunk"]] = relationship(
         "DocumentChunk", back_populates="document", cascade="all, delete-orphan"
     )
