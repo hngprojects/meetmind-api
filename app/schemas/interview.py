@@ -31,7 +31,7 @@ class ParticipationMode(str, Enum):
     passive = "passive"
     standard = "standard"
     proactive = "proactive"
-    
+
 
 # ── Request schemas ────────────────────────────────────────────────────────────
 
