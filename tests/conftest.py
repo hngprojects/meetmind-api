@@ -52,6 +52,7 @@ async def create_tables():
     from app.models import (  # noqa: F401  # noqa: F401
         email_verification,
         interview,
+        scorecard,
         user,
         workspace,
     )
