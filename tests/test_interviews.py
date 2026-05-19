@@ -228,6 +228,70 @@ class TestCreateInterview:
             "[result]                 Missing scoring rubric correctly rejected  ✓"
         )
 
+    # ── Participation mode ─────────────────────────────────────────────────
+
+    @pytest.mark.anyio
+    async def test_creates_interview_with_explicit_participation_mode(
+        self, client: AsyncClient
+    ):
+        token = await signup_and_get_token(client, unique_user())
+        payload = {**VALID_INTERVIEW_PAYLOAD, "participation_mode": "proactive"}
+        response = await client.post(
+            INTERVIEWS_URL, json=payload, headers=auth_headers(token)
+        )
+        body = response.json()
+        assert response.status_code == 201, body
+        assert body["data"]["participation_mode"] == "proactive"
+
+    @pytest.mark.anyio
+    async def test_participation_mode_defaults_to_standard(
+        self, client: AsyncClient
+    ):
+        token = await signup_and_get_token(client, unique_user())
+        payload = {
+            k: v
+            for k, v in VALID_INTERVIEW_PAYLOAD.items()
+            if k != "participation_mode"
+        }
+        response = await client.post(
+            INTERVIEWS_URL, json=payload, headers=auth_headers(token)
+        )
+        body = response.json()
+        assert response.status_code == 201, body
+        assert body["data"]["participation_mode"] == "standard"
+
+    @pytest.mark.anyio
+    async def test_creates_interview_with_all_participation_modes(
+        self, client: AsyncClient
+    ):
+        for mode in ("passive", "standard", "proactive"):
+            token = await signup_and_get_token(client, unique_user(mode))
+            payload = {**VALID_INTERVIEW_PAYLOAD, "participation_mode": mode}
+            response = await client.post(
+                INTERVIEWS_URL, json=payload, headers=auth_headers(token)
+            )
+            body = response.json()
+            assert response.status_code == 201, (
+                f"Failed for mode={mode}: {body}"
+            )
+            assert body["data"]["participation_mode"] == mode
+
+    @pytest.mark.anyio
+    async def test_invalid_participation_mode_returns_422(
+        self, client: AsyncClient
+    ):
+        token = await signup_and_get_token(client, unique_user())
+        payload = {
+            **VALID_INTERVIEW_PAYLOAD,
+            "participation_mode": "invalid_mode",
+        }
+        response = await client.post(
+            INTERVIEWS_URL, json=payload, headers=auth_headers(token)
+        )
+        assert response.status_code == 422
+
+    # ────────────────────────────────────────────────────────────────────────
+
     @pytest.mark.anyio
     async def test_optional_fields_default_correctly(self, client: AsyncClient):
         """
@@ -266,10 +330,29 @@ class TestCreateInterview:
         logger.info("[result]          Optional fields correctly default to null  ✓")
 
 
-# ── GET /interviews/{id} ───────────────────────────────────────────────────────
+# ── GET /interviews/{id} 
 
 
 class TestGetInterview:
+    @pytest.mark.anyio
+    async def test_retrieves_interview_with_participation_mode(
+        self, client: AsyncClient
+    ):
+        token = await signup_and_get_token(client, unique_user())
+        payload = {**VALID_INTERVIEW_PAYLOAD, "participation_mode": "proactive"}
+        create = await client.post(
+            INTERVIEWS_URL, json=payload, headers=auth_headers(token)
+        )
+        assert create.status_code == 201
+        interview_id = create.json()["data"]["id"]
+
+        get = await client.get(
+            f"{INTERVIEWS_URL}/{interview_id}", headers=auth_headers(token)
+        )
+        body = get.json()
+        assert get.status_code == 200, body
+        assert body["data"]["participation_mode"] == "proactive"
+
     @pytest.mark.anyio
     async def test_retrieves_interview_by_id(self, client: AsyncClient):
         """
