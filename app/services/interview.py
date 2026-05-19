@@ -279,6 +279,58 @@ class InterviewService:
         return await _hydrate_response(db, interview)
 
     @staticmethod
+    async def mark_interview_as_completed(
+        interview_id: uuid.UUID, db: AsyncSession, user: User
+    ) -> InterviewResponse:
+        interview = (
+            await db.execute(
+                select(Interview).where(
+                    Interview.id == interview_id, Interview.interviewer_id == user.id
+                )
+            )
+        ).scalar_one_or_none()
+        if not interview:
+            raise APIError(
+                "Interview not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="interview_not_found",
+            )
+        if interview.status != "scheduled":
+            raise APIError(
+                "Only scheduled interviews can be confirmed",
+                code="invalid_status_transition",
+            )
+        interview.status = "completed"
+        await db.commit()
+        return await _hydrate_response(db, interview)
+
+    @staticmethod
+    async def mark_interview_as_cancelled(
+        interview_id: uuid.UUID, db: AsyncSession, user: User
+    ) -> InterviewResponse:
+        interview = (
+            await db.execute(
+                select(Interview).where(
+                    Interview.id == interview_id, Interview.interviewer_id == user.id
+                )
+            )
+        ).scalar_one_or_none()
+        if not interview:
+            raise APIError(
+                "Interview not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="interview_not_found",
+            )
+        if interview.status != "scheduled":
+            raise APIError(
+                "Only scheduled interviews can be cancelled",
+                code="invalid_status_transition",
+            )
+        interview.status = "cancelled"
+        await db.commit()
+        return await _hydrate_response(db, interview)
+
+    @staticmethod
     async def list_interviews(
         db: AsyncSession, user: User, status_filter: str | None
     ) -> list[InterviewResponse]:

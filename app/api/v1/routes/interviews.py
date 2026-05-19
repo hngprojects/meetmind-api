@@ -106,3 +106,29 @@ async def confirm_interview(
         interview.model_dump(mode="json"),
         message="Interview session confirmed successfully",
     )
+
+
+@router.patch("/{interview_id}/complete", status_code=status.HTTP_200_OK)
+async def complete_interview(
+    interview_id: uuid.UUID, user: CurrentUser, db: AsyncSession = Depends(get_session)
+):
+    interview = await InterviewService.mark_interview_as_completed(
+        interview_id, db, user
+    )
+    return success(
+        interview.model_dump(mode="json"),
+        message="Interview session completed successfully",
+    )
+
+
+@router.patch("/{interview_id}/cancel", status_code=status.HTTP_200_OK)
+async def cancel_interview(
+    interview_id: uuid.UUID, user: CurrentUser, db: AsyncSession = Depends(get_session)
+):
+    interview = await InterviewService.mark_interview_as_cancelled(
+        interview_id, db, user
+    )
+    return success(
+        interview.model_dump(mode="json"),
+        message="Interview session cancelled successfully",
+    )
