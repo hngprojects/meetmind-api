@@ -51,6 +51,9 @@ class Interview(Base, UUIDPrimaryKey, TimestampMixin):
     questions_asked: Mapped[int | None] = mapped_column(Integer)
     questions_total: Mapped[int | None] = mapped_column(Integer)
     rating: Mapped[int | None] = mapped_column(Integer)
+    participation_mode: Mapped[str | None] = mapped_column(
+        String(20), default="standard", nullable=False
+    )
 
 
 class InterviewTranscript(Base, UUIDPrimaryKey, TimestampMixin):

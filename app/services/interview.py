@@ -120,6 +120,7 @@ class InterviewService:
             platform=request.platform,
             ai_tone=request.ai_tone,
             status="draft",
+            participation_mode=request.participation_mode.value,
         )
         db.add(interview)
         await db.flush()
