@@ -16,6 +16,7 @@ from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DBSession
 from app.core.responses import APIError, success
+from app.db.session import AsyncSessionLocal
 from app.models.document import CandidateDocument, DocumentStatus
 from app.models.interview import Candidate
 from app.schemas.candidate import CandidateProfile, CandidateSearchResult
@@ -216,16 +217,26 @@ async def upload_candidate_document(
         status=DocumentStatus.PENDING,
     )
 
-    db.add(document)
+    try:
+        db.add(document)
+        await db.commit()
+        await db.refresh(document)
 
-    await db.commit()
-    await db.refresh(document)
+    except Exception:
+        await db.rollback()
+        raise APIError(
+            "Database insertion failed",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            code="database_insertion_failed",
+        )
 
+    # IMPORTANT FIX: pass session factory, NOT session type or instance
     background_tasks.add_task(
         DocumentService.process_document,
         document_id=document.id,
         filename=file.filename,
         content=content,
+        db=AsyncSessionLocal,
     )
 
     return success(
