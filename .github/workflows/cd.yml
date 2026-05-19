@@ -1,14 +1,8 @@
 name: Backend CD
-
 on:
   push:
     branches: [staging, main]
-
 jobs:
-  # ─────────────────────────────────────────────────────────────────────────────
-  # Deploy Staging — SSH in, pull latest, run migrations, restart service
-  # URL: https://api.staging.meetmind.hng14.com
-  # ─────────────────────────────────────────────────────────────────────────────
   deploy-staging:
     name: Deploy → Staging
     runs-on: ubuntu-latest
@@ -16,7 +10,6 @@ jobs:
     environment:
       name: staging
       url: ${{ vars.STAGING_URL }}
-
     steps:
       - name: Deploy to staging VPS
         uses: appleboy/ssh-action@v1
@@ -27,27 +20,20 @@ jobs:
           script: |
             set -e
             cd /opt/meetmind/backend
-
             echo "→ Pulling latest code..."
-            git pull origin staging
-
+            git fetch origin
+            git checkout staging
+            git reset --hard origin/staging
+            git clean -fd
             echo "→ Installing dependencies..."
             uv sync --frozen
-
-            # echo "→ Running migrations..."
-            # uv run alembic upgrade head
-
+            echo "→ Running migrations..."
+            uv run alembic upgrade head
             echo "→ Restarting service..."
             sudo systemctl restart meetmind-be-staging
-
             echo "→ Checking service status..."
             sudo systemctl is-active meetmind-be-staging
-
-            echo "Staging backend deployed: ${{ github.sha }}"
-
-  # ─────────────────────────────────────────────────────────────────────────────
-  # Deploy Production
-  # URL: https://api.meetmind.hng14.com
+            echo "✅ Staging backend deployed: ${{ github.sha }}"
 
   deploy-production:
     name: Deploy → Production
@@ -56,7 +42,6 @@ jobs:
     environment:
       name: production
       url: ${{ vars.PROD_URL }}
-
     steps:
       - name: Deploy to production VPS
         uses: appleboy/ssh-action@v1
@@ -67,20 +52,17 @@ jobs:
           script: |
             set -e
             cd /opt/meetmind/backend
-
             echo "→ Pulling latest code..."
-            git pull origin main
-
+            git fetch origin
+            git checkout main
+            git reset --hard origin/main
+            git clean -fd
             echo "→ Installing dependencies..."
             uv sync --frozen
-
-            # echo "→ Running migrations..."
-            # uv run alembic upgrade head
-
+            echo "→ Running migrations..."
+            uv run alembic upgrade head
             echo "→ Restarting service..."
             sudo systemctl restart meetmind-be
-
             echo "→ Checking service status..."
             sudo systemctl is-active meetmind-be
-
-            echo "Production backend deployed: ${{ github.sha }}"
+            echo "✅ Production backend deployed: ${{ github.sha }}"
