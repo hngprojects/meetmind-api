@@ -85,14 +85,14 @@ class InterviewSummary(Base, UUIDPrimaryKey, TimestampMixin):
     interview_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("interviews.id"), nullable=False
     )
-    # Context injection fields — added for interview session management (Stage 5)
     job_description: Mapped[str | None] = mapped_column(Text)
     scoring_rubric: Mapped[str | None] = mapped_column(Text)
-    # Pre-existing fields
     custom_question: Mapped[str | None] = mapped_column(Text)
     ai_assessment: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str | None] = mapped_column(String(20), default="generating")
     generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    is_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class InterviewSkillToAssess(Base, UUIDPrimaryKey, TimestampMixin):

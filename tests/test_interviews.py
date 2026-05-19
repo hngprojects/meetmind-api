@@ -409,3 +409,58 @@ class TestGetInterview:
             f"Body: {response.json()}"
         )
         logger.info("[result]  Unauthenticated retrieval correctly rejected  ✓")
+
+
+class TestConfirmInterview:
+    @pytest.mark.anyio
+    async def test_confirm_interview_returns_200_with_valid_recruiter(
+        self, client: AsyncClient
+    ):
+        token = await signup_and_get_token(client, unique_user())
+        create = await client.post(
+            INTERVIEWS_URL,
+            json=VALID_INTERVIEW_PAYLOAD,
+            headers=auth_headers(token),
+        )
+        interview_id = create.json()["data"]["id"]
+
+        confirm = await client.post(
+            f"{INTERVIEWS_URL}/{interview_id}/confirm",
+            headers=auth_headers(token),
+        )
+        body = confirm.json()
+        assert confirm.status_code == 200
+        assert body["data"]["is_confirmed"] is True
+        assert body["data"]["confirmed_at"] is not None
+
+    @pytest.mark.anyio
+    async def test_confirm_interview_returns_404_when_not_found(
+        self, client: AsyncClient
+    ):
+        token = await signup_and_get_token(client, unique_user())
+        fake_id = str(uuid.uuid4())
+        response = await client.post(
+            f"{INTERVIEWS_URL}/{fake_id}/confirm",
+            headers=auth_headers(token),
+        )
+        assert response.status_code == 404
+
+    @pytest.mark.anyio
+    async def test_confirm_interview_returns_404_when_user_not_interviewer(
+        self, client: AsyncClient
+    ):
+        token_a = await signup_and_get_token(client, unique_user("recruiter_a"))
+        token_b = await signup_and_get_token(client, unique_user("recruiter_b"))
+
+        create = await client.post(
+            INTERVIEWS_URL,
+            json=VALID_INTERVIEW_PAYLOAD,
+            headers=auth_headers(token_a),
+        )
+        interview_id = create.json()["data"]["id"]
+
+        response = await client.post(
+            f"{INTERVIEWS_URL}/{interview_id}/confirm",
+            headers=auth_headers(token_b),
+        )
+        assert response.status_code == 404

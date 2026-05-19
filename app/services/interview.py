@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import status
 from sqlalchemy import select
@@ -222,4 +223,41 @@ class InterviewService:
             if summary
             else None,
             created_at=interview.created_at,
+        )
+
+    @staticmethod
+    async def confirm_session(
+        interview_id: uuid.UUID,
+        db: AsyncSession,
+        user: User,
+    ) -> InterviewSummaryResponse:
+        """Mark an interview summary as confirmed by the recruiter."""
+        result = await db.execute(
+            select(InterviewSummary)
+            .join(Interview)
+            .where(
+                InterviewSummary.interview_id == interview_id,
+                Interview.interviewer_id == user.id,
+            )
+        )
+        summary = result.scalar_one_or_none()
+        if not summary:
+            raise APIError(
+                "Interview summary not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="summary_not_found",
+            )
+
+        summary.is_confirmed = True
+        summary.confirmed_at = datetime.now(timezone.utc)
+        await db.commit()
+        await db.refresh(summary)
+
+        return InterviewSummaryResponse(
+            job_description=summary.job_description,
+            scoring_rubric=summary.scoring_rubric,
+            ai_assessment=summary.ai_assessment,
+            status=summary.status,
+            is_confirmed=summary.is_confirmed,
+            confirmed_at=summary.confirmed_at,
         )

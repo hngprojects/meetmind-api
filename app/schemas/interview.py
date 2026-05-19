@@ -33,6 +33,8 @@ class InterviewSummaryResponse(BaseModel):
     scoring_rubric: str | None
     ai_assessment: str | None
     status: str | None
+    is_confirmed: bool | None = False
+    confirmed_at: datetime | None = None
 
 
 class InterviewResponse(BaseModel):

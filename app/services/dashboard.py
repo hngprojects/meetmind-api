@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.interview import Candidate, Interview
+from app.models.interview import Candidate, Interview, InterviewSummary
 from app.schemas.dashboard import (
     DashboardLiveResponse,
     DashboardStatsResponse,
@@ -83,9 +83,11 @@ async def get_live_interviews(
             Candidate.full_name,
         )
         .join(Candidate, Candidate.id == Interview.candidate_id)
+        .join(InterviewSummary, InterviewSummary.interview_id == Interview.id)
         .where(
             Interview.workspace_id == workspace_id,
             Interview.status == "in_progress",
+            InterviewSummary.is_confirmed,
         )
         .order_by(Interview.scheduled_start.asc().nulls_last())
     )

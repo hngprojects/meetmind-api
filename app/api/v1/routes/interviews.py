@@ -103,3 +103,17 @@ async def get_chat_history(
         history.model_dump(mode="json"),
         message="Chat history retrieved successfully",
     )
+
+
+@router.post("/{interview_id}/confirm", status_code=status.HTTP_200_OK)
+async def confirm_interview(
+    interview_id: uuid.UUID,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_session),
+):
+    """Confirm an interview session after recruiter review."""
+    summary = await InterviewService.confirm_session(interview_id, db, user)
+    return success(
+        summary.model_dump(mode="json"),
+        message="Interview session confirmed successfully",
+    )
