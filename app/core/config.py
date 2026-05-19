@@ -60,6 +60,8 @@ class Settings(BaseSettings):
     # CI where sending real emails is undesirable.
     MOCK_EMAILS: bool = False
 
+    GEMINI_API_KEY: str
+
 
 @lru_cache
 def get_settings() -> Settings:

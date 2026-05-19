@@ -7,9 +7,11 @@ test_<action>_<expected_outcome>_<condition>
 """
 
 import uuid
+from unittest.mock import patch
 
 import pytest
 
+from app.models.document import CandidateDocument, DocumentChunk
 from app.models.interview import Candidate
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
@@ -409,3 +411,122 @@ class TestCandidateGetByID:
         assert response.status_code == 404
         body = response.json()
         assert body["error"]["code"] == "candidate_not_found"
+
+
+class TestCandidateDocumentUpload:
+    @pytest.mark.anyio
+    async def test_upload_document_returns_200_and_completes_background_task(
+        self, client, db_session
+    ):
+        from unittest.mock import AsyncMock, patch
+
+        from sqlalchemy import select
+
+        from app.models.document import DocumentStatus
+        from app.services.auth import AuthService
+        from app.services.document_service import DocumentService
+
+        user, workspace = await create_user_with_workspace(db_session)
+        candidate = await create_candidate(
+            db_session, workspace.id, "Candidate", "c@test.com"
+        )
+        token = await AuthService.create_access_token(user)
+
+        mock_vector = [0.1] * 768
+
+        captured = {}
+
+        def capture_task(func, *args, **kwargs):
+            captured["func"] = func
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+
+        with patch(
+            "starlette.background.BackgroundTasks.add_task", side_effect=capture_task
+        ):
+            file_content = b"This is a test document content for processing."
+            files = {"file": ("resume.txt", file_content, "text/plain")}
+
+            response = await client.post(
+                f"/api/v1/candidates/{candidate.id}/documents/upload",
+                files=files,
+                headers=auth_header(token),
+            )
+
+        assert response.status_code == 200
+        assert "func" in captured, "Background task was never registered"
+
+        # Now run the background task manually, with the embedding mocked
+        with patch.object(
+            DocumentService,
+            "get_embedding",
+            new=AsyncMock(return_value=[mock_vector]),
+        ):
+            await captured["func"](*captured["args"], **captured["kwargs"])
+
+        # Verify final state directly via db_session
+        result = await db_session.execute(
+            select(CandidateDocument).where(
+                CandidateDocument.candidate_id == candidate.id
+            )
+        )
+        doc = result.scalar_one_or_none()
+
+        assert doc is not None, "Document record was never created"
+        assert doc.status == DocumentStatus.COMPLETED
+
+        result = await db_session.execute(
+            select(DocumentChunk).where(DocumentChunk.document_id == doc.id)
+        )
+        chunks = result.scalars().all()
+        assert len(chunks) > 0
+        assert list(chunks[0].embedding) == pytest.approx(mock_vector)
+
+    @pytest.mark.anyio
+    async def test_upload_document_handles_empty_text_background_failure(
+        self, client, db_session
+    ):
+        from sqlalchemy import select
+
+        from app.services.auth import AuthService
+
+        user, workspace = await create_user_with_workspace(db_session)
+        candidate = await create_candidate(
+            db_session, workspace.id, "Empty", "e@test.com"
+        )
+        token = await AuthService.create_access_token(user)
+
+        captured = {}
+
+        def capture_task(func, *args, **kwargs):
+            captured["func"] = func
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+
+        with patch(
+            "starlette.background.BackgroundTasks.add_task", side_effect=capture_task
+        ):
+            files = {"file": ("empty.txt", b"   ", "text/plain")}
+            response = await client.post(
+                f"/api/v1/candidates/{candidate.id}/documents/upload",
+                files=files,
+                headers=auth_header(token),
+            )
+
+        assert response.status_code == 200
+        assert "func" in captured, "Background task was never registered"
+
+        # Run the background task manually — no embedding mock needed,
+        # it should fail before reaching that point
+        await captured["func"](*captured["args"], **captured["kwargs"])
+
+        result = await db_session.execute(
+            select(CandidateDocument).where(
+                CandidateDocument.candidate_id == candidate.id
+            )
+        )
+        doc = result.scalar_one_or_none()
+
+        assert doc is not None, "Document record was never created"
+        assert doc.error_message is not None
+        assert "no readable text" in doc.error_message
