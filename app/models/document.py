@@ -32,7 +32,8 @@ class CandidateDocument(Base, UUIDPrimaryKey, TimestampMixin):
             values_callable=lambda obj: [e.value for e in obj],
         ),
         nullable=False,
-        default=DocumentStatus.PENDING,
+        default=DocumentStatus.PENDING.value,
+        server_default=DocumentStatus.PENDING.value,
     )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     chunks: Mapped[List["DocumentChunk"]] = relationship(

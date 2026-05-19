@@ -200,7 +200,7 @@ async def upload_candidate_document(
     candidate_id: UUID,
     db: DBSession,
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
+    file: UploadFile = File(..., description="The document file (PDF, DOCX, TXT)"),
 ):
     content = await file.read()
 
@@ -214,7 +214,7 @@ async def upload_candidate_document(
     document = CandidateDocument(
         candidate_id=candidate_id,
         filename=file.filename,
-        status=DocumentStatus.PENDING,
+        status=DocumentStatus.PENDING.value,
     )
 
     try:
@@ -230,7 +230,6 @@ async def upload_candidate_document(
             code="database_insertion_failed",
         )
 
-    # IMPORTANT FIX: pass session factory, NOT session type or instance
     background_tasks.add_task(
         DocumentService.process_document,
         document_id=document.id,

@@ -50,8 +50,10 @@ TestingSessionLocal = async_sessionmaker(
 @pytest.fixture(scope="session", autouse=True)
 async def create_tables():
     from app.models import (  # noqa: F401  # noqa: F401
+        document,
         email_verification,
         interview,
+        scorecard,
         user,
         workspace,
     )
@@ -135,3 +137,16 @@ async def client():
         base_url="http://test",
     ) as ac:
         yield ac
+
+
+@pytest.fixture(autouse=True)
+def patch_document_service_session():
+    """
+    DocumentService.process_document calls AsyncSessionLocal() directly,
+    bypassing the FastAPI dependency override.
+    """
+    with patch(
+        "app.services.document_service.AsyncSessionLocal",
+        new=TestingSessionLocal,
+    ):
+        yield

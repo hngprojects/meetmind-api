@@ -43,6 +43,7 @@ VALID_INTERVIEW_PAYLOAD = {
     "candidate_name": "Jane Doe",
     "job_description": "Build APIs",
     "scoring_rubric": "Communication",
+    "criteria": ["Communication"],
 }
 
 
