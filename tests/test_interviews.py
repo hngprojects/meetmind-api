@@ -464,3 +464,25 @@ class TestConfirmInterview:
             headers=auth_headers(token_b),
         )
         assert response.status_code == 404
+
+    @pytest.mark.anyio
+    async def test_confirm_interview_returns_200_with_already_confirmed(
+        self, client: AsyncClient
+    ):
+        token = await signup_and_get_token(client, unique_user())
+        create = await client.post(
+            INTERVIEWS_URL, json=VALID_INTERVIEW_PAYLOAD, headers=auth_headers(token)
+        )
+        interview_id = create.json()["data"]["id"]
+
+        # First confirmation
+        await client.post(
+            f"{INTERVIEWS_URL}/{interview_id}/confirm", headers=auth_headers(token)
+        )
+
+        # Second confirmation
+        response = await client.post(
+            f"{INTERVIEWS_URL}/{interview_id}/confirm", headers=auth_headers(token)
+        )
+        assert response.status_code == 200
+        assert response.json()["message"] == "Interview already confirmed"

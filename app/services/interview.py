@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.responses import APIError
+from app.models.audit_log import AuditLog
 from app.models.interview import Candidate, Interview, InterviewSummary
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
@@ -230,8 +231,12 @@ class InterviewService:
         interview_id: uuid.UUID,
         db: AsyncSession,
         user: User,
-    ) -> InterviewSummaryResponse:
-        """Mark an interview summary as confirmed by the recruiter."""
+    ) -> tuple[InterviewSummaryResponse, bool]:
+        """Mark an interview summary as confirmed by the recruiter.
+
+        Returns:
+            (InterviewSummaryResponse, already_confirmed: bool)
+        """
         result = await db.execute(
             select(InterviewSummary)
             .join(Interview)
@@ -248,10 +253,18 @@ class InterviewService:
                 code="summary_not_found",
             )
 
-        summary.is_confirmed = True
-        summary.confirmed_at = datetime.now(timezone.utc)
-        await db.commit()
-        await db.refresh(summary)
+        already_confirmed = summary.is_confirmed
+
+        if not already_confirmed:
+            summary.is_confirmed = True
+            summary.confirmed_at = datetime.now(timezone.utc)
+
+            audit = AuditLog(
+                user_id=user.id, interview_id=interview_id, action="confirm_interview"
+            )
+            db.add(audit)
+            await db.commit()
+            await db.refresh(summary)
 
         return InterviewSummaryResponse(
             job_description=summary.job_description,
@@ -260,4 +273,4 @@ class InterviewService:
             status=summary.status,
             is_confirmed=summary.is_confirmed,
             confirmed_at=summary.confirmed_at,
-        )
+        ), already_confirmed

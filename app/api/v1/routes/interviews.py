@@ -112,8 +112,12 @@ async def confirm_interview(
     db: AsyncSession = Depends(get_session),
 ):
     """Confirm an interview session after recruiter review."""
-    summary = await InterviewService.confirm_session(interview_id, db, user)
+    summary, already_confirmed = await InterviewService.confirm_session(
+        interview_id, db, user
+    )
     return success(
         summary.model_dump(mode="json"),
-        message="Interview session confirmed successfully",
+        message="Interview already confirmed"
+        if already_confirmed
+        else "Interview session confirmed successfully",
     )
