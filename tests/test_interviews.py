@@ -245,9 +245,7 @@ class TestCreateInterview:
         assert body["data"]["participation_mode"] == "proactive"
 
     @pytest.mark.anyio
-    async def test_participation_mode_defaults_to_standard(
-        self, client: AsyncClient
-    ):
+    async def test_participation_mode_defaults_to_standard(self, client: AsyncClient):
         token = await signup_and_get_token(client, unique_user())
         payload = {
             k: v
@@ -272,15 +270,11 @@ class TestCreateInterview:
                 INTERVIEWS_URL, json=payload, headers=auth_headers(token)
             )
             body = response.json()
-            assert response.status_code == 201, (
-                f"Failed for mode={mode}: {body}"
-            )
+            assert response.status_code == 201, f"Failed for mode={mode}: {body}"
             assert body["data"]["participation_mode"] == mode
 
     @pytest.mark.anyio
-    async def test_invalid_participation_mode_returns_422(
-        self, client: AsyncClient
-    ):
+    async def test_invalid_participation_mode_returns_422(self, client: AsyncClient):
         token = await signup_and_get_token(client, unique_user())
         payload = {
             **VALID_INTERVIEW_PAYLOAD,

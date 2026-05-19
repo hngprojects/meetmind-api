@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 from datetime import datetime
-from uuid import UUID
 from enum import Enum
+from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
-
 
 # ── Shared validators ──────────────────────────────────────────────────────────
 
