@@ -34,7 +34,7 @@ class CandidateDocument(Base, UUIDPrimaryKey, TimestampMixin):
     status: Mapped[DocumentStatus] = mapped_column(
         DOCUMENT_STATUS_ENUM,
         nullable=False,
-        default=DocumentStatus.PENDING,
+        default=DocumentStatus.PENDING.value,
         server_default=DocumentStatus.PENDING.value,
     )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
