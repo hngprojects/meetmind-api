@@ -532,9 +532,7 @@ class TestUpdateCriteria:
             headers=auth_headers(token),
         )
 
-        get = await client.get(
-            f"{INTERVIEWS_URL}/{iid}", headers=auth_headers(token)
-        )
+        get = await client.get(f"{INTERVIEWS_URL}/{iid}", headers=auth_headers(token))
         assert get.json()["data"]["criteria"] == ["Updated Skill"]
 
     @pytest.mark.anyio
@@ -559,9 +557,7 @@ class TestUpdateCriteria:
     @pytest.mark.anyio
     async def test_update_returns_401_without_token(self, client: AsyncClient):
         fake_id = str(uuid.uuid4())
-        response = await client.put(
-            CRITERIA_URL(fake_id), json={"criteria": ["Test"]}
-        )
+        response = await client.put(CRITERIA_URL(fake_id), json={"criteria": ["Test"]})
         assert response.status_code == 401
 
     @pytest.mark.anyio

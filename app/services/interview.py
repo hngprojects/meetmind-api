@@ -110,9 +110,7 @@ async def _persist_criteria(
 ) -> None:
     """Create ScorecardScore rows linking a scorecard to categories."""
     for idx, criterion_name in enumerate(criteria):
-        category = await _find_or_create_category(
-            db, workspace_id, criterion_name, idx
-        )
+        category = await _find_or_create_category(db, workspace_id, criterion_name, idx)
         score = ScorecardScore(
             scorecard_id=scorecard.id,
             category_id=category.id,
@@ -373,4 +371,3 @@ class InterviewService:
         await db.commit()
 
         return {"criteria": request.criteria}
-
