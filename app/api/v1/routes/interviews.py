@@ -76,6 +76,17 @@ async def get_interview(
     )
 
 
+@router.patch("/{interview_id}/cancel", status_code=status.HTTP_200_OK)
+async def cancel_interview(
+    interview_id: uuid.UUID, user: CurrentUser, db: AsyncSession = Depends(get_session)
+):
+    interview = await InterviewService.cancel_interview(interview_id, db, user)
+    return success(
+        interview.model_dump(mode="json"),
+        message="Interview session cancelled successfully",
+    )
+
+
 @router.get("/{interview_id}/chat/history", status_code=status.HTTP_200_OK)
 async def get_chat_history(
     interview_id: uuid.UUID,

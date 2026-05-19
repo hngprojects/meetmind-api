@@ -137,16 +137,3 @@ async def client():
         base_url="http://test",
     ) as ac:
         yield ac
-
-
-@pytest.fixture(autouse=True)
-def patch_document_service_session():
-    """
-    DocumentService.process_document calls AsyncSessionLocal() directly,
-    bypassing the FastAPI dependency override.
-    """
-    with patch(
-        "app.services.document_service.AsyncSessionLocal",
-        new=TestingSessionLocal,
-    ):
-        yield
