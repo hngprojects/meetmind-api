@@ -32,7 +32,10 @@ def upgrade() -> None:
     sa.UniqueConstraint('user_id')
     )
     op.add_column('users', sa.Column('language', sa.String(length=20), nullable=True))
-    op.add_column('users', sa.Column('onboarding_completed', sa.Boolean(), nullable=False))
+    # Safe two-step for onboarding_completed
+    op.add_column('users', sa.Column('onboarding_completed', sa.Boolean(), nullable=True, server_default=sa.false()))
+    op.execute("UPDATE users SET onboarding_completed = FALSE WHERE onboarding_completed IS NULL")
+    op.alter_column('users', 'onboarding_completed', nullable=False, server_default=None)
     # ### end Alembic commands ###
 
 
