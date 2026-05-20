@@ -1,8 +1,8 @@
 from unittest.mock import MagicMock
 from uuid import uuid4
 
-import pytest
 import jwt
+import pytest
 
 from app.core.config import settings
 from app.models.user import User
@@ -29,7 +29,5 @@ class TestCreateAccessToken:
     async def test_jti_claim_present_and_nonempty(self):
         user = make_user()
         token = await AuthService.create_access_token(user)
-        payload = jwt.decode(
-            token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM]
-        )
+        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
         assert payload.get("jti")

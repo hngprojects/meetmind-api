@@ -171,7 +171,7 @@ class AuthService:
             The decoded JWT claims as a dictionary.
 
         Raises:
-            jwt.exceptions.InvalidTokenError: If the token signature or claims are invalid.
+            jwt.exceptions.InvalidTokenError: If the token signature are invalid.
         """
         return jwt.decode(
             token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM]
