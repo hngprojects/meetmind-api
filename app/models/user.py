@@ -21,7 +21,9 @@ class User(Base, UUIDPrimaryKey, TimestampMixin):
     role: Mapped[str | None] = mapped_column(String(60))
     language: Mapped[str | None] = mapped_column(String(20), default="en")
     hires: Mapped[str | None] = mapped_column(String(30))
-    onboarding_completed: Mapped[bool] = mapped_column(Boolean, default=False)
+    onboarding_completed: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=True
+    )
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
