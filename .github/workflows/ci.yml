@@ -98,29 +98,26 @@ jobs:
                   ls security/
 
             # ===== SECURITY AUDIT =====
-            - name: Run security audit (pip-audit with exception filtering)
+            - name: Run security audit (controlled gate)
               run: |
                   echo "🔍 Running security audit..."
 
-                  # 1. Run pip-audit and output machine-readable JSON
-                  uv run pip-audit --format json > pip-audit.json
+                  # Step 1: collect findings only (DO NOT fail here)
+                  uv run pip-audit --format json > pip-audit.json || true
 
-                  # 2. Run custom gate that applies exceptions
+                  # Step 2: apply your own policy (THIS is the gate)
                   uv run python ci/security_gate.py \
                     --input pip-audit.json \
                     --exceptions security/vulnerability-exceptions.json
 
-                  # 3. Capture exit code
                   EXIT_CODE=$?
 
                   if [ $EXIT_CODE -ne 0 ]; then
-                    echo ""
-                    echo "❌ SECURITY GATE FAILED"
-                    echo "Unapproved vulnerabilities detected"
+                    echo "❌ Security gate failed"
                     exit 1
                   fi
 
-                  echo "✅ Security audit passed (after exceptions)"
+                  echo "✅ Security gate passed"
             # ===== MIGRATION INTEGRITY =====
             - name: Check for multiple Alembic heads
               run: |
