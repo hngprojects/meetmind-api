@@ -16,7 +16,6 @@ from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DBSession
 from app.core.responses import APIError, success
-from app.db.session import AsyncSessionLocal
 from app.models.document import CandidateDocument, DocumentStatus
 from app.models.interview import Candidate
 from app.schemas.candidate import CandidateProfile, CandidateSearchResult
