@@ -195,7 +195,7 @@ async def get_candidate(
 
 @router.post("/{candidate_id}/documents/upload")
 async def upload_candidate_document(
-    # current_user: CurrentUser,
+    current_user: CurrentUser,
     candidate_id: UUID,
     db: DBSession,
     background_tasks: BackgroundTasks,
@@ -216,10 +216,18 @@ async def upload_candidate_document(
         status=DocumentStatus.PENDING.value,
     )
 
-    db.add(document)
+    try:
+        db.add(document)
+        await db.commit()
+        await db.refresh(document)
 
-    await db.commit()
-    await db.refresh(document)
+    except Exception:
+        await db.rollback()
+        raise APIError(
+            "Database insertion failed",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            code="database_insertion_failed",
+        )
 
     background_tasks.add_task(
         DocumentService.process_document,
