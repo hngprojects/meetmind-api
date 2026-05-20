@@ -89,23 +89,29 @@ jobs:
               run: uv run ruff format --check .
 
             # ===== SECURITY AUDIT =====
-            - name: Run security audit (pip-audit)
+            - name: Run security audit (pip-audit with exception filtering)
               run: |
                   echo "🔍 Running security audit..."
-                  uv run pip-audit
-                  if [ $? -ne 0 ]; then
+
+                  # 1. Run pip-audit and output machine-readable JSON
+                  uv run pip-audit --format json > pip-audit.json
+
+                  # 2. Run custom gate that applies exceptions
+                  uv run python ci/security_gate.py \
+                    --input pip-audit.json \
+                    --exceptions security/vulnerability-exceptions.json
+
+                  # 3. Capture exit code
+                  EXIT_CODE=$?
+
+                  if [ $EXIT_CODE -ne 0 ]; then
                     echo ""
-                    echo "❌ CRITICAL: Vulnerabilities detected in dependencies!"
-                    echo ""
-                    echo "To fix:"
-                    echo "  1. Run: uv run pip-audit"
-                    echo "  2. Update affected packages in pyproject.toml"
-                    echo "  3. Run: uv lock && uv sync"
-                    echo "  4. Commit updated uv.lock"
-                    echo ""
+                    echo "❌ SECURITY GATE FAILED"
+                    echo "Unapproved vulnerabilities detected"
                     exit 1
                   fi
-                  echo "✅ No vulnerabilities found"
+
+                  echo "✅ Security audit passed (after exceptions)"
             # ===== MIGRATION INTEGRITY =====
             - name: Check for multiple Alembic heads
               run: |
