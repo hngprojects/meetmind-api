@@ -101,7 +101,7 @@ class DocumentService:
         document_id: UUID,
         filename: str,
         content: bytes,
-        db: AsyncSession | None = None,   # ← tests inject their session here
+        db: AsyncSession | None = None,  # ← tests inject their session here
     ) -> None:
         async def _run(db: AsyncSession) -> None:
             try:
