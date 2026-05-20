@@ -88,6 +88,15 @@ jobs:
             - name: Run Ruff format check
               run: uv run ruff format --check .
 
+            - name: Debug security step
+              run: |
+                  echo "=== pip-audit raw ==="
+                  uv run pip-audit || true
+
+                  echo "=== checking files ==="
+                  ls ci/
+                  ls security/
+
             # ===== SECURITY AUDIT =====
             - name: Run security audit (pip-audit with exception filtering)
               run: |
