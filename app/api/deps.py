@@ -5,7 +5,7 @@ from typing import Annotated
 
 from fastapi import Cookie, Depends, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError
+from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -49,9 +49,15 @@ async def get_current_user(
 
     try:
         payload = await AuthService.decode_access_token(token)
-    except JWTError:
+    except ExpiredSignatureError:
         raise APIError(
-            "Invalid or expired token",
+            "Expired token",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            code="unauthorized",
+        )
+    except InvalidTokenError:
+        raise APIError(
+            "Invalid token",
             status_code=status.HTTP_401_UNAUTHORIZED,
             code="unauthorized",
         )

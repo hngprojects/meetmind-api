@@ -20,6 +20,7 @@ class User(Base, UUIDPrimaryKey, TimestampMixin):
     company: Mapped[str | None] = mapped_column(String(120))
     role: Mapped[str | None] = mapped_column(String(60))
     language: Mapped[str | None] = mapped_column(String(20), default="en")
+    hires: Mapped[str | None] = mapped_column(String(30))
     onboarding_completed: Mapped[bool] = mapped_column(Boolean, default=False)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
 
@@ -94,6 +95,8 @@ class UserMeetingPreferences(Base, UUIDPrimaryKey, TimestampMixin):
     unlimited_transcripts: Mapped[bool | None] = mapped_column(Boolean, default=True)
     join_condition: Mapped[str | None] = mapped_column(String(40))
     send_recap_to: Mapped[str | None] = mapped_column(String(40))
+    auto_record: Mapped[bool | None] = mapped_column(Boolean, default=False)
+    announce: Mapped[bool | None] = mapped_column(Boolean, default=False)
 
 
 class UserInterviewPreferences(Base, UUIDPrimaryKey, TimestampMixin):
@@ -105,6 +108,7 @@ class UserInterviewPreferences(Base, UUIDPrimaryKey, TimestampMixin):
     default_interview_type: Mapped[str | None] = mapped_column(String(120))
     default_duration_min: Mapped[int | None] = mapped_column(Integer, default=60)
     evaluation_focus: Mapped[str | None] = mapped_column(Text)
+    tone: Mapped[str | None] = mapped_column(String(80))
 
 
 class UserNotificationPreferences(Base, UUIDPrimaryKey, TimestampMixin):
