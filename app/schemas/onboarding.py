@@ -1,45 +1,35 @@
-from enum import Enum
+"""Schemas for onboarding step endpoints."""
 
-from pydantic import BaseModel, EmailStr, Field
+from typing import Literal
 
+from pydantic import BaseModel, ConfigDict, StrictBool
 
-class UserRole(str, Enum):
-    recruiter = "Recruiter"
-    hr_manager = "HR Manager"
-    hiring_manager = "Hiring Manager"
-
-
-class JoinCondition(str, Enum):
-    all_calls = "all_calls"
-    scheduled_interviews = "scheduled_interviews"
-
-
-class RecapRecipient(str, Enum):
-    me = "me"
-    everyone = "everyone"
-
-
-class TrialDecision(str, Enum):
-    accept = "accept"
-    decline = "decline"
+AllowedRole = Literal["Recruiter", "Hiring Manager", "Founder", "Other"]
 
 
 class OnboardingRoleRequest(BaseModel):
-    role: UserRole
+    companyName: str
+    role: AllowedRole
+    hires: str
+
+
+class PreferencesPayload(BaseModel):
+    dynamic: StrictBool
+    autoRecord: StrictBool
+    announce: StrictBool
 
 
 class OnboardingPreferencesRequest(BaseModel):
-    join_condition: JoinCondition
-    send_recap_to: RecapRecipient
+    tone: str
+    preferences: PreferencesPayload
 
 
-class OnboardingLanguageRequest(BaseModel):
-    language: str = Field(default="en", pattern=r"^en$")
+class OnboardingIntegrationsRequest(BaseModel):
+    integrations: Literal["google", "zoom"] | None
 
 
-class OnboardingInviteRequest(BaseModel):
-    emails: list[EmailStr] = Field(default_factory=list, max_length=50)
+class OnboardingSubmissionResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
 
-
-class TrialActivationRequest(BaseModel):
-    decision: TrialDecision
+    success: bool
+    onboardingCompleted: bool
