@@ -81,6 +81,16 @@ jobs:
             - name: Install dependencies (including dev)
               run: uv sync --frozen --dev
 
+            # ===== ENABLE PGVECTOR EXTENSION =====
+            - name: Enable pgvector extension in test DB
+              env:
+                  PGPASSWORD: ${{ secrets.TEST_POSTGRES_PASSWORD || 'postgres' }}
+              run: |
+                  psql -h localhost -U ${{ secrets.TEST_POSTGRES_USER || 'postgres' }} \
+                    -d ${{ secrets.TEST_POSTGRES_DB || 'test_db' }} \
+                    -c "CREATE EXTENSION IF NOT EXISTS vector;"
+                  echo "✅ pgvector extension enabled"
+
             # ===== LINT & FORMAT =====
             - name: Run Ruff lint
               run: uv run ruff check .
@@ -118,6 +128,7 @@ jobs:
                   fi
 
                   echo "✅ Security gate passed"
+
             # ===== MIGRATION INTEGRITY =====
             - name: Check for multiple Alembic heads
               run: |
