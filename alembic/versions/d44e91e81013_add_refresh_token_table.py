@@ -41,3 +41,4 @@ def downgrade() -> None:
     op.drop_column('user_interview_preferences', 'created_at')
     op.drop_table('refresh_tokens')
     # ### end Alembic commands ###
+
