@@ -46,6 +46,7 @@ exclude = [
     ".venv",
     "alembic/versions/**",
     "alembic/env.py",
+    "tests",
 ]
 
 [tool.ruff.lint]
