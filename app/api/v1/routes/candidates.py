@@ -234,8 +234,7 @@ async def upload_candidate_document(
         DocumentService.process_document,
         document_id=document.id,
         filename=file.filename,
-        content=content,
-        db=AsyncSessionLocal,
+        content=content
     )
 
     return success(

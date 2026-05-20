@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.db.session import AsyncSessionLocal
 from app.models.document import CandidateDocument, DocumentChunk, DocumentStatus
 
 
@@ -100,56 +101,61 @@ class DocumentService:
         document_id: UUID,
         filename: str,
         content: bytes,
-        db: AsyncSession,
+        db: AsyncSession | None = None,   # ← tests inject their session here
     ) -> None:
-
-        try:
-            result = await db.execute(
-                select(CandidateDocument).where(CandidateDocument.id == document_id)
-            )
-            document = result.scalar_one()
-
-            document.status = DocumentStatus.PROCESSING
-            document.error_message = None
-            await db.commit()
-
-            raw_text = await cls.extract_text(filename, content)
-
-            if not raw_text or not raw_text.strip():
-                document.status = DocumentStatus.FAILED
-                document.error_message = "Document contains no readable text"
-                await db.commit()
-                return
-
-            chunks = cls.chunk_text(raw_text)
-
-            embeddings = await cls.get_embedding(chunks)
-
-            chunk_records = [
-                DocumentChunk(
-                    document_id=document_id,
-                    text_content=text,
-                    embedding=embedding,
+        async def _run(db: AsyncSession) -> None:
+            try:
+                result = await db.execute(
+                    select(CandidateDocument).where(CandidateDocument.id == document_id)
                 )
-                for text, embedding in zip(chunks, embeddings)
-            ]
+                document = result.scalar_one()
 
-            db.add_all(chunk_records)
-
-            document.status = DocumentStatus.COMPLETED
-            document.error_message = None
-
-            await db.commit()
-
-        except Exception as e:
-            await db.rollback()
-
-            result = await db.execute(
-                select(CandidateDocument).where(CandidateDocument.id == document_id)
-            )
-            document = result.scalar_one_or_none()
-
-            if document:
-                document.status = DocumentStatus.FAILED
-                document.error_message = str(e)
+                document.status = DocumentStatus.PROCESSING
+                document.error_message = None
                 await db.commit()
+
+                raw_text = await cls.extract_text(filename, content)
+
+                if not raw_text or not raw_text.strip():
+                    document.status = DocumentStatus.FAILED
+                    document.error_message = "Document contains no readable text"
+                    await db.commit()
+                    return
+
+                chunks = cls.chunk_text(raw_text)
+                embeddings = await cls.get_embedding(chunks)
+
+                chunk_records = [
+                    DocumentChunk(
+                        document_id=document_id,
+                        text_content=text,
+                        embedding=embedding,
+                    )
+                    for text, embedding in zip(chunks, embeddings)
+                ]
+
+                db.add_all(chunk_records)
+                document.status = DocumentStatus.COMPLETED
+                document.error_message = None
+                await db.commit()
+
+            except Exception as e:
+                await db.rollback()
+
+                result = await db.execute(
+                    select(CandidateDocument).where(CandidateDocument.id == document_id)
+                )
+                document = result.scalar_one_or_none()
+
+                if document:
+                    document.status = DocumentStatus.FAILED
+                    document.error_message = str(e)
+                    await db.commit()
+
+        if db is not None:
+            # Caller (test) owns the session — use it directly
+            await _run(db)
+        else:
+            # Production path — manage our own session
+            async with AsyncSessionLocal() as db:
+                await _run(db)
