@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
-from jose import jwt
+import jwt
 
 from app.core.config import settings
 from app.models.user import User
