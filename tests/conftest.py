@@ -50,6 +50,7 @@ TestingSessionLocal = async_sessionmaker(
 @pytest.fixture(scope="session", autouse=True)
 async def create_tables():
     from app.models import (  # noqa: F401  # noqa: F401
+        document,
         email_verification,
         interview,
         scorecard,

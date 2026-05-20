@@ -374,3 +374,100 @@ class InterviewService:
         await db.commit()
 
         return {"criteria": request.criteria}
+
+    @staticmethod
+    async def cancel_interview(
+        interview_id: uuid.UUID,
+        db: AsyncSession,
+        user: User,
+    ) -> InterviewResponse:
+        """Cancel a scheduled or draft interview.
+
+        Transitions the interview status to ``cancelled``. Only the owning
+        interviewer may cancel an interview. Interviews that are already
+        ``cancelled`` or ``completed`` cannot be cancelled again.
+
+        Args:
+            interview_id: UUID of the interview to cancel.
+            db: Active async database session.
+            user: The authenticated user.
+
+        Returns:
+            A populated :class:`InterviewResponse` with status ``cancelled``.
+
+        Raises:
+            APIError: 404 if the interview does not exist or does not belong
+                to the requesting user.
+            APIError: 409 if the interview is already cancelled or completed.
+        """
+        result = await db.execute(
+            select(Interview).where(
+                Interview.id == interview_id,
+                Interview.interviewer_id == user.id,
+            )
+        )
+        interview = result.scalar_one_or_none()
+
+        if not interview:
+            raise APIError(
+                "Interview not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="interview_not_found",
+            )
+
+        if interview.status == "cancelled":
+            raise APIError(
+                "Interview is already cancelled",
+                status_code=status.HTTP_409_CONFLICT,
+                code="already_cancelled",
+            )
+
+        if interview.status == "completed":
+            raise APIError(
+                "Completed interviews cannot be cancelled",
+                status_code=status.HTTP_409_CONFLICT,
+                code="interview_completed",
+            )
+
+        interview.status = "cancelled"
+        await db.flush()
+
+        # Fetch candidate
+        candidate_result = await db.execute(
+            select(Candidate).where(Candidate.id == interview.candidate_id)
+        )
+        candidate = candidate_result.scalar_one_or_none()
+
+        # Fetch summary
+        summary_result = await db.execute(
+            select(InterviewSummary).where(
+                InterviewSummary.interview_id == interview.id
+            )
+        )
+        summary = summary_result.scalar_one_or_none()
+
+        # Fetch criteria
+        criteria = await _fetch_criteria(db, interview.id)
+
+        await db.commit()
+
+        return InterviewResponse(
+            id=interview.id,
+            title=interview.role_title,
+            status=interview.status,
+            role_title=interview.role_title,
+            platform=interview.platform,
+            ai_tone=interview.ai_tone,
+            candidate_name=candidate.full_name if candidate else "Unknown",
+            candidate_email=candidate.email if candidate else None,
+            summary=InterviewSummaryResponse(
+                job_description=summary.job_description if summary else None,
+                scoring_rubric=summary.scoring_rubric if summary else None,
+                ai_assessment=summary.ai_assessment if summary else None,
+                status=summary.status if summary else None,
+            )
+            if summary
+            else None,
+            criteria=criteria,
+            created_at=interview.created_at,
+        )
