@@ -7,6 +7,7 @@ from google import genai
 from google.genai import types
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
@@ -100,27 +101,29 @@ class DocumentService:
         document_id: UUID,
         filename: str,
         content: bytes,
+        db: AsyncSession | None = None,  # ← tests inject their session here
     ) -> None:
-        async with AsyncSessionLocal() as db:
+        async def _run(db: AsyncSession) -> None:
             try:
                 result = await db.execute(
                     select(CandidateDocument).where(CandidateDocument.id == document_id)
                 )
-
                 document = result.scalar_one()
+
                 document.status = DocumentStatus.PROCESSING
+                document.error_message = None
                 await db.commit()
 
                 raw_text = await cls.extract_text(filename, content)
-                if not raw_text.strip():
-                    document.error_message = "Document contains no readable text"
 
+                if not raw_text or not raw_text.strip():
+                    document.status = DocumentStatus.FAILED
+                    document.error_message = "Document contains no readable text"
                     await db.commit()
                     return
 
-                text_chunks = cls.chunk_text(raw_text)
-
-                embeddings = await cls.get_embedding(text_chunks)
+                chunks = cls.chunk_text(raw_text)
+                embeddings = await cls.get_embedding(chunks)
 
                 chunk_records = [
                     DocumentChunk(
@@ -128,22 +131,31 @@ class DocumentService:
                         text_content=text,
                         embedding=embedding,
                     )
-                    for text, embedding in zip(text_chunks, embeddings)
+                    for text, embedding in zip(chunks, embeddings)
                 ]
 
                 db.add_all(chunk_records)
                 document.status = DocumentStatus.COMPLETED
                 document.error_message = None
-
                 await db.commit()
 
             except Exception as e:
                 await db.rollback()
+
                 result = await db.execute(
                     select(CandidateDocument).where(CandidateDocument.id == document_id)
                 )
                 document = result.scalar_one_or_none()
+
                 if document:
                     document.status = DocumentStatus.FAILED
                     document.error_message = str(e)
                     await db.commit()
+
+        if db is not None:
+            # Caller (test) owns the session — use it directly
+            await _run(db)
+        else:
+            # Production path — manage our own session
+            async with AsyncSessionLocal() as db:
+                await _run(db)

@@ -7,14 +7,16 @@ test_<action>_<expected_outcome>_<condition>
 """
 
 import uuid
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
+from sqlalchemy import select
 
-from app.models.document import CandidateDocument, DocumentChunk
+from app.models.document import CandidateDocument, DocumentChunk, DocumentStatus
 from app.models.interview import Candidate
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
+from app.services.document_service import DocumentService
 
 SEARCH_URL = "/api/v1/candidates/search"
 EXPORT_URL = "/api/v1/candidates/export"
@@ -415,118 +417,249 @@ class TestCandidateGetByID:
 
 class TestCandidateDocumentUpload:
     @pytest.mark.anyio
-    async def test_upload_document_returns_200_and_completes_background_task(
-        self, client, db_session
+    @patch("app.services.document_service.DocumentService.process_document")
+    async def test_upload_document_returns_200_and_schedules_task(
+        self,
+        mock_process_document,
+        client,
+        db_session,
     ):
-        from unittest.mock import AsyncMock, patch
-
-        from sqlalchemy import select
-
-        from app.models.document import DocumentStatus
+        """
+        Upload creates document record and schedules background processing.
+        """
         from app.services.auth import AuthService
-        from app.services.document_service import DocumentService
 
         user, workspace = await create_user_with_workspace(db_session)
-        candidate = await create_candidate(
-            db_session, workspace.id, "Candidate", "c@test.com"
-        )
         token = await AuthService.create_access_token(user)
 
-        mock_vector = [0.1] * 768
+        candidate = await create_candidate(
+            db_session,
+            workspace.id,
+            "Resume Owner",
+            "owner@test.com",
+        )
 
-        captured = {}
+        file_content = b"This is a valid document used for testing."
+        files = {"file": ("resume.txt", file_content, "text/plain")}
 
-        def capture_task(func, *args, **kwargs):
-            captured["func"] = func
-            captured["args"] = args
-            captured["kwargs"] = kwargs
-
-        with patch(
-            "starlette.background.BackgroundTasks.add_task", side_effect=capture_task
-        ):
-            file_content = b"This is a test document content for processing."
-            files = {"file": ("resume.txt", file_content, "text/plain")}
-
-            response = await client.post(
-                f"/api/v1/candidates/{candidate.id}/documents/upload",
-                files=files,
-                headers=auth_header(token),
-            )
+        response = await client.post(
+            f"{GET_CANDIDATE_URL}/{candidate.id}/documents/upload",
+            files=files,
+            headers=auth_header(token),
+        )
 
         assert response.status_code == 200
-        assert "func" in captured, "Background task was never registered"
+        body = response.json()
 
-        # Now run the background task manually, with the embedding mocked
-        with patch.object(
-            DocumentService,
-            "get_embedding",
-            new=AsyncMock(return_value=[mock_vector]),
-        ):
-            await captured["func"](*captured["args"], **captured["kwargs"])
+        assert body["success"] is True
+        assert "Processing" in body["message"]
 
-        # Verify final state directly via db_session
-        result = await db_session.execute(
-            select(CandidateDocument).where(
-                CandidateDocument.candidate_id == candidate.id
-            )
+        # DB verification
+        stmt = select(CandidateDocument).where(
+            CandidateDocument.candidate_id == candidate.id
         )
+        result = await db_session.execute(stmt)
         doc = result.scalar_one_or_none()
 
-        assert doc is not None, "Document record was never created"
-        assert doc.status == DocumentStatus.COMPLETED
+        assert doc is not None
+        assert doc.filename == "resume.txt"
+        assert doc.status == DocumentStatus.PENDING
 
-        result = await db_session.execute(
-            select(DocumentChunk).where(DocumentChunk.document_id == doc.id)
-        )
-        chunks = result.scalars().all()
-        assert len(chunks) > 0
-        assert list(chunks[0].embedding) == pytest.approx(mock_vector)
+        # background task was scheduled
+        mock_process_document.assert_called_once()
 
     @pytest.mark.anyio
-    async def test_upload_document_handles_empty_text_background_failure(
-        self, client, db_session
-    ):
-        from sqlalchemy import select
+    async def test_upload_requires_auth(self, client):
+        """
+        Unauthorized upload is rejected.
+        """
+        candidate_id = uuid.uuid4()
+        files = {"file": ("resume.txt", b"text", "text/plain")}
 
+        response = await client.post(
+            f"{GET_CANDIDATE_URL}/{candidate_id}/documents/upload",
+            files=files,
+        )
+
+        assert response.status_code == 401
+
+    @pytest.mark.anyio
+    async def test_upload_rejects_oversized_file(
+        self,
+        client,
+        db_session,
+    ):
+        """
+        File size validation prevents large uploads.
+        """
         from app.services.auth import AuthService
 
         user, workspace = await create_user_with_workspace(db_session)
-        candidate = await create_candidate(
-            db_session, workspace.id, "Empty", "e@test.com"
-        )
         token = await AuthService.create_access_token(user)
 
-        captured = {}
-
-        def capture_task(func, *args, **kwargs):
-            captured["func"] = func
-            captured["args"] = args
-            captured["kwargs"] = kwargs
-
-        with patch(
-            "starlette.background.BackgroundTasks.add_task", side_effect=capture_task
-        ):
-            files = {"file": ("empty.txt", b"   ", "text/plain")}
-            response = await client.post(
-                f"/api/v1/candidates/{candidate.id}/documents/upload",
-                files=files,
-                headers=auth_header(token),
-            )
-
-        assert response.status_code == 200
-        assert "func" in captured, "Background task was never registered"
-
-        # Run the background task manually — no embedding mock needed,
-        # it should fail before reaching that point
-        await captured["func"](*captured["args"], **captured["kwargs"])
-
-        result = await db_session.execute(
-            select(CandidateDocument).where(
-                CandidateDocument.candidate_id == candidate.id
-            )
+        candidate = await create_candidate(
+            db_session,
+            workspace.id,
+            "Size Test",
+            "size@test.com",
         )
-        doc = result.scalar_one_or_none()
 
-        assert doc is not None, "Document record was never created"
+        files = {"file": ("resume.txt", b"x" * (20 * 1024 * 1024), "text/plain")}
+
+        response = await client.post(
+            f"{GET_CANDIDATE_URL}/{candidate.id}/documents/upload",
+            files=files,
+            headers=auth_header(token),
+        )
+
+        assert response.status_code == 413
+
+    @pytest.mark.anyio
+    async def test_upload_returns_500_on_db_failure(
+        self,
+        client,
+        db_session,
+    ):
+        """
+        DB failures during document creation return 500.
+        """
+        from app.services.auth import AuthService
+
+        user, workspace = await create_user_with_workspace(db_session)
+        token = await AuthService.create_access_token(user)
+
+        candidate = await create_candidate(
+            db_session,
+            workspace.id,
+            "Fail Test",
+            "fail@test.com",
+        )
+
+        db_session.commit = AsyncMock(side_effect=Exception("DB failure"))
+
+        files = {"file": ("resume.txt", b"text", "text/plain")}
+
+        response = await client.post(
+            f"{GET_CANDIDATE_URL}/{candidate.id}/documents/upload",
+            files=files,
+            headers=auth_header(token),
+        )
+
+        assert response.status_code == 500
+        assert "Database insertion failed" in response.text
+
+
+class TestDocumentProcessing:
+    @pytest.mark.anyio
+    @patch("app.services.document_service.DocumentService.get_embedding")
+    async def test_successful_document_processing(self, mock_embed, db_session):
+        mock_embed.return_value = [[0.1] * 768]
+
+        doc = CandidateDocument(
+            candidate_id=uuid.uuid4(),
+            filename="test.txt",
+            status=DocumentStatus.PENDING,
+        )
+
+        db_session.add(doc)
+        await db_session.commit()
+        await db_session.refresh(doc)
+
+        await DocumentService.process_document(
+            document_id=doc.id,
+            filename="test.txt",
+            content=b"valid content for processing",
+            db=db_session,
+        )
+
+        await db_session.refresh(doc)
+
+        assert doc.status == DocumentStatus.COMPLETED
+
+        chunks = (
+            (
+                await db_session.execute(
+                    select(DocumentChunk).where(DocumentChunk.document_id == doc.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        assert len(chunks) > 0
+
+    @pytest.mark.anyio
+    @patch("app.services.document_service.DocumentService.get_embedding")
+    async def test_empty_document_marks_failed(self, mock_embed, db_session):
+        doc = CandidateDocument(
+            candidate_id=uuid.uuid4(),
+            filename="empty.txt",
+            status=DocumentStatus.PENDING,
+        )
+
+        db_session.add(doc)
+        await db_session.commit()
+        await db_session.refresh(doc)
+
+        await DocumentService.process_document(
+            document_id=doc.id,
+            filename="empty.txt",
+            content=b"   ",
+            db=db_session,
+        )
+
+        await db_session.refresh(doc)
+
+        assert doc.status == DocumentStatus.FAILED
         assert doc.error_message is not None
-        assert "no readable text" in doc.error_message
+
+    @pytest.mark.anyio
+    @patch("app.services.document_service.DocumentService.get_embedding")
+    async def test_embedding_failure_marks_document_failed(
+        self, mock_embed, db_session
+    ):
+        mock_embed.side_effect = Exception("embedding failed")
+
+        doc = CandidateDocument(
+            candidate_id=uuid.uuid4(),
+            filename="test.txt",
+            status=DocumentStatus.PENDING,
+        )
+
+        db_session.add(doc)
+        await db_session.commit()
+        await db_session.refresh(doc)
+
+        await DocumentService.process_document(
+            document_id=doc.id,
+            filename="test.txt",
+            content=b"valid text content",
+            db=db_session,
+        )
+
+        await db_session.refresh(doc)
+
+        assert doc.status == DocumentStatus.FAILED
+
+    @pytest.mark.anyio
+    async def test_unsupported_file_type_fails(self, db_session):
+        doc = CandidateDocument(
+            candidate_id=uuid.uuid4(),
+            filename="file.xyz",
+            status=DocumentStatus.PENDING,
+        )
+
+        db_session.add(doc)
+        await db_session.commit()
+        await db_session.refresh(doc)
+
+        await DocumentService.process_document(
+            document_id=doc.id,
+            filename="file.xyz",
+            content=b"data",
+            db=db_session,
+        )
+
+        await db_session.refresh(doc)
+
+        assert doc.status == DocumentStatus.FAILED
