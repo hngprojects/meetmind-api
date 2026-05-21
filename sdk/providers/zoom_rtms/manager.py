@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
@@ -10,6 +11,8 @@ from sdk.db import SDKSessionLocal
 from sdk.providers.zoom_rtms.events import meeting_id, rtms_join_payload, rtms_stream_id
 from sdk.repositories import SDKRepository
 from sdk.wake_words import detect_wake_word
+
+logger = logging.getLogger(__name__)
 
 
 class ZoomRTMSRuntimeError(RuntimeError):
@@ -27,6 +30,18 @@ class ZoomRTMSManager:
     def __init__(self):
         self.clients: dict[str, Any] = {}
         self.executor = ThreadPoolExecutor(max_workers=4)
+
+    def queue_start_from_webhook(self, *, payload: dict[str, Any]) -> None:
+        self.executor.submit(self._start_from_webhook_with_new_session, payload)
+
+    def _start_from_webhook_with_new_session(self, payload: dict[str, Any]) -> None:
+        db = SDKSessionLocal()
+        try:
+            self.start_from_webhook(db=db, payload=payload)
+        except Exception:
+            logger.exception("Failed to start Zoom RTMS stream from webhook.")
+        finally:
+            db.close()
 
     def start_from_webhook(self, *, db: Session, payload: dict[str, Any]) -> dict:
         settings = get_sdk_settings()
