@@ -4,10 +4,10 @@ import re
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
+
 def _normalize_email(value: str) -> str:
     """Trim and lowercase an email string for case-insensitive identity checks."""
     return value.strip().lower()
-
 
 
 class ForgotPasswordRequest(BaseModel):
@@ -121,7 +121,7 @@ class SignupRequest(BaseModel):
     @classmethod
     def normalize_email(cls, v: EmailStr) -> str:
         return _normalize_email(str(v))
-    
+
     @field_validator("password")
     @classmethod
     def validate_password(cls, v: str) -> str:
