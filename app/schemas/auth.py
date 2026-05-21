@@ -5,10 +5,20 @@ import re
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
+def _normalize_email(value: str) -> str:
+    """Trim and lowercase an email string for case-insensitive identity checks."""
+    return value.strip().lower()
+
+
 class ForgotPasswordRequest(BaseModel):
     """Payload for requesting a password reset link."""
 
     email: EmailStr = Field(..., max_length=255)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: EmailStr) -> str:
+        return _normalize_email(str(v))
 
 
 class ResetPasswordRequest(BaseModel):
@@ -43,6 +53,11 @@ class ResetPasswordRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=1)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: EmailStr) -> str:
+        return _normalize_email(str(v))
 
     @field_validator("password")
     @classmethod
@@ -101,6 +116,11 @@ class SignupRequest(BaseModel):
         if re.search(r"[<>{}&\"']", stripped):
             raise ValueError("Name contains invalid characters")
         return stripped
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: EmailStr) -> str:
+        return _normalize_email(str(v))
 
     @field_validator("password")
     @classmethod

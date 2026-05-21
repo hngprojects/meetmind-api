@@ -42,8 +42,8 @@ class Interview(Base, UUIDPrimaryKey, TimestampMixin):
         UUID(as_uuid=True), ForeignKey("meetings.id")
     )
     role_title: Mapped[str | None] = mapped_column(String(120))
-    scheduled_start: Mapped[datetime | None] = mapped_column(DateTime)
-    scheduled_end: Mapped[datetime | None] = mapped_column(DateTime)
+    scheduled_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    scheduled_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     duration_min: Mapped[int | None] = mapped_column(Integer)
     platform: Mapped[str | None] = mapped_column(String(30))
     status: Mapped[str | None] = mapped_column(String(20), default="draft")
@@ -92,7 +92,7 @@ class InterviewSummary(Base, UUIDPrimaryKey, TimestampMixin):
     custom_question: Mapped[str | None] = mapped_column(Text)
     ai_assessment: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str | None] = mapped_column(String(20), default="generating")
-    generated_at: Mapped[datetime | None] = mapped_column(DateTime)
+    generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class InterviewSkillToAssess(Base, UUIDPrimaryKey, TimestampMixin):

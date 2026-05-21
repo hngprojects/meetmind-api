@@ -9,8 +9,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
+import jwt
 from fastapi import status
-from jose import jwt
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -171,7 +171,7 @@ class AuthService:
             The decoded JWT claims as a dictionary.
 
         Raises:
-            jose.JWTError: If the token signature or claims are invalid.
+            jwt.exceptions.InvalidTokenError: If the token signature are invalid.
         """
         return jwt.decode(
             token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM]
@@ -393,7 +393,7 @@ class AuthService:
         """
         if not user.is_verified:
             return "verify_email"
-        if not user.job_title or not user.company:
+        if not user.onboarding_completed:
             return "onboarding"
         return "dashboard"
 
