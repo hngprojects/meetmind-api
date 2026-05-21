@@ -30,16 +30,28 @@ class ZoomRTMSManager:
     def __init__(self):
         self.clients: dict[str, Any] = {}
         self.executor = ThreadPoolExecutor(max_workers=4)
+        self.webhook_executor = ThreadPoolExecutor(
+            max_workers=4,
+            thread_name_prefix="zoom-rtms-webhook",
+        )
 
     def queue_start_from_webhook(self, *, payload: dict[str, Any]) -> None:
-        self.executor.submit(self._start_from_webhook_with_new_session, payload)
+        self.webhook_executor.submit(
+            self._start_from_webhook_with_new_session,
+            payload,
+        )
 
     def _start_from_webhook_with_new_session(self, payload: dict[str, Any]) -> None:
         db = SDKSessionLocal()
         try:
             self.start_from_webhook(db=db, payload=payload)
         except Exception:
-            logger.exception("Failed to start Zoom RTMS stream from webhook.")
+            logger.exception(
+                "Failed to start Zoom RTMS stream from webhook "
+                "(meeting_id=%s, rtms_stream_id=%s).",
+                meeting_id(payload),
+                rtms_stream_id(payload),
+            )
         finally:
             db.close()
 

@@ -96,7 +96,7 @@ def start_rtms_for_session(
             status_code=502,
             detail={
                 "message": str(exc),
-                "zoom": exc.details,
+                "zoom": safe_zoom_error_details(exc.details),
             },
         ) from exc
     except ValueError as exc:
@@ -106,4 +106,13 @@ def start_rtms_for_session(
         "status": True,
         "message": "Zoom RTMS start requested",
         "data": {"session": session.to_dict(), "zoom": result},
+    }
+
+
+def safe_zoom_error_details(details: dict | None) -> dict:
+    details = details or {}
+    zoom_response = details.get("zoom_response")
+    return {
+        "zoom_status_code": details.get("zoom_status_code"),
+        "zoom_response": zoom_response if isinstance(zoom_response, dict) else None,
     }
