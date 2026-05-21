@@ -5,7 +5,9 @@ from sqlalchemy.orm import Session
 
 from sdk.db import get_sdk_db
 from sdk.providers.zoom_meeting_bridge.bridge import MeetingOutputBridge
-from sdk.schemas import CreateSDKSessionRequest, SpeakRequest
+from sdk.providers.zoom_rtms.control import ZoomRTMSControlError
+from sdk.providers.zoom_rtms.oauth import ZoomOAuthError
+from sdk.schemas import CreateSDKSessionRequest, SpeakRequest, StartRTMSRequest
 from sdk.sdk import MeetMindSDK
 
 router = APIRouter()
@@ -68,3 +70,34 @@ def speak_in_session(
     except NotImplementedError as exc:
         raise HTTPException(status_code=501, detail=str(exc)) from exc
     return {"status": True, "message": "Speech request accepted", "data": result}
+
+
+@router.post("/sessions/{session_id}/rtms/start", status_code=status.HTTP_202_ACCEPTED)
+def start_rtms_for_session(
+    session_id: str,
+    payload: StartRTMSRequest | None = None,
+    db: Session = Depends(get_sdk_db),
+):
+    sdk = MeetMindSDK(db)
+    session = sdk.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="SDK session not found")
+    if session.platform != "zoom":
+        raise HTTPException(status_code=400, detail="Only Zoom sessions support RTMS.")
+    try:
+        result = sdk.start_zoom_rtms(
+            session=session,
+            participant_user_id=payload.participant_user_id if payload else None,
+        )
+    except ZoomOAuthError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except ZoomRTMSControlError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        "status": True,
+        "message": "Zoom RTMS start requested",
+        "data": {"session": session.to_dict(), "zoom": result},
+    }

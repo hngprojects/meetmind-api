@@ -3,6 +3,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from sdk.models import SDKSession, SDKTranscriptTurn
+from sdk.providers.zoom_rtms.control import ZoomRTMSControlClient
 from sdk.repositories import SDKRepository
 
 
@@ -35,3 +36,18 @@ class MeetMindSDK:
 
     def get_transcript(self, session_id: str) -> list[SDKTranscriptTurn]:
         return self.repository.list_transcript(session_id)
+
+    def start_zoom_rtms(
+        self,
+        *,
+        session: SDKSession,
+        participant_user_id: str | None = None,
+    ) -> dict:
+        if not session.meeting_id:
+            raise ValueError("Session does not have a Zoom meeting_id.")
+        result = ZoomRTMSControlClient(self.repository.db).start(
+            meeting_id=session.meeting_id,
+            participant_user_id=participant_user_id,
+        )
+        self.repository.update_session_status(session, "rtms_start_requested")
+        return result
