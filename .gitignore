@@ -21,7 +21,7 @@ wheels/
 .venv
 
 # Environment
-.env
+.env*
 
 # Editors / OS
 .idea/

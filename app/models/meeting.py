@@ -22,8 +22,8 @@ class Meeting(Base, UUIDPrimaryKey, TimestampMixin):
     recorded_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id")
     )
-    started_at: Mapped[datetime | None] = mapped_column(DateTime)
-    ended_at: Mapped[datetime | None] = mapped_column(DateTime)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class MeetingParticipant(Base, UUIDPrimaryKey, TimestampMixin):
@@ -37,7 +37,7 @@ class MeetingParticipant(Base, UUIDPrimaryKey, TimestampMixin):
     )
     display_name: Mapped[str | None] = mapped_column(String(120))
     speaker_label: Mapped[str | None] = mapped_column(String(5))
-    joined_at: Mapped[datetime | None] = mapped_column(DateTime)
+    joined_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class MeetingComment(Base, UUIDPrimaryKey, TimestampMixin):

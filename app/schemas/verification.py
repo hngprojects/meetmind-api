@@ -1,6 +1,10 @@
 """Pydantic schemas for email-verification request payloads."""
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
+
+
+def _normalize_email(value: str) -> str:
+    return value.strip().lower()
 
 
 class VerifyEmailRequest(BaseModel):
@@ -21,3 +25,8 @@ class ResendVerificationRequest(BaseModel):
     """
 
     email: EmailStr
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: EmailStr) -> str:
+        return _normalize_email(str(v))

@@ -42,6 +42,7 @@ class TestBaseMetadata:
             "workspace_members",
             "workspace_invites",
             "user_platform_integrations",
+            "user_trials",
             "integrations",
             "integration_channels",
             "integration_settings",
@@ -72,12 +73,14 @@ class TestBaseMetadata:
             "scorecard_questions",
             "scorecard_signals",
             "refresh_tokens",
+            "candidate_documents",
+            "document_chunks",
         }
         actual = set(Base.metadata.tables.keys())
         assert expected.issubset(actual)
 
     def test_table_count(self):
-        assert len(Base.metadata.tables) == 46
+        assert len(Base.metadata.tables) == 49
 
 
 class TestUUIDPrimaryKeyMixin:
