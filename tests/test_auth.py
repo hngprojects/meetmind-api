@@ -6,6 +6,8 @@ import pytest
 
 from app.core.exceptions import UserAlreadyExistsException
 from app.models.user import User
+from app.schemas.auth import ForgotPasswordRequest, LoginRequest, SignupRequest
+from app.schemas.verification import ResendVerificationRequest
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -174,3 +176,27 @@ class TestSignupPasswordValidation:
                 SIGNUP_URL, json={**VALID_PAYLOAD, "password": "Secure1!"}
             )
         assert response.status_code == 201
+
+class TestAuthSchemaNormalization:
+    def test_signup_email_is_normalized_to_lowercase_and_trimmed(self):
+        payload = SignupRequest(
+            name="Jane Doe",
+            email="  JANE@Example.COM  ",
+            password="ValidPass1",
+        )
+        assert payload.email == "jane@example.com"
+
+
+    def test_login_email_is_normalized_to_lowercase_and_trimmed(self):
+        payload = LoginRequest(email="  USER@Example.COM  ", password="ValidPass1")
+        assert payload.email == "user@example.com"
+
+
+    def test_forgot_password_email_is_normalized_to_lowercase_and_trimmed(self):
+        payload = ForgotPasswordRequest(email="  USER@Example.COM  ")
+        assert payload.email == "user@example.com"
+
+
+    def test_resend_verification_email_is_normalized_to_lowercase_and_trimmed(self):
+        payload = ResendVerificationRequest(email="  USER@Example.COM  ")
+        assert payload.email == "user@example.com"
