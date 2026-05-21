@@ -119,8 +119,48 @@ def test_zoom_rtms_start_maps_transport_errors(monkeypatch, db_session):
 
     monkeypatch.setattr(control.httpx, "patch", fake_patch)
 
-    with pytest.raises(ZoomRTMSControlError, match="Zoom RTMS request failed"):
+    with pytest.raises(ZoomRTMSControlError, match="Zoom RTMS request failed") as exc:
         ZoomRTMSControlClient(db_session).start(meeting_id="86429575325")
+    assert exc.value.details["method"] == "PATCH"
+    assert exc.value.details["meeting_id"] == "86429575325"
+    assert exc.value.details["has_access_token"] is True
+
+
+def test_zoom_rtms_start_exposes_zoom_error_details(monkeypatch, db_session):
+    repo = SDKRepository(db_session)
+    repo.save_zoom_oauth_token(
+        access_token="stored-access-token",
+        refresh_token="stored-refresh-token",
+        token_type="bearer",
+        scope="meeting:update:participant_rtms_app_status",
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            400,
+            json={"code": 2310, "message": "Failed to perform RTMS app operation."},
+        )
+
+    def fake_patch(*args, **kwargs):
+        transport = httpx.MockTransport(handler)
+        with httpx.Client(transport=transport) as client:
+            return client.patch(*args, **kwargs)
+
+    monkeypatch.setattr(control.httpx, "patch", fake_patch)
+
+    with pytest.raises(
+        ZoomRTMSControlError,
+        match="Failed to perform RTMS app operation.",
+    ) as exc:
+        ZoomRTMSControlClient(db_session).start(
+            meeting_id="86429575325",
+            participant_user_id="host-user-id",
+        )
+
+    assert exc.value.details["zoom_status_code"] == 400
+    assert exc.value.details["zoom_response"]["code"] == 2310
+    assert exc.value.details["participant_user_id"] == "host-user-id"
 
 
 def test_zoom_oauth_exchange_maps_transport_errors(monkeypatch, db_session):

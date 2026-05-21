@@ -45,6 +45,7 @@ class MeetMindSDK:
     ) -> dict:
         if not session.meeting_id:
             raise ValueError("Session does not have a Zoom meeting_id.")
+        self.repository.update_session_status(session, "rtms_start_pending")
         result = ZoomRTMSControlClient(self.repository.db).start(
             meeting_id=session.meeting_id,
             participant_user_id=participant_user_id,
