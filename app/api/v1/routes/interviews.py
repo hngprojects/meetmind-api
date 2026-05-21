@@ -8,9 +8,14 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser
-from app.core.responses import success
+from app.core.responses import success, paginated
 from app.db.session import get_session
-from app.schemas.interview import CreateInterviewRequest, UpdateCriteriaRequest
+from app.schemas.interview import (
+    CreateInterviewRequest,
+    UpdateCriteriaRequest,
+    UpdateContextRequest,
+    UpdateAIConfigRequest,
+)
 from app.services.chat_history import ChatHistoryService
 from app.services.interview import InterviewService
 
@@ -47,6 +52,31 @@ async def create_interview(
         status_code=status.HTTP_201_CREATED,
     )
 
+@router.get("", status_code=status.HTTP_200_OK)
+async def list_interviews(
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_session),
+    page: int = 1,
+    page_size: int = 20,
+):
+    from app.schemas.interview import InterviewListItem
+    rows, total = await InterviewService.list_interviews(db, user, page, page_size)
+    items = [
+        InterviewListItem(
+            id=i.id,
+            candidate_name=full_name,  # resolved below
+            role_title=i.role_title,
+            platform=i.platform,
+            status=i.status,
+            scheduled_start=i.scheduled_start,
+            participation_mode=i.participation_mode,
+            created_at=i.created_at,
+        ).model_dump(mode="json")
+        for i, full_name in rows
+    ]
+    return paginated(items, page=page, page_size=page_size, total=total, message="Sessions retrieved")
+
+
 
 @router.get("/{interview_id}", status_code=status.HTTP_200_OK)
 async def get_interview(
@@ -74,6 +104,15 @@ async def get_interview(
         interview.model_dump(mode="json"),
         message="Interview session retrieved successfully",
     )
+
+@router.post("/{interview_id}/confirm", status_code=status.HTTP_200_OK)
+async def confirm_interview(
+    interview_id: uuid.UUID,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_session),
+):
+    result = await InterviewService.confirm_interview(interview_id, db, user)
+    return success(result, message="Interview confirmed successfully")
 
 
 @router.patch("/{interview_id}/cancel", status_code=status.HTTP_200_OK)
@@ -145,3 +184,24 @@ async def update_criteria(
         interview_id, payload, db, user
     )
     return success(result, message="Criteria updated successfully")
+
+@router.put("/{interview_id}/context", status_code=status.HTTP_200_OK)
+async def update_context(
+    interview_id: uuid.UUID,
+    payload: UpdateContextRequest,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_session),
+):
+    result = await InterviewService.update_context(interview_id, payload, db, user)
+    return success(result, message="Context updated successfully")
+
+
+@router.put("/{interview_id}/session-config", status_code=status.HTTP_200_OK)
+async def update_ai_config(
+    interview_id: uuid.UUID,
+    payload: UpdateAIConfigRequest,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_session),
+):
+    result = await InterviewService.update_session_config(interview_id, payload, db, user)
+    return success(result, message="AI config updated successfully")

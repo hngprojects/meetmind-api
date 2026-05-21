@@ -112,3 +112,72 @@ async def get_live_interviews(
     ]
 
     return DashboardStatsResponse(live_interviews=items)
+
+
+async def get_schedule(
+    workspace_id: uuid.UUID,
+    db: AsyncSession,
+    start_date: str,
+    end_date: str,
+) -> list:
+    result = await db.execute(
+        select(
+            Interview.id,
+            Interview.role_title,
+            Interview.scheduled_start,
+            Interview.scheduled_end,
+            Candidate.full_name,
+        )
+        .outerjoin(Candidate, Candidate.id == Interview.candidate_id)
+        .where(
+            Interview.workspace_id == workspace_id,
+            Interview.scheduled_start >= datetime.fromisoformat(start_date),
+            Interview.scheduled_start <= datetime.fromisoformat(end_date),
+        )
+        .order_by(Interview.scheduled_start.asc())
+    )
+    rows = result.all()
+    return [
+        {
+            "interview_id": str(row.id),
+            "candidate_name": row.full_name,
+            "role": row.role_title,
+            "start_time": row.scheduled_start.isoformat() if row.scheduled_start else None,
+            "end_time": row.scheduled_end.isoformat() if row.scheduled_end else None,
+        }
+        for row in rows
+    ]
+
+
+async def get_completed(
+    workspace_id: uuid.UUID,
+    db: AsyncSession,
+) -> list:
+    from app.models.interview import Candidate
+
+    result = await db.execute(
+        select(
+            Interview.id,
+            Interview.role_title,
+            Interview.updated_at,
+            Interview.rating,
+            Candidate.full_name,
+        )
+        .outerjoin(Candidate, Candidate.id == Interview.candidate_id)
+        .where(
+            Interview.workspace_id == workspace_id,
+            Interview.status == "completed",
+        )
+        .order_by(Interview.updated_at.desc())
+    )
+    rows = result.all()
+    return [
+        {
+            "interview_id": str(row.id),
+            "candidate_name": row.full_name,
+            "role": row.role_title,
+            "score": row.rating,
+            "completed_at": row.updated_at.isoformat() if row.updated_at else None,
+        }
+        for row in rows
+    ]
