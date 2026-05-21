@@ -7,7 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import CurrentUser
 from app.core.responses import success
 from app.db.session import get_session
-from app.services.dashboard import get_completed, get_live_counts, get_live_interviews, get_schedule
+from app.services.dashboard import (
+    get_completed,
+    get_live_counts,
+    get_live_interviews,
+    get_schedule,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -16,6 +21,7 @@ logger = logging.getLogger(__name__)
 async def _resolve_workspace(user: CurrentUser, db: AsyncSession) -> uuid.UUID | None:
     """Resolve the workspace the current user belongs to, or None if not found."""
     from sqlalchemy import select
+
     from app.models.workspace import WorkspaceMember
 
     result = await db.execute(
@@ -66,9 +72,13 @@ async def get_dashboard_live(
     """
     workspace_id = await _resolve_workspace(user, db)
     if workspace_id is None:
-        return success(_EMPTY_STATS, message="Dashboard live counts retrieved successfully")
+        return success(
+            _EMPTY_STATS, message="Dashboard live counts retrieved successfully"
+        )
     counts = await get_live_counts(workspace_id, db)
-    return success(counts.model_dump(), message="Dashboard live counts retrieved successfully")
+    return success(
+        counts.model_dump(), message="Dashboard live counts retrieved successfully"
+    )
 
 
 @router.get("/live-sessions", status_code=status.HTTP_200_OK)
@@ -85,7 +95,10 @@ async def get_dashboard_live_sessions(
     if workspace_id is None:
         return success([], message="Live sessions retrieved successfully")
     stats = await get_live_interviews(workspace_id, db)
-    return success(stats.model_dump(mode="json")["live_interviews"], message="Live sessions retrieved successfully")
+    return success(
+        stats.model_dump(mode="json")["live_interviews"],
+        message="Live sessions retrieved successfully",
+    )
 
 
 @router.get("/schedule", status_code=status.HTTP_200_OK)

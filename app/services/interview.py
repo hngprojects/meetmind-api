@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import status
-from sqlalchemy import delete, select, func
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.responses import APIError
@@ -17,9 +17,9 @@ from app.schemas.interview import (
     CreateInterviewRequest,
     InterviewResponse,
     InterviewSummaryResponse,
-    UpdateCriteriaRequest,
-    UpdateContextRequest,
     UpdateAIConfigRequest,
+    UpdateContextRequest,
+    UpdateCriteriaRequest,
 )
 
 
@@ -390,13 +390,19 @@ class InterviewService:
         )
         interview = result.scalar_one_or_none()
         if not interview:
-            raise APIError("Interview not found", status_code=status.HTTP_404_NOT_FOUND, code="interview_not_found")
+            raise APIError(
+                "Interview not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="interview_not_found",
+            )
 
         if interview.role_title is None and request.role_title:
             interview.role_title = request.role_title
 
         summary_result = await db.execute(
-            select(InterviewSummary).where(InterviewSummary.interview_id == interview.id)
+            select(InterviewSummary).where(
+                InterviewSummary.interview_id == interview.id
+            )
         )
         summary = summary_result.scalar_one_or_none()
         if not summary:
@@ -412,8 +418,11 @@ class InterviewService:
 
         await db.commit()
         await db.refresh(interview)
-        return {"interview_id": str(interview.id), "status": interview.status, "updated_at": interview.updated_at}
-
+        return {
+            "interview_id": str(interview.id),
+            "status": interview.status,
+            "updated_at": interview.updated_at,
+        }
 
     @staticmethod
     async def update_session_config(
@@ -430,7 +439,11 @@ class InterviewService:
         )
         interview = result.scalar_one_or_none()
         if not interview:
-            raise APIError("Interview not found", status_code=status.HTTP_404_NOT_FOUND, code="interview_not_found")
+            raise APIError(
+                "Interview not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="interview_not_found",
+            )
 
         if request.participation_mode:
             interview.participation_mode = request.participation_mode
@@ -452,7 +465,6 @@ class InterviewService:
             "updated_at": interview.updated_at,
         }
 
-
     @staticmethod
     async def confirm_interview(
         interview_id: uuid.UUID,
@@ -467,13 +479,23 @@ class InterviewService:
         )
         interview = result.scalar_one_or_none()
         if not interview:
-            raise APIError("Interview not found", status_code=status.HTTP_404_NOT_FOUND, code="interview_not_found")
+            raise APIError(
+                "Interview not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="interview_not_found",
+            )
 
         if interview.status == "scheduled":
-            raise APIError("Interview already confirmed", status_code=status.HTTP_409_CONFLICT, code="already_confirmed")
+            raise APIError(
+                "Interview already confirmed",
+                status_code=status.HTTP_409_CONFLICT,
+                code="already_confirmed",
+            )
 
         summary_result = await db.execute(
-            select(InterviewSummary).where(InterviewSummary.interview_id == interview.id)
+            select(InterviewSummary).where(
+                InterviewSummary.interview_id == interview.id
+            )
         )
         summary = summary_result.scalar_one_or_none()
 
@@ -487,8 +509,11 @@ class InterviewService:
         interview.status = "scheduled"
         await db.commit()
         await db.refresh(interview)
-        return {"interview_id": str(interview.id), "status": interview.status, "confirmed_at": interview.updated_at}
-
+        return {
+            "interview_id": str(interview.id),
+            "status": interview.status,
+            "confirmed_at": interview.updated_at,
+        }
 
     @staticmethod
     async def list_interviews(
@@ -497,7 +522,7 @@ class InterviewService:
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list, int]:
-        
+
         count_result = await db.execute(
             select(func.count(Interview.id)).where(Interview.interviewer_id == user.id)
         )
@@ -512,7 +537,7 @@ class InterviewService:
             .limit(page_size)
         )
         return list(result.all()), total
-        
+
     @staticmethod
     async def cancel_interview(
         interview_id: uuid.UUID,

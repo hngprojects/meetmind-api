@@ -8,13 +8,13 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser
-from app.core.responses import success, paginated
+from app.core.responses import paginated, success
 from app.db.session import get_session
 from app.schemas.interview import (
     CreateInterviewRequest,
-    UpdateCriteriaRequest,
-    UpdateContextRequest,
     UpdateAIConfigRequest,
+    UpdateContextRequest,
+    UpdateCriteriaRequest,
 )
 from app.services.chat_history import ChatHistoryService
 from app.services.interview import InterviewService
@@ -52,6 +52,7 @@ async def create_interview(
         status_code=status.HTTP_201_CREATED,
     )
 
+
 @router.get("", status_code=status.HTTP_200_OK)
 async def list_interviews(
     user: CurrentUser,
@@ -60,6 +61,7 @@ async def list_interviews(
     page_size: int = 20,
 ):
     from app.schemas.interview import InterviewListItem
+
     rows, total = await InterviewService.list_interviews(db, user, page, page_size)
     items = [
         InterviewListItem(
@@ -74,8 +76,9 @@ async def list_interviews(
         ).model_dump(mode="json")
         for i, full_name in rows
     ]
-    return paginated(items, page=page, page_size=page_size, total=total, message="Sessions retrieved")
-
+    return paginated(
+        items, page=page, page_size=page_size, total=total, message="Sessions retrieved"
+    )
 
 
 @router.get("/{interview_id}", status_code=status.HTTP_200_OK)
@@ -104,6 +107,7 @@ async def get_interview(
         interview.model_dump(mode="json"),
         message="Interview session retrieved successfully",
     )
+
 
 @router.post("/{interview_id}/confirm", status_code=status.HTTP_200_OK)
 async def confirm_interview(
@@ -185,6 +189,7 @@ async def update_criteria(
     )
     return success(result, message="Criteria updated successfully")
 
+
 @router.put("/{interview_id}/context", status_code=status.HTTP_200_OK)
 async def update_context(
     interview_id: uuid.UUID,
@@ -203,5 +208,7 @@ async def update_ai_config(
     user: CurrentUser,
     db: AsyncSession = Depends(get_session),
 ):
-    result = await InterviewService.update_session_config(interview_id, payload, db, user)
+    result = await InterviewService.update_session_config(
+        interview_id, payload, db, user
+    )
     return success(result, message="AI config updated successfully")

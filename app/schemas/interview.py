@@ -62,6 +62,7 @@ class UpdateCriteriaRequest(BaseModel):
     def validate_criteria(cls, v: list[str]) -> list[str]:
         return _validate_criteria(v)
 
+
 class UpdateContextRequest(BaseModel):
     role_title: str | None = Field(default=None, max_length=120)
     job_description: str | None = Field(default=None)
@@ -70,7 +71,9 @@ class UpdateContextRequest(BaseModel):
 
 
 class UpdateAIConfigRequest(BaseModel):
-    participation_mode: Literal["passive", "standard", "proactive"] | None = Field(default=None)
+    participation_mode: Literal["passive", "standard", "proactive"] | None = Field(
+        default=None
+    )
     platform: Literal["zoom", "google_meet"] | None = Field(default=None)
     call_link: str | None = Field(default=None)
     scheduled_start: datetime | None = Field(default=None)
@@ -105,6 +108,7 @@ class InterviewResponse(BaseModel):
     created_at: datetime | None
 
     model_config = {"from_attributes": True}
+
 
 class InterviewListItem(BaseModel):
     id: UUID

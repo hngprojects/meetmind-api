@@ -142,7 +142,9 @@ async def get_schedule(
             "interview_id": str(row.id),
             "candidate_name": row.full_name,
             "role": row.role_title,
-            "start_time": row.scheduled_start.isoformat() if row.scheduled_start else None,
+            "start_time": row.scheduled_start.isoformat()
+            if row.scheduled_start
+            else None,
             "end_time": row.scheduled_end.isoformat() if row.scheduled_end else None,
         }
         for row in rows
