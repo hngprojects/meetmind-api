@@ -60,6 +60,11 @@ class Settings(BaseSettings):
     # CI where sending real emails is undesirable.
     MOCK_EMAILS: bool = False
 
+    # LiveKit — AI interviewer call infrastructure
+    LIVEKIT_URL: str = ""
+    LIVEKIT_API_KEY: str = ""
+    LIVEKIT_API_SECRET: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:
