@@ -72,6 +72,25 @@ def test_rtms_event_mapping_supports_zoom_payload_shapes():
     assert rtms_stream_id(payload) == "stream-1"
 
 
+def test_rtms_event_mapping_supports_nested_zoom_object_payload():
+    payload = {
+        "event": "meeting.rtms_started",
+        "payload": {
+            "account_id": "account-1",
+            "object": {
+                "id": "123",
+                "uuid": "meeting-uuid",
+                "rtms_stream_id": "stream-1",
+                "server_urls": "wss://example.zoom.us",
+                "signature": "signed",
+            },
+        },
+    }
+
+    assert meeting_id(payload) == "123"
+    assert rtms_stream_id(payload) == "stream-1"
+
+
 def test_rtms_event_mapping_uses_meeting_uuid_when_needed():
     payload = {"payload": {"meeting_uuid": "uuid-only"}}
 

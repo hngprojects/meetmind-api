@@ -29,7 +29,10 @@ def normalize_event_name(name: str) -> str:
 
 def payload_object(payload: dict[str, Any]) -> dict[str, Any]:
     obj = payload.get("payload") or payload
-    return obj if isinstance(obj, dict) else {}
+    if not isinstance(obj, dict):
+        return {}
+    nested = obj.get("object")
+    return nested if isinstance(nested, dict) else obj
 
 
 def event_id(payload: dict[str, Any]) -> str | None:
@@ -44,6 +47,7 @@ def meeting_id(payload: dict[str, Any]) -> str | None:
         or obj.get("meetingId")
         or obj.get("meeting_number")
         or obj.get("meetingNumber")
+        or obj.get("id")
         or obj.get("meeting_uuid")
         or obj.get("meetingUuid")
         or obj.get("uuid")
