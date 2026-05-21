@@ -8,6 +8,7 @@ from sqlalchemy import DateTime, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from sdk.db import SDKBase
+from sdk.security import decrypt_secret, encrypt_secret
 
 
 def new_id() -> str:
@@ -124,3 +125,45 @@ class SDKProviderEvent(SDKBase):
             "payload": json.loads(self.payload_json),
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
+
+
+class SDKZoomOAuthToken(SDKBase):
+    __tablename__ = "sdk_zoom_oauth_tokens"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_id)
+    zoom_user_id: Mapped[str | None] = mapped_column(String(255), index=True)
+    access_token_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    refresh_token_encrypted: Mapped[str | None] = mapped_column(Text)
+    token_type: Mapped[str] = mapped_column(
+        String(60), nullable=False, default="bearer"
+    )
+    scope: Mapped[str | None] = mapped_column(Text)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+    @property
+    def access_token(self) -> str:
+        value = decrypt_secret(self.access_token_encrypted)
+        if value is None:
+            raise ValueError("Stored Zoom access token is empty.")
+        return value
+
+    @access_token.setter
+    def access_token(self, value: str) -> None:
+        encrypted_value = encrypt_secret(value)
+        if encrypted_value is None:
+            raise ValueError("Zoom access token cannot be empty.")
+        self.access_token_encrypted = encrypted_value
+
+    @property
+    def refresh_token(self) -> str | None:
+        return decrypt_secret(self.refresh_token_encrypted)
+
+    @refresh_token.setter
+    def refresh_token(self, value: str | None) -> None:
+        self.refresh_token_encrypted = encrypt_secret(value)
