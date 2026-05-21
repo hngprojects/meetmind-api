@@ -44,7 +44,13 @@ def handle_zoom_webhook(*, db: Session, payload: dict[str, Any]) -> dict:
     )
 
     if raw_event in STARTED_EVENTS or normalized == "meeting.rtms_started":
-        return zoom_rtms_manager.start_from_webhook(db=db, payload=payload)
+        zoom_rtms_manager.queue_start_from_webhook(payload=payload)
+        return {
+            "received": True,
+            "event": normalized,
+            "rtms_stream_id": rtms_stream_id(payload),
+            "rtms_start_queued": True,
+        }
 
     if raw_event in STOPPED_EVENTS or normalized == "meeting.rtms_stopped":
         return zoom_rtms_manager.stop_from_webhook(db=db, payload=payload)
