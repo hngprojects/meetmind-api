@@ -43,9 +43,10 @@ class InterviewContextService:
         candidate_id: UUID, job_description: str, scorecard: str, db: AsyncSession
     ) -> str:
 
-        search_query = f"""Candidate experience, skills, and background relevant to: 
-        {job_description}
-        """
+        search_query = (
+            f"Candidate experience, skills, and background relevant "
+            f"to: {job_description}"
+        )
         retrieved_texts = await InterviewContextService.retrieve_relevant_chunks(
             candidate_id=candidate_id, query=search_query, db=db
         )
@@ -54,7 +55,7 @@ class InterviewContextService:
 
         system_prompt = f"""
         You are MeetMind, an expert Technical Recruiter conducting an interview. 
-        You are speaking to the candidate via a live audio call. Keep your responses 
+        You are speaking to the candidate via a live audio call. Keep your responses
         conversational, concise, and natural. Do not speak in bullet points.
 
         # JOB DESCRIPTION
@@ -67,9 +68,8 @@ class InterviewContextService:
         {formatted_resume_context}
 
         # INSTRUCTIONS
-        Based on the candidate's background and the scorecard, 
-        formulate your next interview question. Do not repeat 
-        questions you have already asked. 
+        Based on the candidate's background and the scorecard, formulate your next
+        interview question. Do not repeat questions you have already asked.
         """
 
         return system_prompt
