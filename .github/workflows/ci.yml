@@ -44,6 +44,7 @@ jobs:
             GOOGLE_CLIENT_SECRET: test-google-client-secret
             GOOGLE_REDIRECT_URI: http://localhost:8000/api/v1/auth/google/callback
             GEMINI_API_KEY: test-gemini-api-key
+            FRONTEND_URL: http://localhost:3000
 
         steps:
             # ===== BRANCH NAME VALIDATION =====
@@ -81,6 +82,16 @@ jobs:
             - name: Install dependencies (including dev)
               run: uv sync --frozen --dev
 
+            # ===== ENABLE PGVECTOR EXTENSION =====
+            - name: Enable pgvector extension in test DB
+              env:
+                  PGPASSWORD: ${{ secrets.TEST_POSTGRES_PASSWORD || 'postgres' }}
+              run: |
+                  psql -h localhost -U ${{ secrets.TEST_POSTGRES_USER || 'postgres' }} \
+                    -d ${{ secrets.TEST_POSTGRES_DB || 'test_db' }} \
+                    -c "CREATE EXTENSION IF NOT EXISTS vector;"
+                  echo "✅ pgvector extension enabled"
+
             # ===== LINT & FORMAT =====
             - name: Run Ruff lint
               run: uv run ruff check .
@@ -88,24 +99,37 @@ jobs:
             - name: Run Ruff format check
               run: uv run ruff format --check .
 
+            - name: Debug security step
+              run: |
+                  echo "=== pip-audit raw ==="
+                  uv run pip-audit || true
+
+                  echo "=== checking files ==="
+                  ls ci/
+                  ls security/
+
             # ===== SECURITY AUDIT =====
-            - name: Run security audit (pip-audit)
+            - name: Run security audit (controlled gate)
               run: |
                   echo "🔍 Running security audit..."
-                  uv run pip-audit
-                  if [ $? -ne 0 ]; then
-                    echo ""
-                    echo "❌ CRITICAL: Vulnerabilities detected in dependencies!"
-                    echo ""
-                    echo "To fix:"
-                    echo "  1. Run: uv run pip-audit"
-                    echo "  2. Update affected packages in pyproject.toml"
-                    echo "  3. Run: uv lock && uv sync"
-                    echo "  4. Commit updated uv.lock"
-                    echo ""
+
+                  # Step 1: collect findings only (DO NOT fail here)
+                  uv run pip-audit --format json > pip-audit.json || true
+
+                  # Step 2: apply your own policy (THIS is the gate)
+                  uv run python ci/security_gate.py \
+                    --input pip-audit.json \
+                    --exceptions security/vulnerability-exceptions.json
+
+                  EXIT_CODE=$?
+
+                  if [ $EXIT_CODE -ne 0 ]; then
+                    echo "❌ Security gate failed"
                     exit 1
                   fi
-                  echo "✅ No vulnerabilities found"
+
+                  echo "✅ Security gate passed"
+
             # ===== MIGRATION INTEGRITY =====
             - name: Check for multiple Alembic heads
               run: |

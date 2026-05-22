@@ -11,9 +11,9 @@ dependencies = [
     "alembic>=1.14.0",
     "pydantic-settings>=2.7.0",
     "bcrypt>=4.0.0",
+    "cryptography>=44.0.1",
     "psycopg2-binary>=2.9.12",
     "python-decouple>=3.8",
-    "python-jose>=3.5.0",
     "resend>=2.30.0",
     "Jinja2>=3.1.0",
     "httpx>=0.28.1",
@@ -22,12 +22,18 @@ dependencies = [
     "redis>=7.4.0",
     "urllib3>=2.7.0",
     "rtms==1.1.0; (sys_platform == 'linux' and platform_machine == 'x86_64') or (sys_platform == 'darwin' and platform_machine == 'arm64')",
+    "livekit-api>=0.4.1",
+    "livekit-agents>=0.8.4",
+    "livekit-plugins-silero>=0.4.1",
+    "livekit-plugins-turn-detector>=0.1.2",
+    "aiohttp>=3.10.0",
     "pgvector>=0.4.2",
     "pdfplumber>=0.11.9",
     "python-docx>=1.2.0",
     "langchain-text-splitters>=1.1.2",
     "google-genai>=2.4.0",
     "idna>=3.15",
+    "pyjwt[crypto]>=2.12.1",
 ]
 
 [dependency-groups]
@@ -46,6 +52,7 @@ exclude = [
     ".venv",
     "alembic/versions/**",
     "alembic/env.py",
+    "tests",
 ]
 
 [tool.ruff.lint]

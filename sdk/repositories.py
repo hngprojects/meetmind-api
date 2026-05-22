@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
+from datetime import datetime, timezone
 from threading import Lock
 
 from sqlalchemy import func, select
@@ -9,7 +10,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from sdk.config import get_sdk_settings
-from sdk.models import SDKProviderEvent, SDKSession, SDKTranscriptTurn
+from sdk.models import (
+    SDKProviderEvent,
+    SDKSession,
+    SDKTranscriptTurn,
+    SDKZoomOAuthToken,
+)
 from sdk.wake_words import normalize_wake_words
 
 _sequence_locks: defaultdict[str, Lock] = defaultdict(Lock)
@@ -159,6 +165,58 @@ class SDKRepository:
             return existing
         self.db.refresh(event)
         return event
+
+    def save_zoom_oauth_token(
+        self,
+        *,
+        access_token: str,
+        refresh_token: str | None,
+        token_type: str,
+        scope: str | None,
+        expires_at: datetime | None,
+        zoom_user_id: str | None = None,
+    ) -> SDKZoomOAuthToken:
+        token = SDKZoomOAuthToken(
+            zoom_user_id=zoom_user_id,
+            token_type=token_type,
+            scope=scope,
+            expires_at=expires_at,
+        )
+        token.access_token = access_token
+        token.refresh_token = refresh_token
+        self.db.add(token)
+        self.db.commit()
+        self.db.refresh(token)
+        return token
+
+    def get_latest_zoom_oauth_token(self) -> SDKZoomOAuthToken | None:
+        return (
+            self.db.execute(
+                select(SDKZoomOAuthToken).order_by(SDKZoomOAuthToken.created_at.desc())
+            )
+            .scalars()
+            .first()
+        )
+
+    def get_latest_usable_zoom_oauth_token(self) -> SDKZoomOAuthToken | None:
+        token = self.get_latest_zoom_oauth_token()
+        if token is None:
+            return None
+        if token.expires_at is None:
+            return None
+        now = datetime.now(timezone.utc)
+        expires_at = token.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at <= now:
+            return None
+        return token
+
+    def get_zoom_access_token_value(self, token: SDKZoomOAuthToken) -> str:
+        return token.access_token
+
+    def get_zoom_refresh_token_value(self, token: SDKZoomOAuthToken) -> str | None:
+        return token.refresh_token
 
     def next_sequence(self, session_id: str) -> int:
         value = self.db.execute(

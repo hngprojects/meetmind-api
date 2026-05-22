@@ -54,13 +54,18 @@ class Settings(BaseSettings):
 
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
 
-    FRONTEND_URL: str = "http://localhost:3000"
+    FRONTEND_URL: str
     # When true, the application will not call external email providers and
     # will instead log emails locally. Useful for offline development and
     # CI where sending real emails is undesirable.
     MOCK_EMAILS: bool = False
 
-    GEMINI_API_KEY: str
+    # LiveKit — AI interviewer call infrastructure
+    LIVEKIT_URL: str = ""
+    LIVEKIT_API_KEY: str = ""
+    LIVEKIT_API_SECRET: str = ""
+
+    GEMINI_API_KEY: str = ""
 
 
 @lru_cache

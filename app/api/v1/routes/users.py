@@ -27,6 +27,7 @@ async def get_me(user: CurrentUser):
             "job_title": user.job_title,
             "company": user.company,
             "avatar_url": user.avatar_url,
+            "onboarding_completed": user.onboarding_completed,
         },
         message="User profile retrieved",
     )
