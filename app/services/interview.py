@@ -492,6 +492,13 @@ class InterviewService:
                 code="already_confirmed",
             )
 
+        if interview.status in ("cancelled", "completed"):
+            raise APIError(
+                f"Cannot confirm a {interview.status} interview",
+                status_code=status.HTTP_409_CONFLICT,
+                code="invalid_status",
+            )
+
         summary_result = await db.execute(
             select(InterviewSummary).where(
                 InterviewSummary.interview_id == interview.id
