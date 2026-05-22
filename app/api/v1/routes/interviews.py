@@ -4,7 +4,7 @@ and scorecard endpoints."""
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser
@@ -13,6 +13,7 @@ from app.db.session import get_session
 from app.schemas.interview import CreateInterviewRequest, UpdateCriteriaRequest
 from app.services.chat_history import ChatHistoryService
 from app.services.interview import InterviewService
+from app.services.ai_integration_service import AIIntegrationService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -145,3 +146,80 @@ async def update_criteria(
         interview_id, payload, db, user
     )
     return success(result, message="Criteria updated successfully")
+
+@router.post("/{interview_id}/ai/reply", status_code=status.HTTP_200_OK)
+async def generate_ai_reply(
+    interview_id: uuid.UUID,
+    transcript_text: str,
+    candidate_id: uuid.UUID,
+    job_description: str,
+    scoring_rubric: str,
+    session_id: str,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_session),
+):
+    """Generate an AI reply during an interview session.
+
+    Calls AIIntegrationService.generate_reply and persists the AI turn.
+    """
+    try:
+        ai_output = await AIIntegrationService.generate_reply(
+            db=db,
+            interview_id=interview_id,
+            session_id=session_id,
+            candidate_id=candidate_id,
+            job_description=job_description,
+            scoring_rubric=scoring_rubric,
+            transcript_text=transcript_text,
+            user=user,
+        )
+        return success(ai_output, message="AI reply generated successfully")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI reply generation failed: {str(e)}")
+
+
+@router.post("/{interview_id}/ai/summary", status_code=status.HTTP_200_OK)
+async def generate_ai_summary(
+    interview_id: uuid.UUID,
+    candidate_id: uuid.UUID,
+    job_description: str,
+    scoring_rubric: str,
+    transcript_text: str,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_session),
+):
+    """Generate a post-interview summary and scorecard.
+
+    Calls AIIntegrationService.generate_summary and returns structured output.
+    """
+    try:
+        ai_output = await AIIntegrationService.generate_summary(
+            db=db,
+            candidate_id=candidate_id,
+            job_description=job_description,
+            scoring_rubric=scoring_rubric,
+            transcript_text=transcript_text,
+        )
+        return success(ai_output, message="AI summary generated successfully")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI summary generation failed: {str(e)}")
+    
+@router.post("/{interview_id}/ai/ask", status_code=status.HTTP_200_OK)
+async def ask_mind(
+    interview_id: uuid.UUID,
+    candidate_id: uuid.UUID,
+    query: str,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_session),
+):
+    """Ask MeetMind a question about the candidate or meeting."""
+    try:
+        ai_output = await AIIntegrationService.answer_query(
+            db=db,
+            candidate_id=candidate_id,
+            query=query,
+        )
+        return success(ai_output, message="AI answered query successfully")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI query answering failed: {str(e)}")
+

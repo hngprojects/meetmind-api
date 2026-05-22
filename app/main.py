@@ -23,6 +23,7 @@ from app.core.middleware import JWTBlacklistMiddleware
 from app.core.redis import redis_client
 from app.core.responses import APIError, error, success
 from app.db.session import engine
+from sdk.db import init_sdk_database
 
 setup_logging()
 
@@ -32,6 +33,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     logger.info("Starting %s", settings.PROJECT_NAME)
+    init_sdk_database()
     yield
     logger.info("Shutting down %s — disposing DB engine", settings.PROJECT_NAME)
     await engine.dispose()
