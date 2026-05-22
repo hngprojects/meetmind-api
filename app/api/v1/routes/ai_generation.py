@@ -1,14 +1,17 @@
 """Routes to trigger AI generation for interviews."""
 
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, status
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser
-from app.core.responses import success
+from app.core.responses import APIError, success
 from app.db.session import get_session
+from app.models.interview import Interview, InterviewTranscript, InterviewTranscriptTurn
 from app.services.ai_generation_service import AIGenerationService
 
 router = APIRouter()
@@ -49,16 +52,6 @@ async def respond_to_question(
     db: AsyncSession = Depends(get_session),
 ):
     """Record a candidate response and generate the next question."""
-    from datetime import datetime, timezone
-
-    from sqlalchemy import select
-
-    from app.models.interview import (
-        Interview,
-        InterviewTranscript,
-        InterviewTranscriptTurn,
-    )
-
     interview = (
         await db.execute(
             select(Interview).where(
@@ -69,8 +62,6 @@ async def respond_to_question(
     ).scalar_one_or_none()
 
     if not interview:
-        from app.core.responses import APIError
-
         raise APIError(
             "Interview not found",
             status_code=404,
@@ -86,9 +77,7 @@ async def respond_to_question(
     ).scalar_one_or_none()
 
     if transcript is None:
-        transcript = InterviewTranscript(
-            interview_id=interview_id, status="processing"
-        )
+        transcript = InterviewTranscript(interview_id=interview_id, status="processing")
         db.add(transcript)
         await db.flush()
 
@@ -133,10 +122,6 @@ async def complete_interview(
     db: AsyncSession = Depends(get_session),
 ):
     """Mark interview complete and generate assessment in background."""
-    from sqlalchemy import select
-
-    from app.models.interview import Interview
-
     interview = (
         await db.execute(
             select(Interview).where(
@@ -147,8 +132,6 @@ async def complete_interview(
     ).scalar_one_or_none()
 
     if not interview:
-        from app.core.responses import APIError
-
         raise APIError(
             "Interview not found",
             status_code=404,
