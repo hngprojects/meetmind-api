@@ -10,6 +10,7 @@ from app.api.v1.routes import (
     health,
     integrations,
     interviews,
+    livekit,
     meetings,
     onboarding,
     sdk,
@@ -42,4 +43,5 @@ api_router.include_router(candidates.router, prefix="/candidates", tags=["Candid
 api_router.include_router(waitlist.router, prefix="/waitlist", tags=["Waitlist"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 api_router.include_router(zoom_sdk.router, prefix="/zoom", tags=["Zoom SDK"])
+api_router.include_router(livekit.router, prefix="/livekit", tags=["LiveKit"])
 api_router.include_router(sdk.router, prefix="/sdk", tags=["SDK"])

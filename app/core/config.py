@@ -60,7 +60,12 @@ class Settings(BaseSettings):
     # CI where sending real emails is undesirable.
     MOCK_EMAILS: bool = False
 
-    GEMINI_API_KEY: str
+    # LiveKit — AI interviewer call infrastructure
+    LIVEKIT_URL: str = ""
+    LIVEKIT_API_KEY: str = ""
+    LIVEKIT_API_SECRET: str = ""
+
+    GEMINI_API_KEY: str = ""
 
 
 @lru_cache
