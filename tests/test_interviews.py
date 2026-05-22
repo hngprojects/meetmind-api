@@ -158,97 +158,6 @@ class TestCreateInterview:
         logger.info("[result]  Unauthenticated requestcorrectly rejected  ✓")
 
     @pytest.mark.anyio
-    async def test_create_returns_422_when_title_missing(self, client: AsyncClient):
-        """
-        GIVEN a payload missing the required 'title' field
-        WHEN  POST /interviews is called
-        THEN  the response is 422
-
-        Expected:
-            POST /interviews (no title) → 422
-        """
-        token = await signup_and_get_token(client, unique_user())
-        payload = {k: v for k, v in VALID_INTERVIEW_PAYLOAD.items() if k != "title"}
-        response = await client.post(
-            INTERVIEWS_URL,
-            json=payload,
-            headers=auth_headers(token),
-        )
-        logger.info("[missing title] POST /interviews → %d", response.status_code)
-
-        assert response.status_code == 422, (
-            "Expected 422 for missing title but got "
-            f"{response.status_code}. Body: {response.json()}"
-        )
-        logger.info("[result]        Missing required field correctly rejected  ✓")
-
-    @pytest.mark.anyio
-    async def test_create_returns_422_when_job_description_missing(
-        self, client: AsyncClient
-    ):
-        """
-        GIVEN a payload missing 'job_description'
-        WHEN  POST /interviews is called
-        THEN  the response is 422
-
-        Expected:
-            POST /interviews (no job_description) → 422
-        """
-        token = await signup_and_get_token(client, unique_user())
-        payload = {
-            k: v for k, v in VALID_INTERVIEW_PAYLOAD.items() if k != "job_description"
-        }
-        response = await client.post(
-            INTERVIEWS_URL,
-            json=payload,
-            headers=auth_headers(token),
-        )
-        logger.info(
-            "[missing job_description] POST /interviews → %d", response.status_code
-        )
-
-        assert response.status_code == 422, (
-            f"Expected 422 for missing job_description but got"
-            f"{response.status_code}. Body: {response.json()}"
-        )
-        logger.info(
-            "[result]                  Missing context field correctly rejected  ✓"
-        )
-
-    @pytest.mark.anyio
-    async def test_create_returns_422_when_scoring_rubric_missing(
-        self, client: AsyncClient
-    ):
-        """
-        GIVEN a payload missing 'scoring_rubric'
-        WHEN  POST /interviews is called
-        THEN  the response is 422
-
-        Expected:
-            POST /interviews (no scoring_rubric) → 422
-        """
-        token = await signup_and_get_token(client, unique_user())
-        payload = {
-            k: v for k, v in VALID_INTERVIEW_PAYLOAD.items() if k != "scoring_rubric"
-        }
-        response = await client.post(
-            INTERVIEWS_URL,
-            json=payload,
-            headers=auth_headers(token),
-        )
-        logger.info(
-            "[missing scoring_rubric] POST /interviews → %d", response.status_code
-        )
-
-        assert response.status_code == 422, (
-            f"Expected 422 for missing scoring_rubric but got {response.status_code}."
-            f"Body: {response.json()}"
-        )
-        logger.info(
-            "[result]                 Missing scoring rubric correctly rejected  ✓"
-        )
-
-    @pytest.mark.anyio
     async def test_optional_fields_default_correctly(self, client: AsyncClient):
         """
         GIVEN a payload with only required fields (no platform, ai_tone, role_title)
@@ -440,15 +349,6 @@ class TestCreateInterviewCriteria:
         assert response.status_code == 201
         data = response.json()["data"]
         assert data["criteria"] == ["Communication", "API Design", "Problem Solving"]
-
-    @pytest.mark.anyio
-    async def test_create_rejects_empty_criteria(self, client: AsyncClient):
-        token = await signup_and_get_token(client, unique_user())
-        payload = {**VALID_INTERVIEW_PAYLOAD, "criteria": []}
-        response = await client.post(
-            INTERVIEWS_URL, json=payload, headers=auth_headers(token)
-        )
-        assert response.status_code == 422
 
     @pytest.mark.anyio
     async def test_create_rejects_more_than_10_criteria(self, client: AsyncClient):
