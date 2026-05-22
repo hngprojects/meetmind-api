@@ -555,10 +555,6 @@ async def google_callback(
             code="internal_error",
         )
 
-    expiry_minutes = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-
-    access_expires_at = datetime.now(timezone.utc) + expiry_minutes
-
     response.set_cookie(
         key="access_token",
         value=access_token,
