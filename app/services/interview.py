@@ -182,6 +182,7 @@ class InterviewService:
             platform=request.platform,
             ai_tone=request.ai_tone,
             status="draft",
+            participation_mode=request.participation_mode.value,
         )
         db.add(interview)
         await db.flush()
@@ -213,6 +214,7 @@ class InterviewService:
             role_title=interview.role_title,
             platform=interview.platform,
             ai_tone=interview.ai_tone,
+            participation_mode=interview.participation_mode,
             candidate_name=candidate.full_name,
             candidate_email=candidate.email,
             summary=InterviewSummaryResponse(
@@ -287,6 +289,7 @@ class InterviewService:
             role_title=interview.role_title,
             platform=interview.platform,
             ai_tone=interview.ai_tone,
+            participation_mode=interview.participation_mode,
             candidate_name=candidate.full_name if candidate else "Unknown",
             candidate_email=candidate.email if candidate else None,
             summary=InterviewSummaryResponse(
@@ -628,6 +631,7 @@ class InterviewService:
             role_title=interview.role_title,
             platform=interview.platform,
             ai_tone=interview.ai_tone,
+            participation_mode=interview.participation_mode,
             candidate_name=candidate.full_name if candidate else "Unknown",
             candidate_email=candidate.email if candidate else None,
             summary=InterviewSummaryResponse(
