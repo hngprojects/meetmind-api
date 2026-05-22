@@ -40,7 +40,13 @@ class AIGenerationService:
         ai_tone: str | None,
         db: AsyncSession,
     ) -> str:
-        """Build the system instruction for next-question generation."""
+        """Build the system instruction for next-question generation.
+
+        Retrieves relevant resume/document chunks via
+        :meth:`InterviewContextService.retrieve_relevant_chunks`. If no chunks
+        are found (empty list), the ``# CANDIDATE CONTEXT`` section is left
+        blank — the LLM proceeds with the job description and scorecard alone.
+        """
         retrieved = await InterviewContextService.retrieve_relevant_chunks(
             candidate_id=candidate_id,
             query=(
@@ -94,7 +100,14 @@ class AIGenerationService:
         scorecard: str,
         db: AsyncSession,
     ) -> str:
-        """Build the system instruction for post-session assessment generation."""
+        """Build the system instruction for post-session assessment generation.
+
+        Retrieves relevant resume/document chunks via
+        :meth:`InterviewContextService.retrieve_relevant_chunks`. If no chunks
+        are found (empty list), the ``# CANDIDATE CONTEXT`` section is left
+        blank — the LLM proceeds with the job description, scorecard, and
+        transcript alone.
+        """
         retrieved = await InterviewContextService.retrieve_relevant_chunks(
             candidate_id=candidate_id,
             query=(
