@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     LIVEKIT_URL: str = ""
     LIVEKIT_API_KEY: str = ""
     LIVEKIT_API_SECRET: str = ""
-    
+
     GEMINI_API_KEY: str = ""
 
 

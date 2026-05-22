@@ -18,7 +18,9 @@ class DocumentService:
     @classmethod
     def _client(cls):
         if not getattr(cls, "_client_instance", None):
-            cls._client_instance = genai.Client(api_key=settings.GEMINI_API_KEY or "dummy_key").aio
+            cls._client_instance = genai.Client(
+                api_key=settings.GEMINI_API_KEY or "dummy_key"
+            ).aio
         return cls._client_instance
 
     EMBEDDING_BATCH_SIZE = 50

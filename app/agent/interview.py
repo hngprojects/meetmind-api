@@ -122,7 +122,9 @@ DEFAULT_INTERVIEW = Interview(
         ),
     ],
     rubric=[
-        RubricCriterion("Technical depth", "Real, hands-on backend knowledge.", weight=3),
+        RubricCriterion(
+            "Technical depth", "Real, hands-on backend knowledge.", weight=3
+        ),
     ],
     duration_minutes=20,
 )

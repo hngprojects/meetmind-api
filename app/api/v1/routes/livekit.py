@@ -10,8 +10,9 @@ DEFAULT_INTERVIEW = {
     "role": "Software Engineer",
     "questions": ["Tell me about your experience.", "What is your strongest skill?"],
     "duration_minutes": 30,
-    "rubric": "Evaluate their technical experience."
+    "rubric": "Evaluate their technical experience.",
 }
+
 
 @router.post("/{session_id}/token")
 async def generate_token(session_id: str, request: Request):
@@ -20,16 +21,21 @@ async def generate_token(session_id: str, request: Request):
     participant_name = body.get("participant_name", "Candidate")
 
     if not settings.LIVEKIT_API_KEY or not settings.LIVEKIT_API_SECRET:
-        raise HTTPException(status_code=500, detail="LiveKit credentials are not configured")
+        raise HTTPException(
+            status_code=500, detail="LiveKit credentials are not configured"
+        )
 
     token = api.AccessToken(settings.LIVEKIT_API_KEY, settings.LIVEKIT_API_SECRET)
     token.with_identity(participant_name).with_name(participant_name)
-    token.with_grants(api.VideoGrants(
-        room_join=True,
-        room=session_id,
-    ))
+    token.with_grants(
+        api.VideoGrants(
+            room_join=True,
+            room=session_id,
+        )
+    )
 
     return {"token": token.to_jwt()}
+
 
 @router.get("/{session_id}/config")
 async def get_agent_config(session_id: str):
@@ -38,6 +44,7 @@ async def get_agent_config(session_id: str):
     # to fetch custom questions, role, and rubric.
     return DEFAULT_INTERVIEW
 
+
 @router.post("/{session_id}/result")
 async def post_result(session_id: str, request: Request):
     """The LiveKit agent posts the transcript and report here when done."""
@@ -45,5 +52,5 @@ async def post_result(session_id: str, request: Request):
     # In a real app, you would save body["transcript"] and body["report"]
     # to the database linked to the session_id.
     _ = body  # body consumed; DB persistence to be wired up
-    
+
     return {"status": "success", "message": "Result saved successfully"}

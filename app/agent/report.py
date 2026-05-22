@@ -48,7 +48,9 @@ Respond with ONLY JSON, no prose or markdown fences:
     ctx.add_message(role="user", content=prompt)
 
     text = ""
-    async for chunk in inference.LLM(model=llm_model).chat(chat_ctx=ctx).to_str_iterable():
+    async for chunk in (
+        inference.LLM(model=llm_model).chat(chat_ctx=ctx).to_str_iterable()
+    ):
         text += chunk
 
     return _parse_json(text)

@@ -14,11 +14,20 @@ import os
 import aiohttp
 from dotenv import load_dotenv
 from livekit import agents
-from livekit.agents import Agent, AgentServer, AgentSession, TurnHandlingOptions, inference
+from livekit.agents import (
+    Agent,
+    AgentServer,
+    AgentSession,
+    inference,
+)
 from livekit.plugins import silero
-from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
-from app.agent.interview import DEFAULT_INTERVIEW, Interview, build_instructions, interview_from_api
+from app.agent.interview import (
+    DEFAULT_INTERVIEW,
+    Interview,
+    build_instructions,
+    interview_from_api,
+)
 from app.agent.report import generate_report
 from app.agent.transcript import extract_turns, save_transcript
 
@@ -73,7 +82,9 @@ async def post_result(session_id: str, turns: list[dict], report: dict | None) -
         logger.exception("failed to post result")
 
 
-async def run_timer(ctx: agents.JobContext, session: AgentSession, interview: Interview):
+async def run_timer(
+    ctx: agents.JobContext, session: AgentSession, interview: Interview
+):
     """End the interview at the time limit, warning ~2 minutes before."""
     total = interview.duration_minutes * 60
     warn_at = max(total - WARN_BEFORE_END_SEC, 0)
