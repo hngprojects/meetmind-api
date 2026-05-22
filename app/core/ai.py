@@ -4,9 +4,8 @@ from app.core.config import settings
 
 
 async def generate_with_gemini(
-        prompt: str,
-        model: str = "models/gemini-2.5-flash-lite"
-    ):
+    prompt: str, model: str = "models/gemini-2.5-flash-lite"
+):
     """
     Call Gemini asynchronously with a prompt and return the response.
     """

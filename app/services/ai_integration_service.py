@@ -66,7 +66,7 @@ class AIIntegrationService:
         # 2. Include chat history (scoped to interview + user)
         history = await ChatHistoryService.get_chat_history(interview_id, db, user)
 
-        # 3. Call Gemini model with structured JSON request 
+        # 3. Call Gemini model with structured JSON request
         prompt = f"""
 {system_prompt}
 
@@ -84,7 +84,7 @@ Return ONLY valid JSON with this structure:
   "red_flags": ["string"]
 }}
 """
-        
+
         response = await generate_with_gemini(prompt)
         ai_output = AIIntegrationService._extract_ai_output(
             response,
@@ -109,7 +109,6 @@ Return ONLY valid JSON with this structure:
                 )
 
         return ai_output
-
 
     @staticmethod
     async def generate_summary(
@@ -166,7 +165,7 @@ Return ONLY valid JSON with this structure:
                 "action_items": [],
             },
         )
-    
+
     @staticmethod
     async def answer_query(
         db: AsyncSession,
@@ -177,11 +176,11 @@ Return ONLY valid JSON with this structure:
         transcript_text: str,
     ) -> dict:
         """Answer a user query about a candidate or meeting."""
-        
+
         system_prompt = await InterviewContextService.build_session_context(
             candidate_id=candidate_id,
             job_description="",  # optional if not needed
-            scorecard="",        # optional if not needed
+            scorecard="",  # optional if not needed
             db=db,
         )
 
