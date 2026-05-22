@@ -210,6 +210,7 @@ class InterviewService:
             role_title=interview.role_title,
             platform=interview.platform,
             ai_tone=interview.ai_tone,
+            candidate_id=candidate.id,
             candidate_name=candidate.full_name,
             candidate_email=candidate.email,
             summary=InterviewSummaryResponse(
@@ -284,6 +285,7 @@ class InterviewService:
             role_title=interview.role_title,
             platform=interview.platform,
             ai_tone=interview.ai_tone,
+            candidate_id=candidate.id if candidate else None,
             candidate_name=candidate.full_name if candidate else "Unknown",
             candidate_email=candidate.email if candidate else None,
             summary=InterviewSummaryResponse(
@@ -455,6 +457,7 @@ class InterviewService:
             role_title=interview.role_title,
             platform=interview.platform,
             ai_tone=interview.ai_tone,
+            candidate_id=candidate.id if candidate else None,
             candidate_name=candidate.full_name if candidate else "Unknown",
             candidate_email=candidate.email if candidate else None,
             summary=InterviewSummaryResponse(

@@ -756,3 +756,107 @@ class TestCancelInterview:
         )
         assert body["error"]["code"] == "already_cancelled"
         logger.info("[result] Double-cancel correctly returns 409  [OK]")
+
+
+class TestGenerateAIReply:
+    @pytest.mark.anyio
+    async def test_generate_ai_reply_returns_200_with_valid_payload(
+        self, client: AsyncClient
+    ):
+        token = await signup_and_get_token(client, unique_user())
+        create = await client.post(
+            INTERVIEWS_URL, json=VALID_INTERVIEW_PAYLOAD, headers=auth_headers(token)
+        )
+        data = create.json()["data"]
+        iid = data["id"]
+        candidate_id = data["candidate_id"]
+
+        payload = {
+            "transcript_text": "Candidate discussed their experience with Python.",
+            "candidate_id": candidate_id,
+            "job_description": VALID_INTERVIEW_PAYLOAD["job_description"],
+            "scoring_rubric": VALID_INTERVIEW_PAYLOAD["scoring_rubric"],
+            "session_id": "test-session-id",
+        }
+        response = await client.post(
+            f"{INTERVIEWS_URL}/{iid}/ai/reply",
+            json=payload,
+            headers=auth_headers(token),
+        )
+        body = response.json()
+
+        assert response.status_code == 200, (
+            f"Expected 200 but got {response.status_code}. Body: {body}"
+        )
+        assert "reply" in body["data"]
+        assert "highlights" in body["data"]
+        assert "red_flags" in body["data"]
+
+
+class TestGenerateAISummary:
+    @pytest.mark.anyio
+    async def test_generate_ai_summary_returns_200_with_valid_payload(
+        self, client: AsyncClient
+    ):
+        token = await signup_and_get_token(client, unique_user())
+        create = await client.post(
+            INTERVIEWS_URL, json=VALID_INTERVIEW_PAYLOAD, headers=auth_headers(token)
+        )
+        data = create.json()["data"]
+        iid = data["id"]
+        candidate_id = data["candidate_id"]
+
+        payload = {
+            "candidate_id": candidate_id,
+            "job_description": VALID_INTERVIEW_PAYLOAD["job_description"],
+            "scoring_rubric": VALID_INTERVIEW_PAYLOAD["scoring_rubric"],
+            "transcript_text": (
+                "Candidate explained how they optimized database queries."
+            ),
+        }
+        response = await client.post(
+            f"{INTERVIEWS_URL}/{iid}/ai/summary",
+            json=payload,
+            headers=auth_headers(token),
+        )
+        body = response.json()
+
+        assert response.status_code == 200, (
+            f"Expected 200 but got {response.status_code}. Body: {body}"
+        )
+        assert "summary" in body["data"]
+        assert "keypoints" in body["data"]
+        assert "decisions" in body["data"]
+        assert "action_items" in body["data"]
+
+
+class TestAskMind:
+    @pytest.mark.anyio
+    async def test_ask_mind_returns_200_with_valid_query(self, client: AsyncClient):
+        token = await signup_and_get_token(client, unique_user())
+        create = await client.post(
+            INTERVIEWS_URL, json=VALID_INTERVIEW_PAYLOAD, headers=auth_headers(token)
+        )
+        data = create.json()["data"]
+        iid = data["id"]
+        candidate_id = data["candidate_id"]
+
+        payload = {
+            "candidate_id": candidate_id,
+            "query": "What are the candidate's strengths?",
+            "transcript_text": (
+                "Candidate highlighted problem-solving and adaptability."
+            ),
+        }
+        response = await client.post(
+            f"{INTERVIEWS_URL}/{iid}/ai/ask",
+            json=payload,
+            headers=auth_headers(token),
+        )
+        body = response.json()
+
+        assert response.status_code == 200, (
+            f"Expected 200 but got {response.status_code}. Body: {body}"
+        )
+        assert body["data"]["query"] == payload["query"]
+        assert "answer" in body["data"]

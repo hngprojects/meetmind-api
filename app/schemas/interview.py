@@ -81,8 +81,27 @@ class InterviewResponse(BaseModel):
     ai_tone: str | None
     candidate_name: str
     candidate_email: str | None
+    candidate_id: UUID | None
     summary: InterviewSummaryResponse | None
     criteria: list[str] = Field(default_factory=list)
     created_at: datetime | None
 
     model_config = {"from_attributes": True}
+
+class AIReplyRequest(BaseModel):
+    transcript_text: str
+    candidate_id: UUID
+    job_description: str
+    scoring_rubric: str
+    session_id: str
+
+class AISummaryRequest(BaseModel):
+    candidate_id: UUID
+    job_description: str
+    scoring_rubric: str
+    transcript_text: str
+
+class AskMindRequest(BaseModel):
+    candidate_id: UUID
+    query: str
+    transcript_text: str

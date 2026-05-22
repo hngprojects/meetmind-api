@@ -4,16 +4,22 @@ and scorecard endpoints."""
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, status, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser
 from app.core.responses import success
 from app.db.session import get_session
-from app.schemas.interview import CreateInterviewRequest, UpdateCriteriaRequest
+from app.schemas.interview import (
+    AIReplyRequest,
+    AISummaryRequest,
+    AskMindRequest,
+    CreateInterviewRequest,
+    UpdateCriteriaRequest,
+)
+from app.services.ai_integration_service import AIIntegrationService
 from app.services.chat_history import ChatHistoryService
 from app.services.interview import InterviewService
-from app.services.ai_integration_service import AIIntegrationService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -150,11 +156,7 @@ async def update_criteria(
 @router.post("/{interview_id}/ai/reply", status_code=status.HTTP_200_OK)
 async def generate_ai_reply(
     interview_id: uuid.UUID,
-    transcript_text: str,
-    candidate_id: uuid.UUID,
-    job_description: str,
-    scoring_rubric: str,
-    session_id: str,
+    payload: AIReplyRequest,
     user: CurrentUser,
     db: AsyncSession = Depends(get_session),
 ):
@@ -166,25 +168,25 @@ async def generate_ai_reply(
         ai_output = await AIIntegrationService.generate_reply(
             db=db,
             interview_id=interview_id,
-            session_id=session_id,
-            candidate_id=candidate_id,
-            job_description=job_description,
-            scoring_rubric=scoring_rubric,
-            transcript_text=transcript_text,
+            session_id=payload.session_id,
+            candidate_id=payload.candidate_id,
+            job_description=payload.job_description,
+            scoring_rubric=payload.scoring_rubric,
+            transcript_text=payload.transcript_text,
             user=user,
         )
         return success(ai_output, message="AI reply generated successfully")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI reply generation failed: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"AI reply generation failed: {str(e)}"
+        )
 
 
 @router.post("/{interview_id}/ai/summary", status_code=status.HTTP_200_OK)
 async def generate_ai_summary(
     interview_id: uuid.UUID,
-    candidate_id: uuid.UUID,
-    job_description: str,
-    scoring_rubric: str,
-    transcript_text: str,
+    payload: AISummaryRequest,
     user: CurrentUser,
     db: AsyncSession = Depends(get_session),
 ):
@@ -195,20 +197,24 @@ async def generate_ai_summary(
     try:
         ai_output = await AIIntegrationService.generate_summary(
             db=db,
-            candidate_id=candidate_id,
-            job_description=job_description,
-            scoring_rubric=scoring_rubric,
-            transcript_text=transcript_text,
+            interview_id=interview_id,
+            candidate_id=payload.candidate_id,
+            job_description=payload.job_description,
+            scoring_rubric=payload.scoring_rubric,
+            transcript_text=payload.transcript_text,
+            user=user,
         )
         return success(ai_output, message="AI summary generated successfully")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI summary generation failed: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"AI summary generation failed: {str(e)}"
+        )
     
 @router.post("/{interview_id}/ai/ask", status_code=status.HTTP_200_OK)
 async def ask_mind(
     interview_id: uuid.UUID,
-    candidate_id: uuid.UUID,
-    query: str,
+    payload: AskMindRequest,
     user: CurrentUser,
     db: AsyncSession = Depends(get_session),
 ):
@@ -216,10 +222,15 @@ async def ask_mind(
     try:
         ai_output = await AIIntegrationService.answer_query(
             db=db,
-            candidate_id=candidate_id,
-            query=query,
+            candidate_id=payload.candidate_id,
+            interview_id=interview_id,
+            query=payload.query,
+            user=user,
+            transcript_text=payload.transcript_text,
         )
         return success(ai_output, message="AI answered query successfully")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI query answering failed: {str(e)}")
-
+        raise HTTPException(
+            status_code=500,
+            detail=f"AI query answering failed: {str(e)}"
+        )

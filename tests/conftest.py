@@ -137,3 +137,16 @@ async def client():
         base_url="http://test",
     ) as ac:
         yield ac
+
+
+# Bypass pgvector cosine-distance query (<=> operator) which is PostgreSQL-only
+# and would crash on the SQLite test DB. Returns a minimal prompt string since
+# AIIntegrationService only interpolates it into the Gemini prompt.
+@pytest.fixture(autouse=True)
+def mock_interview_context_service():
+    with patch(
+        "app.services.interview_context_service.InterviewContextService.build_session_context",
+        new_callable=AsyncMock,
+        return_value="You are MeetMind. No candidate documents uploaded.",
+    ):
+        yield

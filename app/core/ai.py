@@ -1,12 +1,18 @@
 import google.genai as genai
+
 from app.core.config import settings
 
-# Configure Gemini once
-genai.configure(api_key=settings.GEMINI_API_KEY)
 
-# Shared model instance
-gemini_model = genai.GenerativeModel("gemini-1.5-pro")
-
-# Generate content
-response = gemini_model.generate_content("Write a short greeting")
-print(response.text)
+async def generate_with_gemini(
+        prompt: str,
+        model: str = "models/gemini-2.5-flash-lite"
+    ):
+    """
+    Call Gemini asynchronously with a prompt and return the response.
+    """
+    client = genai.Client(api_key=settings.GEMINI_API_KEY).aio
+    response = await client.models.generate_content(
+        model=model,
+        contents=prompt,
+    )
+    return response

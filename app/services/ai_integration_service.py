@@ -1,16 +1,46 @@
 from __future__ import annotations
+
+import json
+import re
 import uuid
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.interview_context_service import InterviewContextService
-from app.services.chat_history import ChatHistoryService
-from sdk.repositories import SDKRepository
-from sdk.db import SDKSessionLocal
+from app.core.ai import generate_with_gemini
 from app.models.user import User
-from app.core.ai import gemini_model
+from app.services.chat_history import ChatHistoryService
+from app.services.interview_context_service import InterviewContextService
+from sdk.db import SDKSessionLocal
+from sdk.repositories import SDKRepository
+
 
 class AIIntegrationService:
     """Central AI integration layer for MeetMind."""
+
+    @staticmethod
+    def _extract_ai_output(response, fallback_keys: dict) -> dict:
+        """
+        Extracts and normalizes AI output into a dict with stable keys.
+        Ensures we always return the expected shape, even if parsing fails.
+        """
+        try:
+            candidate_text = response.candidates[0].content.parts[0].text
+        except Exception:
+            candidate_text = str(getattr(response, "text", response))
+
+        # Remove Markdown code fences if present
+        clean_text = re.sub(r"^```json\n|\n```$", "", candidate_text.strip())
+
+        # Try to parse JSON
+        try:
+            parsed = json.loads(clean_text)
+            return {k: parsed.get(k, v) for k, v in fallback_keys.items()}
+        except Exception:
+            # Fallback: return text in the "reply"/primary field, defaults for others
+            return {
+                k: (clean_text if k in ("reply", "summary", "answer") else v)
+                for k, v in fallback_keys.items()
+            }
 
     @staticmethod
     async def generate_reply(
@@ -54,29 +84,29 @@ Return ONLY valid JSON with this structure:
   "red_flags": ["string"]
 }}
 """
-
-        response = gemini_model.generate_content(prompt)
-
-        try:
-            ai_output = response.json
-        except Exception:
-            ai_output = {"reply": response.text, "highlights": [], "red_flags": []}
+        
+        response = await generate_with_gemini(prompt)
+        ai_output = AIIntegrationService._extract_ai_output(
+            response,
+            fallback_keys={"reply": "", "highlights": [], "red_flags": []},
+        )
 
         # 4. Persist reply into transcript via SDK session (sync)
         with SDKSessionLocal() as sdk_db:
             sdk_repo = SDKRepository(sdk_db)
             session = sdk_repo.get_session(session_id)
-            sdk_repo.add_transcript_turn(
-                session=session,
-                source="ai",
-                role="ai",
-                speaker_name="MeetMind",
-                speaker_id=None,
-                content=ai_output["reply"],
-                timestamp_ms=None,
-                provider_stream_id=None,
-                trigger_reason="ai_response",
-            )
+            if session is not None:
+                sdk_repo.add_transcript_turn(
+                    session=session,
+                    source="ai",
+                    role="ai",
+                    speaker_name="MeetMind",
+                    speaker_id=None,
+                    content=ai_output["reply"],
+                    timestamp_ms=None,
+                    provider_stream_id=None,
+                    trigger_reason="ai_response",
+                )
 
         return ai_output
 
@@ -84,10 +114,12 @@ Return ONLY valid JSON with this structure:
     @staticmethod
     async def generate_summary(
         db: AsyncSession,
+        interview_id: uuid.UUID,
         candidate_id: uuid.UUID,
         job_description: str,
         scoring_rubric: str,
         transcript_text: str,
+        user: User,
     ) -> dict:
         """Generate a post-interview summary and scorecard."""
 
@@ -98,13 +130,20 @@ Return ONLY valid JSON with this structure:
             db=db,
         )
 
+        history = await ChatHistoryService.get_chat_history(interview_id, db, user)
+
         prompt = f"""
 {system_prompt}
+
+Conversation history:
+{history}
 
 Transcript:
 {transcript_text}
 
-Summarize the candidate’s performance.
+Summarize the candidate’s performance. 
+Do not include dialogue. 
+Do not ask questions. 
 Return ONLY valid JSON with this structure:
 
 {{
@@ -117,48 +156,64 @@ Return ONLY valid JSON with this structure:
 }}
 """
 
-        response = gemini_model.generate_content(prompt)
-
-        try:
-            ai_output = response.json
-        except Exception:
-            ai_output = {
-                "summary": response.text,
+        response = await generate_with_gemini(prompt)
+        return AIIntegrationService._extract_ai_output(
+            response,
+            fallback_keys={
+                "summary": "",
                 "keypoints": [],
                 "decisions": [],
                 "action_items": [],
-            }
-
-        return ai_output
+            },
+        )
     
     @staticmethod
     async def answer_query(
         db: AsyncSession,
+        interview_id: uuid.UUID,
         candidate_id: uuid.UUID,
         query: str,
+        user: User,
+        transcript_text: str,
     ) -> dict:
         """Answer a user query about a candidate or meeting."""
         
-        prompt = f"""
-Candidate ID: {candidate_id}
-Question: {query}
+        system_prompt = await InterviewContextService.build_session_context(
+            candidate_id=candidate_id,
+            job_description="",  # optional if not needed
+            scorecard="",        # optional if not needed
+            db=db,
+        )
 
-Answer based on interview context.
+        history = await ChatHistoryService.get_chat_history(interview_id, db, user)
+
+        prompt = f"""
+{system_prompt}
+
+Conversation history:
+{history}
+
+Transcript:
+{transcript_text}
+
+You are generating a factual answer to a user query about the candidate.
+Do not include dialogue.
+Do not ask questions.
+Do not roleplay as the candidate.
 Return ONLY valid JSON with this structure:
 
 {{
-  "query": "string",
+  "query": "{query}",
   "answer": "string"
 }}
+
+Where "answer" is a concise factual summary 
+of the candidate's strengths, weaknesses, 
+or other requested information, based on 
+the transcript and context.
 """
 
-        response = gemini_model.generate_content(prompt)
-
-        try:
-            ai_output = response.json
-        except Exception:
-            ai_output = {"query": query, "answer": response.text}
-        
-        return ai_output
-
-
+        response = await generate_with_gemini(prompt)
+        return AIIntegrationService._extract_ai_output(
+            response, fallback_keys={"query": query, "answer": ""}
+        )
