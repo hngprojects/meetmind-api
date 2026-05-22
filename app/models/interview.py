@@ -32,7 +32,7 @@ class Interview(Base, UUIDPrimaryKey, TimestampMixin):
     workspace_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False
     )
-    candidate_id: Mapped[uuid.UUID] = mapped_column(
+    candidate_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("candidates.id"), nullable=True
     )
     interviewer_id: Mapped[uuid.UUID] = mapped_column(

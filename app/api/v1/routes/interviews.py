@@ -12,6 +12,7 @@ from app.core.responses import paginated, success
 from app.db.session import get_session
 from app.schemas.interview import (
     CreateInterviewRequest,
+    InterviewListItem,
     UpdateAIConfigRequest,
     UpdateContextRequest,
     UpdateCriteriaRequest,
@@ -60,7 +61,6 @@ async def list_interviews(
     page: int = 1,
     page_size: int = 20,
 ):
-    from app.schemas.interview import InterviewListItem
 
     rows, total = await InterviewService.list_interviews(db, user, page, page_size)
     items = [

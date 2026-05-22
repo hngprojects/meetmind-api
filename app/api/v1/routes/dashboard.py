@@ -1,7 +1,8 @@
 import logging
 import uuid
+from datetime import date, timedelta
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser
@@ -105,8 +106,8 @@ async def get_dashboard_live_sessions(
 async def get_dashboard_schedule(
     user: CurrentUser,
     db: AsyncSession = Depends(get_session),
-    start_date: str = "2026-01-01",
-    end_date: str = "2026-12-31",
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
 ):
     """Return scheduled interviews within a date range.
 
@@ -116,6 +117,10 @@ async def get_dashboard_schedule(
         start_date: ISO date string e.g. 2026-05-29
         end_date:   ISO date string e.g. 2026-06-03
     """
+    today = date.today()
+
+    start_date = start_date or today
+    end_date = end_date or (today + timedelta(days=30))
     workspace_id = await _resolve_workspace(user, db)
     if workspace_id is None:
         return success([], message="Schedule retrieved successfully")

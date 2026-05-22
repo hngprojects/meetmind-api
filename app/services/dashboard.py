@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, time
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -117,9 +117,12 @@ async def get_live_interviews(
 async def get_schedule(
     workspace_id: uuid.UUID,
     db: AsyncSession,
-    start_date: str,
-    end_date: str,
+    start_date: date,
+    end_date: date,
 ) -> list:
+    start_dt = datetime.combine(start_date, time.min)
+    end_dt = datetime.combine(end_date, time.max)
+
     result = await db.execute(
         select(
             Interview.id,
@@ -131,8 +134,8 @@ async def get_schedule(
         .outerjoin(Candidate, Candidate.id == Interview.candidate_id)
         .where(
             Interview.workspace_id == workspace_id,
-            Interview.scheduled_start >= datetime.fromisoformat(start_date),
-            Interview.scheduled_start <= datetime.fromisoformat(end_date),
+            Interview.scheduled_start >= start_dt,
+            Interview.scheduled_start <= end_dt,
         )
         .order_by(Interview.scheduled_start.asc())
     )
@@ -155,8 +158,6 @@ async def get_completed(
     workspace_id: uuid.UUID,
     db: AsyncSession,
 ) -> list:
-    from app.models.interview import Candidate
-
     result = await db.execute(
         select(
             Interview.id,

@@ -75,7 +75,7 @@ class UpdateAIConfigRequest(BaseModel):
         default=None
     )
     platform: Literal["zoom", "google_meet"] | None = Field(default=None)
-    call_link: str | None = Field(default=None)
+    call_link: HttpUrl | None = Field(default=None)
     scheduled_start: datetime | None = Field(default=None)
     scheduled_end: datetime | None = Field(default=None)
 
@@ -104,7 +104,7 @@ class InterviewResponse(BaseModel):
     candidate_name: str
     candidate_email: str | None
     summary: InterviewSummaryResponse | None
-    criteria: list[str] | None = Field(default_factory=None)
+    criteria: list[str] | None = Field(default=None)
     created_at: datetime | None
 
     model_config = {"from_attributes": True}
