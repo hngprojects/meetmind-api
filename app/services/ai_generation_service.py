@@ -288,7 +288,14 @@ class AIGenerationService:
         """Generate a post-interview assessment and persist it on the summary.
 
         Designed to run as a background task — no auth check, no return value.
-        Sets ``InterviewSummary.status`` to ``completed`` or ``failed``.
+
+        Behavior on missing data:
+        - If the interview, candidate, summary, or job description is not found,
+          sets ``summary.status`` to ``"failed"`` and returns early.
+        - If no transcript or no transcript turns exist, the LLM receives
+          ``"No transcript available."`` as the transcript content.
+        - If the LLM call or any other step raises, the summary is marked
+          ``"failed"``.
 
         Args:
             interview_id: UUID of the completed interview.
@@ -405,6 +412,12 @@ class AIGenerationService:
         db: AsyncSession,
     ) -> str:
         """Answer a natural language query about an interview session.
+
+        Builds a prompt from the interview's job description, scorecard rubric,
+        AI assessment, and transcript. Any missing data (no summary, no
+        assessment, no transcript) is substituted with empty strings or
+        ``"No transcript available."`` — the LLM is instructed to say so if
+        the answer is not in the provided context.
 
         Args:
             interview_id: UUID of the interview to query against.
