@@ -7,6 +7,7 @@ from app.services.chat_history import ChatHistoryService
 from sdk.repositories import SDKRepository
 from sdk.db import SDKSessionLocal
 from app.models.user import User
+from app.core.ai import gemini_model
 
 class AIIntegrationService:
     """Central AI integration layer for MeetMind."""
@@ -35,12 +36,31 @@ class AIIntegrationService:
         # 2. Include chat history (scoped to interview + user)
         history = await ChatHistoryService.get_chat_history(interview_id, db, user)
 
-        # 3. Call AI model (stub for now)
-        ai_output = {
-            "reply": "Tell me about a time you solved a complex technical challenge.",
-            "highlights": ["Candidate shows strong coding background"],
-            "red_flags": ["Candidate struggled with communication clarity"]
-        }
+        # 3. Call Gemini model with structured JSON request 
+        prompt = f"""
+{system_prompt}
+
+Conversation history:
+{history}
+
+Candidate said: {transcript_text}
+
+Generate the next interviewer reply.
+Return ONLY valid JSON with this structure:
+
+{{
+  "reply": "string",
+  "highlights": ["string"],
+  "red_flags": ["string"]
+}}
+"""
+
+        response = gemini_model.generate_content(prompt)
+
+        try:
+            ai_output = response.json
+        except Exception:
+            ai_output = {"reply": response.text, "highlights": [], "red_flags": []}
 
         # 4. Persist reply into transcript via SDK session (sync)
         with SDKSessionLocal() as sdk_db:
@@ -78,12 +98,36 @@ class AIIntegrationService:
             db=db,
         )
 
-        ai_output = {
-            "summary": "Candidate demonstrated strong technical depth but weaker communication.",
-            "keypoints": ["Strong coding background", "Weak presentation skills"],
-            "decisions": ["Proceed to next round"],
-            "action_items": [{"content": "Schedule follow-up interview", "assignee_name": "Recruiter"}]
-        }
+        prompt = f"""
+{system_prompt}
+
+Transcript:
+{transcript_text}
+
+Summarize the candidate’s performance.
+Return ONLY valid JSON with this structure:
+
+{{
+  "summary": "string",
+  "keypoints": ["string"],
+  "decisions": ["string"],
+  "action_items": [
+    {{"content": "string", "assignee_name": "string"}}
+  ]
+}}
+"""
+
+        response = gemini_model.generate_content(prompt)
+
+        try:
+            ai_output = response.json
+        except Exception:
+            ai_output = {
+                "summary": response.text,
+                "keypoints": [],
+                "decisions": [],
+                "action_items": [],
+            }
 
         return ai_output
     
@@ -95,14 +139,25 @@ class AIIntegrationService:
     ) -> dict:
         """Answer a user query about a candidate or meeting."""
         
-        # Build context from candidate docs + job description
-        system_prompt = f"Answer the following query about candidate {candidate_id}: {query}"
-        
-        # Stub AI output for now
-        ai_output = {
-            "query": query,
-            "answer": "Candidate demonstrated strong technical depth but weaker communication."
-        }
+        prompt = f"""
+Candidate ID: {candidate_id}
+Question: {query}
+
+Answer based on interview context.
+Return ONLY valid JSON with this structure:
+
+{{
+  "query": "string",
+  "answer": "string"
+}}
+"""
+
+        response = gemini_model.generate_content(prompt)
+
+        try:
+            ai_output = response.json
+        except Exception:
+            ai_output = {"query": query, "answer": response.text}
         
         return ai_output
 
