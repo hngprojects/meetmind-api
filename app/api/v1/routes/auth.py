@@ -576,16 +576,5 @@ async def google_callback(
         samesite="lax",
     )
 
-    return success(
-        {
-            "id": str(user.id),
-            "email": user.email,
-            "name": user.name,
-            "next_step": AuthService.get_next_step(user),
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-            "access_token_expires_at": access_expires_at.isoformat(),
-            "refresh_token_expires_at": refresh_expires_at.isoformat(),
-        },
-        message="Google login successful",
-    )
+    frontend_dashboard_url = f"{settings.FRONTEND_URL}/dashboard"
+    return RedirectResponse(url=frontend_dashboard_url)
