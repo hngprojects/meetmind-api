@@ -10,9 +10,18 @@ import pytest
 
 # Stub heavy document-processing modules that the service chain imports but
 # tests never actually call. Remove these once pdfplumber etc. are installed.
-for _mod in ("pdfplumber", "docx", "langchain_text_splitters"):
+for _mod in ("pdfplumber", "docx"):
     if _mod not in sys.modules:
         sys.modules[_mod] = MagicMock()
+
+# langchain_text_splitters needs to behave like the real module so tests in
+# other files (e.g. test_candidates.py) don't break.
+_lts = MagicMock()
+_lts.RecursiveCharacterTextSplitter.return_value.split_text.side_effect = (
+    lambda text: [text]
+)
+if "langchain_text_splitters" not in sys.modules:
+    sys.modules["langchain_text_splitters"] = _lts
 
 from app.core.responses import APIError
 from app.models.interview import (
