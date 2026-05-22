@@ -1,0 +1,8 @@
+# LiveKit agent framework + plugins.
+# If install/import fails, follow the pip step in LiveKit's current Voice AI
+# quickstart — package extras occasionally change between versions.
+livekit-agents
+livekit-plugins-silero
+livekit-plugins-turn-detector
+python-dotenv
+aiohttp

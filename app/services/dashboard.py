@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, time
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -112,3 +112,75 @@ async def get_live_interviews(
     ]
 
     return DashboardStatsResponse(live_interviews=items)
+
+
+async def get_schedule(
+    workspace_id: uuid.UUID,
+    db: AsyncSession,
+    start_date: date,
+    end_date: date,
+) -> list:
+    start_dt = datetime.combine(start_date, time.min)
+    end_dt = datetime.combine(end_date, time.max)
+
+    result = await db.execute(
+        select(
+            Interview.id,
+            Interview.role_title,
+            Interview.scheduled_start,
+            Interview.scheduled_end,
+            Candidate.full_name,
+        )
+        .outerjoin(Candidate, Candidate.id == Interview.candidate_id)
+        .where(
+            Interview.workspace_id == workspace_id,
+            Interview.scheduled_start >= start_dt,
+            Interview.scheduled_start <= end_dt,
+        )
+        .order_by(Interview.scheduled_start.asc())
+    )
+    rows = result.all()
+    return [
+        {
+            "interview_id": str(row.id),
+            "candidate_name": row.full_name,
+            "role": row.role_title,
+            "start_time": row.scheduled_start.isoformat()
+            if row.scheduled_start
+            else None,
+            "end_time": row.scheduled_end.isoformat() if row.scheduled_end else None,
+        }
+        for row in rows
+    ]
+
+
+async def get_completed(
+    workspace_id: uuid.UUID,
+    db: AsyncSession,
+) -> list:
+    result = await db.execute(
+        select(
+            Interview.id,
+            Interview.role_title,
+            Interview.updated_at,
+            Interview.rating,
+            Candidate.full_name,
+        )
+        .outerjoin(Candidate, Candidate.id == Interview.candidate_id)
+        .where(
+            Interview.workspace_id == workspace_id,
+            Interview.status == "completed",
+        )
+        .order_by(Interview.updated_at.desc())
+    )
+    rows = result.all()
+    return [
+        {
+            "interview_id": str(row.id),
+            "candidate_name": row.full_name,
+            "role": row.role_title,
+            "score": row.rating,
+            "completed_at": row.updated_at.isoformat() if row.updated_at else None,
+        }
+        for row in rows
+    ]

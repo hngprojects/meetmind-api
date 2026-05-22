@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import status
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.responses import APIError
@@ -17,6 +17,8 @@ from app.schemas.interview import (
     CreateInterviewRequest,
     InterviewResponse,
     InterviewSummaryResponse,
+    UpdateAIConfigRequest,
+    UpdateContextRequest,
     UpdateCriteriaRequest,
 )
 
@@ -180,6 +182,7 @@ class InterviewService:
             platform=request.platform,
             ai_tone=request.ai_tone,
             status="draft",
+            participation_mode=request.participation_mode.value,
         )
         db.add(interview)
         await db.flush()
@@ -199,18 +202,20 @@ class InterviewService:
         db.add(scorecard)
         await db.flush()
 
-        await _persist_criteria(db, scorecard, workspace_id, request.criteria)
+        if request.criteria:
+            await _persist_criteria(db, scorecard, workspace_id, request.criteria)
 
         await db.commit()
 
         return InterviewResponse(
             id=interview.id,
-            title=request.title,
+            title=request.title or request.role_title,
             status=interview.status,
             role_title=interview.role_title,
             platform=interview.platform,
             ai_tone=interview.ai_tone,
             candidate_id=candidate.id,
+            participation_mode=interview.participation_mode,
             candidate_name=candidate.full_name,
             candidate_email=candidate.email,
             summary=InterviewSummaryResponse(
@@ -219,7 +224,7 @@ class InterviewService:
                 ai_assessment=summary.ai_assessment,
                 status=summary.status,
             ),
-            criteria=request.criteria,
+            criteria=request.criteria if request.criteria else None,
             created_at=interview.created_at,
         )
 
@@ -286,6 +291,7 @@ class InterviewService:
             platform=interview.platform,
             ai_tone=interview.ai_tone,
             candidate_id=candidate.id if candidate else None,
+            participation_mode=interview.participation_mode,
             candidate_name=candidate.full_name if candidate else "Unknown",
             candidate_email=candidate.email if candidate else None,
             summary=InterviewSummaryResponse(
@@ -375,6 +381,176 @@ class InterviewService:
         return {"criteria": request.criteria}
 
     @staticmethod
+    async def update_context(
+        interview_id: uuid.UUID,
+        request: UpdateContextRequest,
+        db: AsyncSession,
+        user: User,
+    ) -> dict:
+        result = await db.execute(
+            select(Interview).where(
+                Interview.id == interview_id,
+                Interview.interviewer_id == user.id,
+            )
+        )
+        interview = result.scalar_one_or_none()
+        if not interview:
+            raise APIError(
+                "Interview not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="interview_not_found",
+            )
+
+        if interview.role_title is None and request.role_title:
+            interview.role_title = request.role_title
+
+        summary_result = await db.execute(
+            select(InterviewSummary).where(
+                InterviewSummary.interview_id == interview.id
+            )
+        )
+        summary = summary_result.scalar_one_or_none()
+        if not summary:
+            summary = InterviewSummary(interview_id=interview.id)
+            db.add(summary)
+
+        if request.job_description:
+            summary.job_description = request.job_description
+        if request.key_skills:
+            summary.key_skills = ",".join(request.key_skills)
+        if request.custom_questions:
+            summary.custom_question = request.custom_questions
+
+        await db.commit()
+        await db.refresh(interview)
+        return {
+            "interview_id": str(interview.id),
+            "status": interview.status,
+            "updated_at": interview.updated_at,
+        }
+
+    @staticmethod
+    async def update_session_config(
+        interview_id: uuid.UUID,
+        request: UpdateAIConfigRequest,
+        db: AsyncSession,
+        user: User,
+    ) -> dict:
+        result = await db.execute(
+            select(Interview).where(
+                Interview.id == interview_id,
+                Interview.interviewer_id == user.id,
+            )
+        )
+        interview = result.scalar_one_or_none()
+        if not interview:
+            raise APIError(
+                "Interview not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="interview_not_found",
+            )
+
+        if request.participation_mode:
+            interview.participation_mode = request.participation_mode
+        if request.platform:
+            interview.platform = request.platform
+        if request.call_link:
+            interview.call_link = request.call_link
+        if request.scheduled_start:
+            interview.scheduled_start = request.scheduled_start
+        if request.scheduled_end:
+            interview.scheduled_end = request.scheduled_end
+
+        await db.commit()
+        await db.refresh(interview)
+        return {
+            "interview_id": str(interview.id),
+            "status": interview.status,
+            "participation_mode": interview.participation_mode,
+            "updated_at": interview.updated_at,
+        }
+
+    @staticmethod
+    async def confirm_interview(
+        interview_id: uuid.UUID,
+        db: AsyncSession,
+        user: User,
+    ) -> dict:
+        result = await db.execute(
+            select(Interview).where(
+                Interview.id == interview_id,
+                Interview.interviewer_id == user.id,
+            )
+        )
+        interview = result.scalar_one_or_none()
+        if not interview:
+            raise APIError(
+                "Interview not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="interview_not_found",
+            )
+
+        if interview.status == "scheduled":
+            raise APIError(
+                "Interview already confirmed",
+                status_code=status.HTTP_409_CONFLICT,
+                code="already_confirmed",
+            )
+
+        if interview.status in ("cancelled", "completed"):
+            raise APIError(
+                f"Cannot confirm a {interview.status} interview",
+                status_code=status.HTTP_409_CONFLICT,
+                code="invalid_status",
+            )
+
+        summary_result = await db.execute(
+            select(InterviewSummary).where(
+                InterviewSummary.interview_id == interview.id
+            )
+        )
+        summary = summary_result.scalar_one_or_none()
+
+        if not summary or not summary.job_description:
+            raise APIError(
+                "Cannot confirm without job description. Complete context setup first.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="incomplete_context",
+            )
+
+        interview.status = "scheduled"
+        await db.commit()
+        await db.refresh(interview)
+        return {
+            "interview_id": str(interview.id),
+            "status": interview.status,
+            "confirmed_at": interview.updated_at,
+        }
+
+    @staticmethod
+    async def list_interviews(
+        db: AsyncSession,
+        user: User,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> tuple[list, int]:
+
+        count_result = await db.execute(
+            select(func.count(Interview.id)).where(Interview.interviewer_id == user.id)
+        )
+        total = count_result.scalar() or 0
+
+        result = await db.execute(
+            select(Interview, Candidate.full_name)
+            .outerjoin(Candidate, Candidate.id == Interview.candidate_id)
+            .where(Interview.interviewer_id == user.id)
+            .order_by(Interview.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        return list(result.all()), total
+
+    @staticmethod
     async def cancel_interview(
         interview_id: uuid.UUID,
         db: AsyncSession,
@@ -458,6 +634,7 @@ class InterviewService:
             platform=interview.platform,
             ai_tone=interview.ai_tone,
             candidate_id=candidate.id if candidate else None,
+            participation_mode=interview.participation_mode,
             candidate_name=candidate.full_name if candidate else "Unknown",
             candidate_email=candidate.email if candidate else None,
             summary=InterviewSummaryResponse(

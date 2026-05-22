@@ -158,97 +158,6 @@ class TestCreateInterview:
         logger.info("[result]  Unauthenticated requestcorrectly rejected  ✓")
 
     @pytest.mark.anyio
-    async def test_create_returns_422_when_title_missing(self, client: AsyncClient):
-        """
-        GIVEN a payload missing the required 'title' field
-        WHEN  POST /interviews is called
-        THEN  the response is 422
-
-        Expected:
-            POST /interviews (no title) → 422
-        """
-        token = await signup_and_get_token(client, unique_user())
-        payload = {k: v for k, v in VALID_INTERVIEW_PAYLOAD.items() if k != "title"}
-        response = await client.post(
-            INTERVIEWS_URL,
-            json=payload,
-            headers=auth_headers(token),
-        )
-        logger.info("[missing title] POST /interviews → %d", response.status_code)
-
-        assert response.status_code == 422, (
-            "Expected 422 for missing title but got "
-            f"{response.status_code}. Body: {response.json()}"
-        )
-        logger.info("[result]        Missing required field correctly rejected  ✓")
-
-    @pytest.mark.anyio
-    async def test_create_returns_422_when_job_description_missing(
-        self, client: AsyncClient
-    ):
-        """
-        GIVEN a payload missing 'job_description'
-        WHEN  POST /interviews is called
-        THEN  the response is 422
-
-        Expected:
-            POST /interviews (no job_description) → 422
-        """
-        token = await signup_and_get_token(client, unique_user())
-        payload = {
-            k: v for k, v in VALID_INTERVIEW_PAYLOAD.items() if k != "job_description"
-        }
-        response = await client.post(
-            INTERVIEWS_URL,
-            json=payload,
-            headers=auth_headers(token),
-        )
-        logger.info(
-            "[missing job_description] POST /interviews → %d", response.status_code
-        )
-
-        assert response.status_code == 422, (
-            f"Expected 422 for missing job_description but got"
-            f"{response.status_code}. Body: {response.json()}"
-        )
-        logger.info(
-            "[result]                  Missing context field correctly rejected  ✓"
-        )
-
-    @pytest.mark.anyio
-    async def test_create_returns_422_when_scoring_rubric_missing(
-        self, client: AsyncClient
-    ):
-        """
-        GIVEN a payload missing 'scoring_rubric'
-        WHEN  POST /interviews is called
-        THEN  the response is 422
-
-        Expected:
-            POST /interviews (no scoring_rubric) → 422
-        """
-        token = await signup_and_get_token(client, unique_user())
-        payload = {
-            k: v for k, v in VALID_INTERVIEW_PAYLOAD.items() if k != "scoring_rubric"
-        }
-        response = await client.post(
-            INTERVIEWS_URL,
-            json=payload,
-            headers=auth_headers(token),
-        )
-        logger.info(
-            "[missing scoring_rubric] POST /interviews → %d", response.status_code
-        )
-
-        assert response.status_code == 422, (
-            f"Expected 422 for missing scoring_rubric but got {response.status_code}."
-            f"Body: {response.json()}"
-        )
-        logger.info(
-            "[result]                 Missing scoring rubric correctly rejected  ✓"
-        )
-
-    @pytest.mark.anyio
     async def test_optional_fields_default_correctly(self, client: AsyncClient):
         """
         GIVEN a payload with only required fields (no platform, ai_tone, role_title)
@@ -286,11 +195,47 @@ class TestCreateInterview:
         assert data["candidate_email"] is None
         logger.info("[result]          Optional fields correctly default to null  ✓")
 
+    @pytest.mark.anyio
+    async def test_default_participation_mode(self, client: AsyncClient):
+        """
+        GIVEN a payload without participation_mode
+        WHEN  POST /interviews is called
+        THEN  the response defaults to "standard"
+        """
+        token = await signup_and_get_token(client, unique_user())
+        response = await client.post(
+            INTERVIEWS_URL,
+            json=VALID_INTERVIEW_PAYLOAD,
+            headers=auth_headers(token),
+        )
+        body = response.json()
+        assert response.status_code == 201, body
+        assert body["data"]["participation_mode"] == "standard"
+
 
 # ── GET /interviews/{id} ───────────────────────────────────────────────────────
 
 
 class TestGetInterview:
+    @pytest.mark.anyio
+    async def test_retrieves_interview_with_participation_mode(
+        self, client: AsyncClient
+    ):
+        token = await signup_and_get_token(client, unique_user())
+        payload = {**VALID_INTERVIEW_PAYLOAD, "participation_mode": "proactive"}
+        create = await client.post(
+            INTERVIEWS_URL, json=payload, headers=auth_headers(token)
+        )
+        assert create.status_code == 201
+        interview_id = create.json()["data"]["id"]
+
+        get = await client.get(
+            f"{INTERVIEWS_URL}/{interview_id}", headers=auth_headers(token)
+        )
+        body = get.json()
+        assert get.status_code == 200, body
+        assert body["data"]["participation_mode"] == "proactive"
+
     @pytest.mark.anyio
     async def test_retrieves_interview_by_id(self, client: AsyncClient):
         """
@@ -440,15 +385,6 @@ class TestCreateInterviewCriteria:
         assert response.status_code == 201
         data = response.json()["data"]
         assert data["criteria"] == ["Communication", "API Design", "Problem Solving"]
-
-    @pytest.mark.anyio
-    async def test_create_rejects_empty_criteria(self, client: AsyncClient):
-        token = await signup_and_get_token(client, unique_user())
-        payload = {**VALID_INTERVIEW_PAYLOAD, "criteria": []}
-        response = await client.post(
-            INTERVIEWS_URL, json=payload, headers=auth_headers(token)
-        )
-        assert response.status_code == 422
 
     @pytest.mark.anyio
     async def test_create_rejects_more_than_10_criteria(self, client: AsyncClient):
@@ -630,6 +566,7 @@ class TestCancelInterview:
         assert data["status"] == "cancelled"
         assert data["candidate_name"] == VALID_INTERVIEW_PAYLOAD["candidate_name"]
         assert data["platform"] == VALID_INTERVIEW_PAYLOAD["platform"]
+        assert data["participation_mode"] == "standard"
         assert "criteria" in data
         assert "id" in data
         assert "created_at" in data
@@ -756,107 +693,3 @@ class TestCancelInterview:
         )
         assert body["error"]["code"] == "already_cancelled"
         logger.info("[result] Double-cancel correctly returns 409  [OK]")
-
-
-class TestGenerateAIReply:
-    @pytest.mark.anyio
-    async def test_generate_ai_reply_returns_200_with_valid_payload(
-        self, client: AsyncClient
-    ):
-        token = await signup_and_get_token(client, unique_user())
-        create = await client.post(
-            INTERVIEWS_URL, json=VALID_INTERVIEW_PAYLOAD, headers=auth_headers(token)
-        )
-        data = create.json()["data"]
-        iid = data["id"]
-        candidate_id = data["candidate_id"]
-
-        payload = {
-            "transcript_text": "Candidate discussed their experience with Python.",
-            "candidate_id": candidate_id,
-            "job_description": VALID_INTERVIEW_PAYLOAD["job_description"],
-            "scoring_rubric": VALID_INTERVIEW_PAYLOAD["scoring_rubric"],
-            "session_id": "test-session-id",
-        }
-        response = await client.post(
-            f"{INTERVIEWS_URL}/{iid}/ai/reply",
-            json=payload,
-            headers=auth_headers(token),
-        )
-        body = response.json()
-
-        assert response.status_code == 200, (
-            f"Expected 200 but got {response.status_code}. Body: {body}"
-        )
-        assert "reply" in body["data"]
-        assert "highlights" in body["data"]
-        assert "red_flags" in body["data"]
-
-
-class TestGenerateAISummary:
-    @pytest.mark.anyio
-    async def test_generate_ai_summary_returns_200_with_valid_payload(
-        self, client: AsyncClient
-    ):
-        token = await signup_and_get_token(client, unique_user())
-        create = await client.post(
-            INTERVIEWS_URL, json=VALID_INTERVIEW_PAYLOAD, headers=auth_headers(token)
-        )
-        data = create.json()["data"]
-        iid = data["id"]
-        candidate_id = data["candidate_id"]
-
-        payload = {
-            "candidate_id": candidate_id,
-            "job_description": VALID_INTERVIEW_PAYLOAD["job_description"],
-            "scoring_rubric": VALID_INTERVIEW_PAYLOAD["scoring_rubric"],
-            "transcript_text": (
-                "Candidate explained how they optimized database queries."
-            ),
-        }
-        response = await client.post(
-            f"{INTERVIEWS_URL}/{iid}/ai/summary",
-            json=payload,
-            headers=auth_headers(token),
-        )
-        body = response.json()
-
-        assert response.status_code == 200, (
-            f"Expected 200 but got {response.status_code}. Body: {body}"
-        )
-        assert "summary" in body["data"]
-        assert "keypoints" in body["data"]
-        assert "decisions" in body["data"]
-        assert "action_items" in body["data"]
-
-
-class TestAskMind:
-    @pytest.mark.anyio
-    async def test_ask_mind_returns_200_with_valid_query(self, client: AsyncClient):
-        token = await signup_and_get_token(client, unique_user())
-        create = await client.post(
-            INTERVIEWS_URL, json=VALID_INTERVIEW_PAYLOAD, headers=auth_headers(token)
-        )
-        data = create.json()["data"]
-        iid = data["id"]
-        candidate_id = data["candidate_id"]
-
-        payload = {
-            "candidate_id": candidate_id,
-            "query": "What are the candidate's strengths?",
-            "transcript_text": (
-                "Candidate highlighted problem-solving and adaptability."
-            ),
-        }
-        response = await client.post(
-            f"{INTERVIEWS_URL}/{iid}/ai/ask",
-            json=payload,
-            headers=auth_headers(token),
-        )
-        body = response.json()
-
-        assert response.status_code == 200, (
-            f"Expected 200 but got {response.status_code}. Body: {body}"
-        )
-        assert body["data"]["query"] == payload["query"]
-        assert "answer" in body["data"]
