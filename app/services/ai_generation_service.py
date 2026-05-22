@@ -1,4 +1,5 @@
 """AI generation service for interview questions, assessments, and Q&A."""
+# ruff: noqa: E501
 
 from __future__ import annotations
 
@@ -22,7 +23,6 @@ from app.models.user import User
 from app.services.chat_history import ChatHistoryService
 from app.services.interview_context_service import InterviewContextService
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -43,7 +43,10 @@ class AIGenerationService:
         """Build the system instruction for next-question generation."""
         retrieved = await InterviewContextService.retrieve_relevant_chunks(
             candidate_id=candidate_id,
-            query=f"Candidate experience, skills, and background relevant to: {job_description}",
+            query=(
+                f"Candidate experience, skills, and background relevant "
+                f"to: {job_description}"
+            ),
             db=db,
         )
         resume_context = "\n---\n".join(retrieved)
@@ -94,7 +97,10 @@ class AIGenerationService:
         """Build the system instruction for post-session assessment generation."""
         retrieved = await InterviewContextService.retrieve_relevant_chunks(
             candidate_id=candidate_id,
-            query=f"Candidate experience, skills, and background relevant to: {job_description}",
+            query=(
+                f"Candidate experience, skills, and background relevant "
+                f"to: {job_description}"
+            ),
             db=db,
         )
         resume_context = "\n---\n".join(retrieved)
@@ -325,12 +331,18 @@ class AIGenerationService:
             turns_text = "No transcript available."
             if transcript:
                 turns = (
-                    await db.execute(
-                        select(InterviewTranscriptTurn)
-                        .where(InterviewTranscriptTurn.transcript_id == transcript.id)
-                        .order_by(InterviewTranscriptTurn.sequence_no.asc())
+                    (
+                        await db.execute(
+                            select(InterviewTranscriptTurn)
+                            .where(
+                                InterviewTranscriptTurn.transcript_id == transcript.id
+                            )
+                            .order_by(InterviewTranscriptTurn.sequence_no.asc())
+                        )
                     )
-                ).scalars().all()
+                    .scalars()
+                    .all()
+                )
 
                 if turns:
                     lines = []
@@ -419,7 +431,7 @@ class AIGenerationService:
             )
         ).scalar_one_or_none()
 
-        candidate = (
+        _ = (
             await db.execute(
                 select(Candidate).where(Candidate.id == interview.candidate_id)
             )
@@ -441,12 +453,16 @@ class AIGenerationService:
         transcript_text = "No transcript available."
         if transcript:
             turns = (
-                await db.execute(
-                    select(InterviewTranscriptTurn)
-                    .where(InterviewTranscriptTurn.transcript_id == transcript.id)
-                    .order_by(InterviewTranscriptTurn.sequence_no.asc())
+                (
+                    await db.execute(
+                        select(InterviewTranscriptTurn)
+                        .where(InterviewTranscriptTurn.transcript_id == transcript.id)
+                        .order_by(InterviewTranscriptTurn.sequence_no.asc())
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
             if turns:
                 lines = []

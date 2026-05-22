@@ -3,7 +3,6 @@ from google.genai import types
 
 from app.core.config import settings
 
-
 _gemini_client = genai.Client(api_key=settings.GEMINI_API_KEY).aio
 _GENERATION_MODEL = "gemini-2.0-flash"
 
