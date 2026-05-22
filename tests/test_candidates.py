@@ -7,12 +7,16 @@ test_<action>_<expected_outcome>_<condition>
 """
 
 import uuid
+from unittest.mock import AsyncMock, patch
 
 import pytest
+from sqlalchemy import select
 
+from app.models.document import CandidateDocument, DocumentChunk, DocumentStatus
 from app.models.interview import Candidate
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
+from app.services.document_service import DocumentService
 
 SEARCH_URL = "/api/v1/candidates/search"
 EXPORT_URL = "/api/v1/candidates/export"
@@ -409,3 +413,253 @@ class TestCandidateGetByID:
         assert response.status_code == 404
         body = response.json()
         assert body["error"]["code"] == "candidate_not_found"
+
+
+class TestCandidateDocumentUpload:
+    @pytest.mark.anyio
+    @patch("app.services.document_service.DocumentService.process_document")
+    async def test_upload_document_returns_200_and_schedules_task(
+        self,
+        mock_process_document,
+        client,
+        db_session,
+    ):
+        """
+        Upload creates document record and schedules background processing.
+        """
+        from app.services.auth import AuthService
+
+        user, workspace = await create_user_with_workspace(db_session)
+        token = await AuthService.create_access_token(user)
+
+        candidate = await create_candidate(
+            db_session,
+            workspace.id,
+            "Resume Owner",
+            "owner@test.com",
+        )
+
+        file_content = b"This is a valid document used for testing."
+        files = {"file": ("resume.txt", file_content, "text/plain")}
+
+        response = await client.post(
+            f"{GET_CANDIDATE_URL}/{candidate.id}/documents/upload",
+            files=files,
+            headers=auth_header(token),
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+
+        assert body["success"] is True
+        assert "Processing" in body["message"]
+
+        # DB verification
+        stmt = select(CandidateDocument).where(
+            CandidateDocument.candidate_id == candidate.id
+        )
+        result = await db_session.execute(stmt)
+        doc = result.scalar_one_or_none()
+
+        assert doc is not None
+        assert doc.filename == "resume.txt"
+        assert doc.status == DocumentStatus.PENDING
+
+        # background task was scheduled
+        mock_process_document.assert_called_once()
+
+    @pytest.mark.anyio
+    async def test_upload_requires_auth(self, client):
+        """
+        Unauthorized upload is rejected.
+        """
+        candidate_id = uuid.uuid4()
+        files = {"file": ("resume.txt", b"text", "text/plain")}
+
+        response = await client.post(
+            f"{GET_CANDIDATE_URL}/{candidate_id}/documents/upload",
+            files=files,
+        )
+
+        assert response.status_code == 401
+
+    @pytest.mark.anyio
+    async def test_upload_rejects_oversized_file(
+        self,
+        client,
+        db_session,
+    ):
+        """
+        File size validation prevents large uploads.
+        """
+        from app.services.auth import AuthService
+
+        user, workspace = await create_user_with_workspace(db_session)
+        token = await AuthService.create_access_token(user)
+
+        candidate = await create_candidate(
+            db_session,
+            workspace.id,
+            "Size Test",
+            "size@test.com",
+        )
+
+        files = {"file": ("resume.txt", b"x" * (20 * 1024 * 1024), "text/plain")}
+
+        response = await client.post(
+            f"{GET_CANDIDATE_URL}/{candidate.id}/documents/upload",
+            files=files,
+            headers=auth_header(token),
+        )
+
+        assert response.status_code == 413
+
+    @pytest.mark.anyio
+    async def test_upload_returns_500_on_db_failure(
+        self,
+        client,
+        db_session,
+    ):
+        """
+        DB failures during document creation return 500.
+        """
+        from app.services.auth import AuthService
+
+        user, workspace = await create_user_with_workspace(db_session)
+        token = await AuthService.create_access_token(user)
+
+        candidate = await create_candidate(
+            db_session,
+            workspace.id,
+            "Fail Test",
+            "fail@test.com",
+        )
+
+        db_session.commit = AsyncMock(side_effect=Exception("DB failure"))
+
+        files = {"file": ("resume.txt", b"text", "text/plain")}
+
+        response = await client.post(
+            f"{GET_CANDIDATE_URL}/{candidate.id}/documents/upload",
+            files=files,
+            headers=auth_header(token),
+        )
+
+        assert response.status_code == 500
+        assert "Database insertion failed" in response.text
+
+
+class TestDocumentProcessing:
+    @pytest.mark.anyio
+    @patch("app.services.document_service.DocumentService.get_embedding")
+    async def test_successful_document_processing(self, mock_embed, db_session):
+        mock_embed.return_value = [[0.1] * 768]
+
+        doc = CandidateDocument(
+            candidate_id=uuid.uuid4(),
+            filename="test.txt",
+            status=DocumentStatus.PENDING,
+        )
+
+        db_session.add(doc)
+        await db_session.commit()
+        await db_session.refresh(doc)
+
+        await DocumentService.process_document(
+            document_id=doc.id,
+            filename="test.txt",
+            content=b"valid content for processing",
+            db=db_session,
+        )
+
+        await db_session.refresh(doc)
+
+        assert doc.status == DocumentStatus.COMPLETED
+
+        chunks = (
+            (
+                await db_session.execute(
+                    select(DocumentChunk).where(DocumentChunk.document_id == doc.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        assert len(chunks) > 0
+
+    @pytest.mark.anyio
+    @patch("app.services.document_service.DocumentService.get_embedding")
+    async def test_empty_document_marks_failed(self, mock_embed, db_session):
+        doc = CandidateDocument(
+            candidate_id=uuid.uuid4(),
+            filename="empty.txt",
+            status=DocumentStatus.PENDING,
+        )
+
+        db_session.add(doc)
+        await db_session.commit()
+        await db_session.refresh(doc)
+
+        await DocumentService.process_document(
+            document_id=doc.id,
+            filename="empty.txt",
+            content=b"   ",
+            db=db_session,
+        )
+
+        await db_session.refresh(doc)
+
+        assert doc.status == DocumentStatus.FAILED
+        assert doc.error_message is not None
+
+    @pytest.mark.anyio
+    @patch("app.services.document_service.DocumentService.get_embedding")
+    async def test_embedding_failure_marks_document_failed(
+        self, mock_embed, db_session
+    ):
+        mock_embed.side_effect = Exception("embedding failed")
+
+        doc = CandidateDocument(
+            candidate_id=uuid.uuid4(),
+            filename="test.txt",
+            status=DocumentStatus.PENDING,
+        )
+
+        db_session.add(doc)
+        await db_session.commit()
+        await db_session.refresh(doc)
+
+        await DocumentService.process_document(
+            document_id=doc.id,
+            filename="test.txt",
+            content=b"valid text content",
+            db=db_session,
+        )
+
+        await db_session.refresh(doc)
+
+        assert doc.status == DocumentStatus.FAILED
+
+    @pytest.mark.anyio
+    async def test_unsupported_file_type_fails(self, db_session):
+        doc = CandidateDocument(
+            candidate_id=uuid.uuid4(),
+            filename="file.xyz",
+            status=DocumentStatus.PENDING,
+        )
+
+        db_session.add(doc)
+        await db_session.commit()
+        await db_session.refresh(doc)
+
+        await DocumentService.process_document(
+            document_id=doc.id,
+            filename="file.xyz",
+            content=b"data",
+            db=db_session,
+        )
+
+        await db_session.refresh(doc)
+
+        assert doc.status == DocumentStatus.FAILED

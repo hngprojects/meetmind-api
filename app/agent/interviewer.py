@@ -110,9 +110,7 @@ async def interview_session(ctx: agents.JobContext):
         llm=inference.LLM(model=LLM_MODEL),
         tts=inference.TTS(model=TTS_MODEL, voice=TTS_VOICE),
         vad=silero.VAD.load(),
-        # Model-based turn detection — candidates pause to think; this avoids
-        # cutting them off mid-thought.
-        turn_handling=TurnHandlingOptions(turn_detection=MultilingualModel()),
+        # turn_handling=TurnHandlingOptions(turn_detection=MultilingualModel()),
     )
 
     async def on_shutdown():
