@@ -48,14 +48,13 @@ class Interview(Base, UUIDPrimaryKey, TimestampMixin):
     platform: Mapped[str | None] = mapped_column(String(30))
     status: Mapped[str | None] = mapped_column(String(20), default="draft")
     call_link: Mapped[str | None] = mapped_column(Text)
-    participation_mode: Mapped[str | None] = mapped_column(String(20))
+    participation_mode: Mapped[str | None] = mapped_column(
+        String(20), default="standard"
+    )
     ai_tone: Mapped[str | None] = mapped_column(String(20))
     questions_asked: Mapped[int | None] = mapped_column(Integer)
     questions_total: Mapped[int | None] = mapped_column(Integer)
     rating: Mapped[int | None] = mapped_column(Integer)
-    participation_mode: Mapped[str | None] = mapped_column(
-        String(20), default="standard", nullable=False
-    )
 
 
 class InterviewTranscript(Base, UUIDPrimaryKey, TimestampMixin):

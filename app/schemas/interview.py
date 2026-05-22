@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import Enum
 from typing import Literal
 from uuid import UUID
 
@@ -48,6 +49,7 @@ class CreateInterviewRequest(BaseModel):
     scoring_rubric: str | None = Field(default=None)
     role_title: str | None = Field(default=None, max_length=120)
     ai_tone: str | None = Field(default=None, max_length=20)
+    participation_mode: ParticipationMode = Field(default=ParticipationMode.standard)
     criteria: list[str] | None = Field(default=None, max_length=10)
 
     @field_validator("criteria")

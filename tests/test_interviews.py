@@ -195,6 +195,23 @@ class TestCreateInterview:
         assert data["candidate_email"] is None
         logger.info("[result]          Optional fields correctly default to null  ✓")
 
+    @pytest.mark.anyio
+    async def test_default_participation_mode(self, client: AsyncClient):
+        """
+        GIVEN a payload without participation_mode
+        WHEN  POST /interviews is called
+        THEN  the response defaults to "standard"
+        """
+        token = await signup_and_get_token(client, unique_user())
+        response = await client.post(
+            INTERVIEWS_URL,
+            json=VALID_INTERVIEW_PAYLOAD,
+            headers=auth_headers(token),
+        )
+        body = response.json()
+        assert response.status_code == 201, body
+        assert body["data"]["participation_mode"] == "standard"
+
 
 # ── GET /interviews/{id} ───────────────────────────────────────────────────────
 
@@ -549,6 +566,7 @@ class TestCancelInterview:
         assert data["status"] == "cancelled"
         assert data["candidate_name"] == VALID_INTERVIEW_PAYLOAD["candidate_name"]
         assert data["platform"] == VALID_INTERVIEW_PAYLOAD["platform"]
+        assert data["participation_mode"] == "standard"
         assert "criteria" in data
         assert "id" in data
         assert "created_at" in data

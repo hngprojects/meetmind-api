@@ -631,6 +631,7 @@ class InterviewService:
             role_title=interview.role_title,
             platform=interview.platform,
             ai_tone=interview.ai_tone,
+            participation_mode=interview.participation_mode,
             candidate_name=candidate.full_name if candidate else "Unknown",
             candidate_email=candidate.email if candidate else None,
             summary=InterviewSummaryResponse(
