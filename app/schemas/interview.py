@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import Enum
 from typing import Literal
 from uuid import UUID
 
@@ -26,6 +27,12 @@ def _validate_criteria(v: list[str]) -> list[str]:
     return cleaned
 
 
+class ParticipationMode(str, Enum):
+    passive = "passive"
+    standard = "standard"
+    proactive = "proactive"
+
+
 # ── Request schemas ────────────────────────────────────────────────────────────
 
 
@@ -42,6 +49,7 @@ class CreateInterviewRequest(BaseModel):
     scoring_rubric: str | None = Field(default=None)
     role_title: str | None = Field(default=None, max_length=120)
     ai_tone: str | None = Field(default=None, max_length=20)
+    participation_mode: ParticipationMode = Field(default=ParticipationMode.standard)
     criteria: list[str] | None = Field(default=None, max_length=10)
 
     @field_validator("criteria")
@@ -103,6 +111,7 @@ class InterviewResponse(BaseModel):
     ai_tone: str | None
     candidate_name: str
     candidate_email: str | None
+    participation_mode: ParticipationMode | None
     summary: InterviewSummaryResponse | None
     criteria: list[str] | None = Field(default=None)
     created_at: datetime | None

@@ -182,6 +182,7 @@ class InterviewService:
             platform=request.platform,
             ai_tone=request.ai_tone,
             status="draft",
+            participation_mode=request.participation_mode.value,
         )
         db.add(interview)
         await db.flush()
@@ -213,6 +214,7 @@ class InterviewService:
             role_title=interview.role_title,
             platform=interview.platform,
             ai_tone=interview.ai_tone,
+            participation_mode=interview.participation_mode,
             candidate_name=candidate.full_name,
             candidate_email=candidate.email,
             summary=InterviewSummaryResponse(
@@ -287,6 +289,7 @@ class InterviewService:
             role_title=interview.role_title,
             platform=interview.platform,
             ai_tone=interview.ai_tone,
+            participation_mode=interview.participation_mode,
             candidate_name=candidate.full_name if candidate else "Unknown",
             candidate_email=candidate.email if candidate else None,
             summary=InterviewSummaryResponse(
@@ -523,6 +526,57 @@ class InterviewService:
         }
 
     @staticmethod
+    async def stop_transcript(
+        interview_id: uuid.UUID,
+        db: AsyncSession,
+        user: User,
+    ) -> dict:
+        result = await db.execute(
+            select(Interview).where(
+                Interview.id == interview_id,
+                Interview.interviewer_id == user.id,
+            )
+        )
+        interview = result.scalar_one_or_none()
+
+        if not interview:
+            raise APIError(
+                "Interview not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="interview_not_found",
+            )
+
+        if interview.status == "completed":
+            raise APIError(
+                "Interview is already completed",
+                status_code=status.HTTP_409_CONFLICT,
+                code="already_completed",
+            )
+
+        if interview.status == "cancelled":
+            raise APIError(
+                "Interview has been cancelled",
+                status_code=status.HTTP_409_CONFLICT,
+                code="already_cancelled",
+            )
+
+        if interview.status != "in_progress":
+            raise APIError(
+                "Transcript can only be stopped while the interview is in progress",
+                status_code=status.HTTP_409_CONFLICT,
+                code="invalid_status",
+            )
+
+        interview.status = "completed"
+        await db.commit()
+        await db.refresh(interview)
+
+        return {
+            "interview_id": str(interview.id),
+            "status": interview.status,
+        }
+
+    @staticmethod
     async def list_interviews(
         db: AsyncSession,
         user: User,
@@ -628,6 +682,7 @@ class InterviewService:
             role_title=interview.role_title,
             platform=interview.platform,
             ai_tone=interview.ai_tone,
+            participation_mode=interview.participation_mode,
             candidate_name=candidate.full_name if candidate else "Unknown",
             candidate_email=candidate.email if candidate else None,
             summary=InterviewSummaryResponse(

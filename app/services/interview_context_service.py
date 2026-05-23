@@ -14,7 +14,7 @@ class InterviewContextService:
         candidate_id: UUID, query: str, db: AsyncSession, limit: int = 5
     ) -> list[str]:
         try:
-            query_response = await DocumentService._client.models.embed_content(
+            query_response = await DocumentService._client().models.embed_content(
                 model="gemini-embedding-001",
                 contents=query,
                 config=types.EmbedContentConfig(
