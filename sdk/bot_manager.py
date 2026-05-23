@@ -1,6 +1,6 @@
 import asyncio
 import uuid
-from typing import Optional
+from typing import Callable, Optional
 from sdk.providers.google_meet_browser.session import GoogleMeetSession
 from sdk.providers.google_meet_browser.audio import setup_audio_devices
 
@@ -10,6 +10,8 @@ class BotManager:
 
     def __init__(self):
         self._sessions: dict[str, GoogleMeetSession] = {}
+        self._session_tasks: dict[str, asyncio.Task] = {}
+        self._session_cleanup: dict[str, Callable[[], None]] = {}
         self._audio_ready = False
 
     async def ensure_audio_ready(self):
@@ -23,6 +25,7 @@ class BotManager:
         bot_name: str,
         on_event,
         interview_id: Optional[str] = None,
+        cleanup_callback: Optional[Callable[[], None]] = None,
     ) -> str:
         await self.ensure_audio_ready()
 
@@ -35,7 +38,12 @@ class BotManager:
             interview_id=interview_id,
         )
         self._sessions[session_id] = session
-        asyncio.create_task(session.run())
+        if cleanup_callback is not None:
+            self._session_cleanup[session_id] = cleanup_callback
+
+        task = asyncio.create_task(session.run())
+        self._session_tasks[session_id] = task
+        task.add_done_callback(lambda _: self._cleanup_session(session_id))
         return session_id
 
     async def leave(self, session_id: str):
@@ -50,6 +58,27 @@ class BotManager:
 
     def get_session(self, session_id: str) -> Optional[GoogleMeetSession]:
         return self._sessions.get(session_id)
+
+    def list_sessions(self) -> list[dict]:
+        return [
+            {
+                "session_id": sid,
+                "status": s.status,
+                "meeting_url": s.meeting_url,
+                "interview_id": s.interview_id,
+            }
+            for sid, s in self._sessions.items()
+        ]
+
+    def _cleanup_session(self, session_id: str):
+        cleanup = self._session_cleanup.pop(session_id, None)
+        if cleanup is not None:
+            try:
+                cleanup()
+            except Exception:
+                pass
+        self._sessions.pop(session_id, None)
+        self._session_tasks.pop(session_id, None)
 
     def list_sessions(self) -> list[dict]:
         return [
