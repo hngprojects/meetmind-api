@@ -294,8 +294,8 @@ class AIGenerationService:
         Behavior on missing data:
         - If the interview, candidate, summary, or job description is not found,
           sets ``summary.status`` to ``"failed"`` and returns early.
-        - If no transcript or no transcript turns exist, the LLM receives
-          ``"No transcript available."`` as the transcript content.
+        - If no transcript or no transcript turns exist,
+          sets ``summary.status`` to ``"failed"`` and returns early.
         - If the LLM call or any other step raises, the summary is marked
           ``"failed"``.
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -229,9 +230,39 @@ class TestGenerateAssessment:
         interview = await create_interview(db_session, candidate, user, ws)
         summary = await create_summary(db_session, interview)
 
+        transcript = InterviewTranscript(
+            interview_id=interview.id, status="completed"
+        )
+        db_session.add(transcript)
+        await db_session.flush()
+
+        db_session.add_all([
+            InterviewTranscriptTurn(
+                transcript_id=transcript.id,
+                speaker="ai",
+                content="Tell me about yourself.",
+                sequence_no=1,
+                is_ai_question=True,
+            ),
+            InterviewTranscriptTurn(
+                transcript_id=transcript.id,
+                speaker="candidate",
+                content="I have 5 years of Python experience.",
+                sequence_no=2,
+                is_ai_question=False,
+            ),
+        ])
+        await db_session.flush()
+
+        mock_assessment = {
+            "observation": "Strong Python skills, good communicator.",
+            "highlights": ["Clear communication"],
+            "red_flags": [],
+        }
+
         with RETRIEVE_PATCH, patch(
-            "app.services.ai_generation_service.generate_text",
-            new=AsyncMock(return_value="Strong Python skills, good communicator."),
+            "app.services.ai_generation_service.generate_structured_output",
+            new=AsyncMock(return_value=mock_assessment),
         ):
             await AIGenerationService.generate_assessment(
                 interview_id=interview.id,
@@ -239,9 +270,12 @@ class TestGenerateAssessment:
             )
 
         await db_session.refresh(summary)
-        assert summary.ai_assessment == "Strong Python skills, good communicator."
         assert summary.status == "completed"
         assert summary.generated_at is not None
+        parsed = json.loads(summary.ai_assessment)
+        assert parsed["observation"] == "Strong Python skills, good communicator."
+        assert parsed["highlights"] == ["Clear communication"]
+        assert parsed["red_flags"] == []
 
     async def test_marks_failed_if_no_job_description(self, db_session):
         user = await create_user(db_session)
@@ -279,7 +313,7 @@ class TestGenerateAssessment:
 
         await db_session.refresh(summary)
         assert summary.status == "failed"
-
+    
     async def test_generates_from_transcript_turns(self, db_session):
         user = await create_user(db_session)
         ws = await create_workspace(db_session, user)
@@ -310,9 +344,15 @@ class TestGenerateAssessment:
         db_session.add_all([turn1, turn2])
         await db_session.flush()
 
+        mock_assessment = {
+            "observation": "Good experience.",
+            "highlights": ["5 years Python experience"],
+            "red_flags": [],
+        }
+
         with RETRIEVE_PATCH, patch(
-            "app.services.ai_generation_service.generate_text",
-            new=AsyncMock(return_value="Good experience."),
+            "app.services.ai_generation_service.generate_structured_output",
+            new=AsyncMock(return_value=mock_assessment),
         ):
             await AIGenerationService.generate_assessment(
                 interview_id=interview.id,
@@ -321,7 +361,8 @@ class TestGenerateAssessment:
 
         await db_session.refresh(summary)
         assert summary.status == "completed"
-        assert summary.ai_assessment == "Good experience."
+        parsed = json.loads(summary.ai_assessment)
+        assert parsed["observation"] == "Good experience."
 
 
 class TestAnswerQuery:
