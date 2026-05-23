@@ -5,6 +5,7 @@ import logging
 import uuid
 
 from fastapi import APIRouter, Depends, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser
@@ -156,6 +157,47 @@ async def get_chat_history(
     return success(
         history.model_dump(mode="json"),
         message="Chat history retrieved successfully",
+    )
+
+
+@router.get("/{interview_id}/transcript", status_code=status.HTTP_200_OK)
+async def get_transcript(
+    interview_id: uuid.UUID,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_session),
+):
+    transcript = await ChatHistoryService.get_transcript(interview_id, db, user)
+    return success(
+        transcript.model_dump(mode="json"),
+        message="Transcript retrieved",
+    )
+
+
+@router.get("/{interview_id}/transcript/export", status_code=status.HTTP_200_OK)
+async def export_transcript(
+    interview_id: uuid.UUID,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_session),
+):
+    lines = await ChatHistoryService.get_transcript_export(interview_id, db, user)
+    filename = f"transcript_{interview_id}.txt"
+    return StreamingResponse(
+        content=iter(lines),
+        media_type="text/plain",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.post("/{interview_id}/transcript/stop", status_code=status.HTTP_200_OK)
+async def stop_transcript(
+    interview_id: uuid.UUID,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_session),
+):
+    result = await InterviewService.stop_transcript(interview_id, db, user)
+    return success(
+        result,
+        message="Interview transcript stopped successfully",
     )
 
 
