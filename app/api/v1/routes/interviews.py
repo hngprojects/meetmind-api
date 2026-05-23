@@ -254,3 +254,23 @@ async def update_ai_config(
         interview_id, payload, db, user
     )
     return success(result, message="AI config updated successfully")
+
+
+@router.get("/{interview_id}/summary", status_code=status.HTTP_200_OK)
+async def get_interview_summary(
+    interview_id: uuid.UUID,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_session),
+):
+    summary = await InterviewService.get_summary(interview_id, db, user)
+    return success(summary, message="Summary retrieved successfully")
+
+
+@router.get("/{interview_id}/session", status_code=status.HTTP_200_OK)
+async def get_interview_session(
+    interview_id: uuid.UUID,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_session),
+):
+    session = await InterviewService.get_session_status(interview_id, db, user)
+    return success(session, message="Session status retrieved")
