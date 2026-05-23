@@ -34,6 +34,10 @@ dependencies = [
     "google-genai>=2.4.0",
     "idna>=3.15",
     "pyjwt[crypto]>=2.12.1",
+    "playwright>=1.60.0",
+    "faster-whisper>=1.2.1",
+    "edge-tts>=7.2.8",
+    "apscheduler>=3.11.2",
 ]
 
 [dependency-groups]
