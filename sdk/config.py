@@ -57,6 +57,7 @@ class SDKSettings:
         self.sdk_token_encryption_key: str = config(
             "SDK_TOKEN_ENCRYPTION_KEY", default=""
         )
+        self.CHROMIUM_PROFILE_DIR: str = config("CHROMIUM_PROFILE_DIR", default="")
 
     @property
     def zoom_state_secret(self) -> str:

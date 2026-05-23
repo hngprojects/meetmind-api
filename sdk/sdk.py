@@ -30,6 +30,23 @@ class MeetMindSDK:
             context=context,
             wake_words=wake_words,
         )
+    
+    def create_google_meet_session(
+        self,
+        *,
+        meeting_url: str,
+        agent_name: str,
+        context: str | None = None,
+        wake_words: list[str] | None = None,
+    ) -> SDKSession:
+        return self.repository.create_session(
+            platform="google_meet",
+            meeting_id=None,
+            meeting_url=meeting_url,
+            agent_name=agent_name,
+            context=context,
+            wake_words=wake_words,
+        )
 
     def get_session(self, session_id: str) -> SDKSession | None:
         return self.repository.get_session(session_id)
