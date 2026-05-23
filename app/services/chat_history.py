@@ -155,7 +155,9 @@ class ChatHistoryService:
         )
         turns = turns_result.scalars().all()
 
-        first_timestamp = turns[0].timestamp_sec if turns and turns[0].timestamp_sec else 0
+        first_timestamp = (
+            turns[0].timestamp_sec if turns and turns[0].timestamp_sec else 0
+        )
         transcript_turns = []
         for turn in turns:
             speaker, speaker_label = ChatHistoryService._map_speaker(turn.speaker)
@@ -205,15 +207,15 @@ class ChatHistoryService:
                 .order_by(InterviewTranscriptTurn.sequence_no.asc())
             )
             turns = turns_result.scalars().all()
-            first_timestamp = turns[0].timestamp_sec if turns and turns[0].timestamp_sec else 0
+            first_timestamp = (
+                turns[0].timestamp_sec if turns and turns[0].timestamp_sec else 0
+            )
             for turn in turns:
                 _, speaker_label = ChatHistoryService._map_speaker(turn.speaker)
                 timestamp = ChatHistoryService._format_elapsed_timestamp(
                     first_timestamp, turn.timestamp_sec or 0
                 )
-                lines.append(
-                    f"[{timestamp}] {speaker_label}: {turn.content}\n"
-                )
+                lines.append(f"[{timestamp}] {speaker_label}: {turn.content}\n")
 
         if not lines:
             lines = [f"Transcript export for interview {interview_id}\n"]
