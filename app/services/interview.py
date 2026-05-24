@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import status
 from sqlalchemy import delete, func, select
@@ -696,3 +698,149 @@ class InterviewService:
             criteria=criteria,
             created_at=interview.created_at,
         )
+
+    @staticmethod
+    async def get_summary(
+        interview_id: uuid.UUID,
+        db: AsyncSession,
+        user: User,
+    ) -> dict:
+        result = await db.execute(
+            select(Interview).where(
+                Interview.id == interview_id,
+                Interview.interviewer_id == user.id,
+            )
+        )
+        interview = result.scalar_one_or_none()
+        if not interview:
+            raise APIError(
+                "Interview not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="interview_not_found",
+            )
+
+        result = await db.execute(
+            select(InterviewSummary).where(
+                InterviewSummary.interview_id == interview_id
+            )
+        )
+        summary = result.scalar_one_or_none()
+
+        if not summary:
+            return {
+                "interview_id": str(interview_id),
+                "status": "pending",
+                "observation": None,
+                "highlights": [],
+                "red_flags": [],
+                "custom_question": None,
+                "key_skills": [],
+            }
+
+        assessment = {}
+        if summary.ai_assessment:
+            try:
+                assessment = json.loads(summary.ai_assessment)
+            except (json.JSONDecodeError, ValueError):
+                assessment = {}
+
+        return {
+            "interview_id": str(interview_id),
+            "status": summary.status,
+            "observation": assessment.get("observation"),
+            "highlights": assessment.get("highlights", []),
+            "red_flags": assessment.get("red_flags", []),
+            "custom_question": summary.custom_question,
+            "key_skills": summary.key_skills.split(",") if summary.key_skills else [],
+        }
+
+    @staticmethod
+    async def retry_summary(
+        interview_id: uuid.UUID,
+        db: AsyncSession,
+        user: User,
+    ) -> dict:
+        result = await db.execute(
+            select(Interview).where(
+                Interview.id == interview_id,
+                Interview.interviewer_id == user.id,
+            )
+        )
+        interview = result.scalar_one_or_none()
+        if not interview:
+            raise APIError(
+                "Interview not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="interview_not_found",
+            )
+
+        result = await db.execute(
+            select(InterviewSummary).where(
+                InterviewSummary.interview_id == interview_id
+            )
+        )
+        summary = result.scalar_one_or_none()
+
+        if not summary or summary.status != "failed":
+            raise APIError(
+                "Summary is not in a failed state",
+                status_code=status.HTTP_409_CONFLICT,
+                code="summary_not_failed",
+            )
+
+        summary.status = "generating"
+        await db.commit()
+
+        return {
+            "interview_id": str(interview_id),
+            "status": "generating",
+        }
+
+    @staticmethod
+    async def get_session_status(
+        interview_id: uuid.UUID,
+        db: AsyncSession,
+        user: User,
+    ) -> dict:
+        result = await db.execute(
+            select(Interview).where(
+                Interview.id == interview_id,
+                Interview.interviewer_id == user.id,
+            )
+        )
+        interview = result.scalar_one_or_none()
+        if not interview:
+            raise APIError(
+                "Interview not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="interview_not_found",
+            )
+
+        session_phase_map = {
+            "draft": "connecting",
+            "scheduled": "connecting",
+            "in_progress": "live_transcript",
+            "completed": "summary_ready",
+            "cancelled": "none",
+            "needs_attention": "listening",
+        }
+
+        elapsed = None
+        if interview.status == "in_progress" and interview.scheduled_start:
+            now = datetime.now(timezone.utc)
+            start = interview.scheduled_start
+            if start.tzinfo is None:
+                start = start.replace(tzinfo=timezone.utc)
+            elapsed = int((now - start).total_seconds())
+
+        return {
+            "interview_id": str(interview_id),
+            "status": interview.status,
+            "session_phase": session_phase_map.get(interview.status, "none"),
+            "elapsed": elapsed,
+            "participants": None,
+            "platform": interview.platform,
+            "connection_status": "connected"
+            if interview.status == "in_progress"
+            else "idle",
+        }

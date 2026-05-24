@@ -13,6 +13,7 @@ from app.core.responses import APIError, success
 from app.db.session import get_session
 from app.models.interview import Interview, InterviewTranscript, InterviewTranscriptTurn
 from app.services.ai_generation_service import AIGenerationService
+from app.services.interview import InterviewService
 
 router = APIRouter()
 
@@ -173,3 +174,19 @@ async def ask_question(
         message="Query answered",
         status_code=status.HTTP_200_OK,
     )
+
+
+@router.post("/{interview_id}/summary/retry", status_code=status.HTTP_200_OK)
+async def retry_interview_summary(
+    interview_id: uuid.UUID,
+    user: CurrentUser,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_session),
+):
+    result = await InterviewService.retry_summary(interview_id, db, user)
+    background_tasks.add_task(
+        AIGenerationService.generate_assessment,
+        interview_id=interview_id,
+        db=db,
+    )
+    return success(result, message="Summary retry started")

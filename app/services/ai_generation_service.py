@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -10,7 +11,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.gemini import generate_text
+from app.core.gemini import generate_structured_output, generate_text
 from app.core.responses import APIError
 from app.models.interview import (
     Candidate,
@@ -20,6 +21,7 @@ from app.models.interview import (
     InterviewTranscriptTurn,
 )
 from app.models.user import User
+from app.schemas.assessment import AssessmentOutput
 from app.services.chat_history import ChatHistoryService
 from app.services.interview_context_service import InterviewContextService
 
@@ -292,8 +294,8 @@ class AIGenerationService:
         Behavior on missing data:
         - If the interview, candidate, summary, or job description is not found,
           sets ``summary.status`` to ``"failed"`` and returns early.
-        - If no transcript or no transcript turns exist, the LLM receives
-          ``"No transcript available."`` as the transcript content.
+        - If no transcript or no transcript turns exist,
+          sets ``summary.status`` to ``"failed"`` and returns early.
         - If the LLM call or any other step raises, the summary is marked
           ``"failed"``.
 
@@ -348,29 +350,33 @@ class AIGenerationService:
                 )
             ).scalar_one_or_none()
 
-            turns_text = "No transcript available."
-            if transcript:
-                turns = (
-                    (
-                        await db.execute(
-                            select(InterviewTranscriptTurn)
-                            .where(
-                                InterviewTranscriptTurn.transcript_id == transcript.id
-                            )
-                            .order_by(InterviewTranscriptTurn.sequence_no.asc())
-                        )
+            if not transcript:
+                summary.status = "failed"
+                await db.commit()
+                return
+
+            turns = (
+                (
+                    await db.execute(
+                        select(InterviewTranscriptTurn)
+                        .where(InterviewTranscriptTurn.transcript_id == transcript.id)
+                        .order_by(InterviewTranscriptTurn.sequence_no.asc())
                     )
-                    .scalars()
-                    .all()
                 )
+                .scalars()
+                .all()
+            )
 
-                if turns:
-                    lines = []
-                    for t in turns:
-                        speaker = "Interviewer" if t.is_ai_question else "Candidate"
-                        lines.append(f"{speaker}: {t.content}")
-                    turns_text = "\n".join(lines)
+            if not turns:
+                summary.status = "failed"
+                await db.commit()
+                return
 
+            lines = []
+            for t in turns:
+                speaker = "Interviewer" if t.is_ai_question else "Candidate"
+                lines.append(f"{speaker}: {t.content}")
+            turns_text = "\n".join(lines)
             user_content = f"""# FULL INTERVIEW TRANSCRIPT
                         {turns_text}
 
@@ -380,16 +386,15 @@ class AIGenerationService:
                         and provide an overall recommendation.
                         """
 
-            # 5. Call LLM
-            assessment_text = await generate_text(
+            result = await generate_structured_output(
                 system_instruction=system_instruction,
                 user_content=user_content,
+                output_schema=AssessmentOutput,
                 temperature=0.3,
                 max_tokens=2000,
             )
 
-            # 6. Persist assessment
-            summary.ai_assessment = assessment_text
+            summary.ai_assessment = json.dumps(result)
             summary.status = "completed"
             summary.generated_at = datetime.now(timezone.utc)
             await db.commit()
