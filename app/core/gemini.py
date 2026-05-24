@@ -7,8 +7,26 @@ from pydantic import BaseModel
 from app.core.config import settings
 from app.core.decorators import retry_with_backoff
 
-_gemini_client = genai.Client(api_key=settings.GEMINI_API_KEY).aio
+_gemini_client = None
 _GENERATION_MODEL = "gemini-2.5-flash-lite"
+
+
+def _get_client():
+    global _gemini_client
+    if _gemini_client is None:
+        api_key = settings.GEMINI_API_KEY
+        if not api_key:
+            # Fallback to environment variable check in case config is loaded otherwise
+            import os
+
+            api_key = os.environ.get("GEMINI_API_KEY", "")
+        if not api_key:
+            raise ValueError(
+                "GEMINI_API_KEY is not configured in .env. "
+                "Please add it to use the Gemini service."
+            )
+        _gemini_client = genai.Client(api_key=api_key).aio
+    return _gemini_client
 
 
 @retry_with_backoff()
@@ -18,7 +36,7 @@ async def generate_text(
     temperature: float = 0.7,
     max_tokens: int = 500,
 ) -> str:
-    response = await _gemini_client.models.generate_content(
+    response = await _get_client().models.generate_content(
         model=_GENERATION_MODEL,
         contents=user_content,
         config=types.GenerateContentConfig(
@@ -38,7 +56,7 @@ async def generate_structured_output(
     temperature: float = 0.7,
     max_tokens: int = 1000,
 ) -> dict:
-    response = await _gemini_client.models.generate_content(
+    response = await _get_client().models.generate_content(
         model=_GENERATION_MODEL,
         contents=user_content,
         config=types.GenerateContentConfig(

@@ -15,6 +15,7 @@ from app.api.v1.routes import (
     meetings,
     onboarding,
     sdk,
+    sessions,
     subscription,
     support,
     users,
@@ -49,3 +50,4 @@ api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboar
 api_router.include_router(zoom_sdk.router, prefix="/zoom", tags=["Zoom SDK"])
 api_router.include_router(livekit.router, prefix="/livekit", tags=["LiveKit"])
 api_router.include_router(sdk.router, prefix="/sdk", tags=["SDK"])
+api_router.include_router(sessions.router, prefix="/sessions", tags=["Sessions"])

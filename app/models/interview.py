@@ -128,3 +128,24 @@ class InterviewRedFlag(Base, UUIDPrimaryKey, TimestampMixin):
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
     sort_order: Mapped[int | None] = mapped_column(Integer)
+
+
+class InterviewSession(Base, UUIDPrimaryKey, TimestampMixin):
+    __tablename__ = "interview_sessions"
+
+    role: Mapped[str] = mapped_column(String(255), nullable=False)
+    candidate_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    intro: Mapped[str] = mapped_column(Text, nullable=False)
+    questions_json: Mapped[str] = mapped_column(Text, nullable=False)
+    rubric_json: Mapped[str] = mapped_column(Text, nullable=False)
+    duration_minutes: Mapped[int] = mapped_column(Integer, default=20, nullable=False)
+    closing: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(50), default="created", nullable=False)
+    transcript_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    report_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
