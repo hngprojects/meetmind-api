@@ -29,6 +29,7 @@ wheels/
 
 # database
 docker-compose.override.yml
+docker-compose.yml
 .sdk/
 *.sqlite
 *.sqlite3

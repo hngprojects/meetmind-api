@@ -14,6 +14,7 @@ from app.models.interview import (
     Interview,
     InterviewHighlight,
     InterviewRedFlag,
+    InterviewSession,
     InterviewSkillToAssess,
     InterviewSummary,
     InterviewTranscript,
@@ -106,6 +107,7 @@ __all__ = [
     "InterviewSkillToAssess",
     "InterviewHighlight",
     "InterviewRedFlag",
+    "InterviewSession",
     # Scorecards
     "ScorecardCategory",
     "InterviewScorecard",
