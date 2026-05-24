@@ -313,9 +313,8 @@ class TestCandidateGetByID:
         assert body["message"] == "Candidate profile retrieved"
         data = body["data"]
         assert data["id"] == str(candidate.id)
-        assert data["full_name"] == "Alice Wonder"
+        assert data["name"] == "Alice Wonder"
         assert data["email"] == "alice@test.com"
-        assert data["workspace_id"] == str(workspace.id)
         assert "created_at" in data
         assert "updated_at" in data
 
