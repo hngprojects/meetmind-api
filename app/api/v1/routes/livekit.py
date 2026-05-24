@@ -25,20 +25,17 @@ DEFAULT_INTERVIEW_CONFIG = {
     "questions": [
         {
             "text": (
-                "Walk me through a backend system you've built that "
-                "you're proud of."
+                "Walk me through a backend system you've built that you're proud of."
             ),
             "followUpHint": "Probe scale, their contribution, and trade-offs.",
             "maxFollowUps": 2,
         },
         {
             "text": (
-                "How do you handle database migrations in a "
-                "production environment?"
+                "How do you handle database migrations in a production environment?"
             ),
             "followUpHint": (
-                "Probe migration tools, zero-downtime strategies, "
-                "and rollbacks."
+                "Probe migration tools, zero-downtime strategies, and rollbacks."
             ),
             "maxFollowUps": 2,
         },
