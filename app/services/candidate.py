@@ -215,10 +215,10 @@ class CandidateService:
                     else "ongoing",
                     "score": interview.rating if interview else None,
                     "action": "none",
-                    "createdAt": candidate.created_at.isoformat()
+                    "created_at": candidate.created_at.isoformat()
                     if candidate.created_at
                     else None,
-                    "avatarUrl": candidate.avatar_initials,
+                    "avatar_url": candidate.avatar_initials,
                     "notes": None,
                 }
             )

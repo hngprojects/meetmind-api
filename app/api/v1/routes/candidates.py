@@ -177,9 +177,9 @@ async def list_candidates(
         meta={
             "pagination": {
                 "page": page,
-                "pageSize": page_size,
+                "page_size": page_size,
                 "total": total,
-                "totalPages": total_pages,
+                "total_pages": total_pages,
             }
         },
     )
