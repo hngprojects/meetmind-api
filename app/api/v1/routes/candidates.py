@@ -138,10 +138,10 @@ async def list_candidates(
     current_user: CurrentUser,
     q: str | None = Query(default=None),
     status: str | None = Query(default=None),
-    sort_by: str | None = Query(default="date", alias="sortBy"),
-    sort_direction: str | None = Query(default="desc", alias="sortDirection"),
+    sort_by: str | None = Query(default="date", alias="sort_by"),
+    sort_direction: str | None = Query(default="desc", alias="sort_direction"),
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=100, alias="pageSize"),
+    page_size: int = Query(default=20, ge=1, le=100, alias="page_size"),
 ):
     workspace_id = await _get_workspace(db, current_user)
     if not workspace_id:
@@ -150,9 +150,9 @@ async def list_candidates(
             meta={
                 "pagination": {
                     "page": page,
-                    "pageSize": page_size,
+                    "page_size": page_size,
                     "total": 0,
-                    "totalPages": 0,
+                    "total_pages": 0,
                 }
             },
         )
