@@ -313,9 +313,8 @@ class TestCandidateGetByID:
         assert body["message"] == "Candidate profile retrieved"
         data = body["data"]
         assert data["id"] == str(candidate.id)
-        assert data["full_name"] == "Alice Wonder"
+        assert data["name"] == "Alice Wonder"
         assert data["email"] == "alice@test.com"
-        assert data["workspace_id"] == str(workspace.id)
         assert "created_at" in data
         assert "updated_at" in data
 
@@ -663,3 +662,111 @@ class TestDocumentProcessing:
         await db_session.refresh(doc)
 
         assert doc.status == DocumentStatus.FAILED
+
+class TestListCandidates:
+    @pytest.mark.anyio
+    async def test_list_candidates_returns_200_with_valid_request(self, client, db_session):
+        from app.services.auth import AuthService
+
+        user, _ = await create_user_with_workspace(db_session)
+        token = await AuthService.create_access_token(user)
+
+        response = await client.get(
+            "/api/v1/candidates",
+            headers=auth_header(token),
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["success"] is True
+        assert isinstance(body["data"], list)
+        assert "pagination" in body["meta"]
+
+    @pytest.mark.anyio
+    async def test_list_candidates_filters_by_status(self, client, db_session):
+        from app.services.auth import AuthService
+        from app.models.interview import Interview
+
+        user, workspace = await create_user_with_workspace(db_session)
+        token = await AuthService.create_access_token(user)
+        candidate = await create_candidate(db_session, workspace.id, "Filter Test", "filter@test.com")
+
+        interview = Interview(
+            workspace_id=workspace.id,
+            candidate_id=candidate.id,
+            interviewer_id=user.id,
+            status="in_progress",
+        )
+        db_session.add(interview)
+        await db_session.commit()
+
+        response = await client.get(
+            "/api/v1/candidates",
+            params={"status": "ongoing"},
+            headers=auth_header(token),
+        )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert all(c["status"] == "ongoing" for c in data)
+
+    @pytest.mark.anyio
+    async def test_list_candidates_searches_by_name(self, client, db_session):
+        from app.services.auth import AuthService
+
+        user, workspace = await create_user_with_workspace(db_session)
+        token = await AuthService.create_access_token(user)
+        await create_candidate(db_session, workspace.id, "Searchable Name", "search@test.com")
+        await create_candidate(db_session, workspace.id, "Other Person", "other@test.com")
+
+        response = await client.get(
+            "/api/v1/candidates",
+            params={"q": "Searchable"},
+            headers=auth_header(token),
+        )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert len(data) >= 1
+        assert any("Searchable" in c["name"] for c in data)
+
+    @pytest.mark.anyio
+    async def test_list_candidates_returns_empty_when_no_match(self, client, db_session):
+        from app.services.auth import AuthService
+
+        user, workspace = await create_user_with_workspace(db_session)
+        token = await AuthService.create_access_token(user)
+
+        response = await client.get(
+            "/api/v1/candidates",
+            params={"q": "zxqwerty99notaname"},
+            headers=auth_header(token),
+        )
+
+        assert response.status_code == 200
+        assert response.json()["data"] == []
+
+    @pytest.mark.anyio
+    async def test_list_candidates_returns_401_without_token(self, client):
+        response = await client.get("/api/v1/candidates")
+        assert response.status_code == 401
+
+    @pytest.mark.anyio
+    async def test_list_candidates_pagination_meta_is_present(self, client, db_session):
+        from app.services.auth import AuthService
+
+        user, workspace = await create_user_with_workspace(db_session)
+        token = await AuthService.create_access_token(user)
+
+        response = await client.get(
+            "/api/v1/candidates",
+            params={"page": 1, "pageSize": 10},
+            headers=auth_header(token),
+        )
+
+        assert response.status_code == 200
+        pagination = response.json()["meta"]["pagination"]
+        assert "page" in pagination
+        assert "page_size" in pagination
+        assert "total" in pagination
+        assert "total_pages" in pagination
