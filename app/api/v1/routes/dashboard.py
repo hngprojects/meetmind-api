@@ -67,18 +67,38 @@ async def get_dashboard_live(
     user: CurrentUser,
     db: AsyncSession = Depends(get_session),
 ):
-    """Return a count breakdown of all interviews in the workspace by status.
-
-    Powers the summary cards at the top of the dashboard.
+    """Return a count breakdown of all interviews in the workspace by status,
+    alongside a list of live and upcoming interviews for the sidebar.
     """
     workspace_id = await _resolve_workspace(user, db)
     if workspace_id is None:
         return success(
-            _EMPTY_STATS, message="Dashboard live counts retrieved successfully"
+            {**_EMPTY_STATS, "live_interviews": []},
+            message="Dashboard live counts retrieved successfully",
         )
+
     counts = await get_live_counts(workspace_id, db)
+    interviews = await get_live_interviews(workspace_id, db)
+
     return success(
-        counts.model_dump(), message="Dashboard live counts retrieved successfully"
+        {
+            **counts.model_dump(),
+            "live_interviews": [
+                {
+                    "id": str(item.interview_id),
+                    "interview_id": str(item.interview_id),
+                    "candidate_name": item.candidate_name,
+                    "role_title": item.role_title,
+                    "title": item.role_title,
+                    "scheduled_at": None,
+                    "status": "live"
+                    if item.elapsed_seconds is not None
+                    else "upcoming",
+                }
+                for item in interviews.live_interviews
+            ],
+        },
+        message="Dashboard live counts retrieved successfully",
     )
 
 

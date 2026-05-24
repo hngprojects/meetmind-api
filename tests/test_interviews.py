@@ -693,3 +693,67 @@ class TestCancelInterview:
         )
         assert body["error"]["code"] == "already_cancelled"
         logger.info("[result] Double-cancel correctly returns 409  [OK]")
+
+class TestListInterviewsFiltered:
+    @pytest.mark.anyio
+    async def test_filter_by_status_returns_matching_interviews(self, client: AsyncClient):
+        token = await signup_and_get_token(client, unique_user())
+        await client.post(INTERVIEWS_URL, json=VALID_INTERVIEW_PAYLOAD, headers=auth_headers(token))
+
+        response = await client.get(
+            INTERVIEWS_URL,
+            params={"status": "draft"},
+            headers=auth_headers(token),
+        )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert all(i["status"] == "draft" for i in data)
+
+    @pytest.mark.anyio
+    async def test_filter_by_multiple_statuses(self, client: AsyncClient):
+        token = await signup_and_get_token(client, unique_user())
+        await client.post(INTERVIEWS_URL, json=VALID_INTERVIEW_PAYLOAD, headers=auth_headers(token))
+
+        response = await client.get(
+            INTERVIEWS_URL,
+            params={"status": "draft,scheduled"},
+            headers=auth_headers(token),
+        )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert all(i["status"] in ("draft", "scheduled") for i in data)
+
+    @pytest.mark.anyio
+    async def test_search_by_role_title(self, client: AsyncClient):
+        token = await signup_and_get_token(client, unique_user())
+        await client.post(INTERVIEWS_URL, json=VALID_INTERVIEW_PAYLOAD, headers=auth_headers(token))
+
+        response = await client.get(
+            INTERVIEWS_URL,
+            params={"search": "Senior Backend"},
+            headers=auth_headers(token),
+        )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert len(data) >= 1
+
+    @pytest.mark.anyio
+    async def test_search_returns_empty_when_no_match(self, client: AsyncClient):
+        token = await signup_and_get_token(client, unique_user())
+
+        response = await client.get(
+            INTERVIEWS_URL,
+            params={"search": "zxqwerty99notarole"},
+            headers=auth_headers(token),
+        )
+
+        assert response.status_code == 200
+        assert response.json()["data"] == []
+
+    @pytest.mark.anyio
+    async def test_returns_401_without_token(self, client: AsyncClient):
+        response = await client.get(INTERVIEWS_URL, params={"status": "draft"})
+        assert response.status_code == 401

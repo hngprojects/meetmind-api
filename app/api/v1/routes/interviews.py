@@ -4,7 +4,7 @@ and scorecard endpoints."""
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -61,13 +61,16 @@ async def list_interviews(
     db: AsyncSession = Depends(get_session),
     page: int = 1,
     page_size: int = 20,
+    status: str | None = Query(default=None),
+    search: str | None = Query(default=None),
 ):
-
-    rows, total = await InterviewService.list_interviews(db, user, page, page_size)
+    rows, total = await InterviewService.list_interviews(
+        db, user, page, page_size, status, search
+    )
     items = [
         InterviewListItem(
             id=i.id,
-            candidate_name=full_name,  # resolved below
+            candidate_name=full_name,
             role_title=i.role_title,
             platform=i.platform,
             status=i.status,

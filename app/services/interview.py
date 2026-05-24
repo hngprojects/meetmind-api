@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import status
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.responses import APIError
@@ -138,6 +138,55 @@ async def _fetch_criteria(db: AsyncSession, interview_id: uuid.UUID) -> list[str
     return list(result.scalars().all())
 
 
+def _derive_interview_meta(interview: Interview) -> dict:
+    session_phase_map = {
+        "draft": "connecting",
+        "scheduled": "connecting",
+        "in_progress": "live_transcript",
+        "completed": "summary_ready",
+        "cancelled": "none",
+        "needs_attention": "listening",
+    }
+    list_status_map = {
+        "in_progress": "live",
+        "scheduled": "upcoming",
+    }
+
+    elapsed = None
+    if interview.status == "in_progress" and interview.scheduled_start:
+        now = datetime.now(timezone.utc)
+        start = interview.scheduled_start
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+        elapsed = int((now - start).total_seconds())
+
+    question_progress = None
+    if interview.questions_asked is not None and interview.questions_total is not None:
+        question_progress = f"{interview.questions_asked}/{interview.questions_total}"
+
+    return {
+        "session_phase": session_phase_map.get(interview.status, "none"),
+        "list_status": list_status_map.get(interview.status, "none"),
+        "elapsed": elapsed,
+        "question_progress": question_progress,
+        "scheduled_date": interview.scheduled_start.date().isoformat()
+        if interview.scheduled_start
+        else None,
+        "scheduled_time": interview.scheduled_start.time().strftime("%H:%M")
+        if interview.scheduled_start
+        else None,
+    }
+
+
+def _parse_assessment(summary: InterviewSummary | None) -> dict:
+    if not summary or not summary.ai_assessment:
+        return {"observation": None, "highlights": [], "red_flags": []}
+    try:
+        return json.loads(summary.ai_assessment)
+    except (json.JSONDecodeError, ValueError):
+        return {"observation": None, "highlights": [], "red_flags": []}
+
+
 class InterviewService:
     """Encapsulate interview session creation and retrieval."""
 
@@ -235,23 +284,6 @@ class InterviewService:
         db: AsyncSession,
         user: User,
     ) -> InterviewResponse:
-        """Retrieve an interview session by ID.
-
-        Only returns interviews where the authenticated user is the interviewer,
-        preventing cross-user data leakage.
-
-        Args:
-            interview_id: UUID of the interview to retrieve.
-            db: Active async database session.
-            user: The authenticated user.
-
-        Returns:
-            A populated :class:`InterviewResponse`.
-
-        Raises:
-            APIError: 404 if the interview does not exist or does not belong
-                to the requesting user.
-        """
         result = await db.execute(
             select(Interview).where(
                 Interview.id == interview_id,
@@ -259,7 +291,6 @@ class InterviewService:
             )
         )
         interview = result.scalar_one_or_none()
-
         if not interview:
             raise APIError(
                 "Interview not found",
@@ -267,13 +298,11 @@ class InterviewService:
                 code="interview_not_found",
             )
 
-        # Fetch candidate
         candidate_result = await db.execute(
             select(Candidate).where(Candidate.id == interview.candidate_id)
         )
         candidate = candidate_result.scalar_one_or_none()
 
-        # Fetch summary (context)
         summary_result = await db.execute(
             select(InterviewSummary).where(
                 InterviewSummary.interview_id == interview.id
@@ -281,8 +310,9 @@ class InterviewService:
         )
         summary = summary_result.scalar_one_or_none()
 
-        # Fetch criteria
         criteria = await _fetch_criteria(db, interview.id)
+        meta = _derive_interview_meta(interview)
+        assessment = _parse_assessment(summary)
 
         return InterviewResponse(
             id=interview.id,
@@ -294,16 +324,32 @@ class InterviewService:
             participation_mode=interview.participation_mode,
             candidate_name=candidate.full_name if candidate else "Unknown",
             candidate_email=candidate.email if candidate else None,
+            phone=candidate.phone if candidate else None,
+            resume_url=candidate.resume_url if candidate else None,
+            portfolio_url=candidate.portfolio_url if candidate else None,
+            duration=interview.duration_min,
+            questions_asked=interview.questions_asked,
+            questions_total=interview.questions_total,
+            rating=interview.rating,
+            participants=None,
             summary=InterviewSummaryResponse(
                 job_description=summary.job_description if summary else None,
                 scoring_rubric=summary.scoring_rubric if summary else None,
-                ai_assessment=summary.ai_assessment if summary else None,
+                ai_assessment=assessment.get("observation"),
                 status=summary.status if summary else None,
             )
             if summary
             else None,
+            custom_question=summary.custom_question if summary else None,
+            key_skills=summary.key_skills.split(",")
+            if summary and summary.key_skills
+            else [],
+            observation=assessment.get("observation"),
+            highlights=assessment.get("highlights", []),
+            red_flags=assessment.get("red_flags", []),
             criteria=criteria,
             created_at=interview.created_at,
+            **meta,
         )
 
     @staticmethod
@@ -584,17 +630,36 @@ class InterviewService:
         user: User,
         page: int = 1,
         page_size: int = 20,
+        status: str | None = None,
+        search: str | None = None,
     ) -> tuple[list, int]:
 
+        filters = [Interview.interviewer_id == user.id]
+
+        if status:
+            status_list = [s.strip() for s in status.split(",")]
+            filters.append(Interview.status.in_(status_list))
+
+        if search:
+            pattern = f"%{search.strip()}%"
+            filters.append(
+                or_(
+                    Interview.role_title.ilike(pattern),
+                    Candidate.full_name.ilike(pattern),
+                )
+            )
+
         count_result = await db.execute(
-            select(func.count(Interview.id)).where(Interview.interviewer_id == user.id)
+            select(func.count(Interview.id))
+            .outerjoin(Candidate, Candidate.id == Interview.candidate_id)
+            .where(*filters)
         )
         total = count_result.scalar() or 0
 
         result = await db.execute(
             select(Interview, Candidate.full_name)
             .outerjoin(Candidate, Candidate.id == Interview.candidate_id)
-            .where(Interview.interviewer_id == user.id)
+            .where(*filters)
             .order_by(Interview.created_at.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
