@@ -101,8 +101,6 @@ class InterviewSummaryResponse(BaseModel):
 
 
 class InterviewResponse(BaseModel):
-    """Full interview session response."""
-
     id: UUID
     title: str | None
     status: str | None
@@ -111,8 +109,27 @@ class InterviewResponse(BaseModel):
     ai_tone: str | None
     candidate_name: str
     candidate_email: str | None
+    phone: str | None = None
+    resume_url: str | None = None
+    portfolio_url: str | None = None
+    scheduled_date: str | None = None
+    scheduled_time: str | None = None
+    duration: int | None = None
+    question_progress: str | None = None
+    questions_asked: int | None = None
+    questions_total: int | None = None
+    rating: int | None = None
+    session_phase: str | None = None
+    list_status: str | None = None
+    elapsed: int | None = None
+    participants: int | None = None
     participation_mode: ParticipationMode | None
     summary: InterviewSummaryResponse | None
+    custom_question: str | None = None
+    key_skills: list[str] = []
+    observation: str | None = None
+    highlights: list[str] = []
+    red_flags: list[str] = []
     criteria: list[str] | None = Field(default=None)
     created_at: datetime | None
 
@@ -121,11 +138,14 @@ class InterviewResponse(BaseModel):
 
 class InterviewListItem(BaseModel):
     id: UUID
+    interview_id: UUID | None = None
     candidate_name: str | None
     role_title: str | None
+    title: str | None = None
     platform: str | None
     status: str | None
     scheduled_start: datetime | None
+    scheduled_time: str | None = None
     participation_mode: str | None
     created_at: datetime | None
 
