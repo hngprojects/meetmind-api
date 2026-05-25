@@ -66,6 +66,14 @@ class Settings(BaseSettings):
     LIVEKIT_API_SECRET: str = ""
 
     GEMINI_API_KEY: str = ""
+    OPENROUTER_API_KEY: str = ""
+    GROQ_API_KEY: str = ""
+
+    GEMINI_MODEL: str = "gemini-2.5-flash-lite"
+    OPENROUTER_MODEL: str = "meta-llama/llama-3.1-8b-instruct"
+    GROQ_MODEL: str = "llama-3.1-8b-instant"
+
+    LLM_PROVIDERS: list[str] = ["gemini", "openrouter", "groq"]
 
 
 @lru_cache
