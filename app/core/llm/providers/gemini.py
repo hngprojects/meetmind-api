@@ -2,12 +2,13 @@ import json
 
 from google import genai
 from google.genai import types
-from pydantic import BaseModel
+
 from app.core.config import settings
 from app.core.decorators import retry_with_backoff
 
 MODEL = settings.GEMINI_MODEL
 _client = None
+
 
 def _get_client():
     global _client
@@ -18,8 +19,11 @@ def _get_client():
         _client = genai.Client(api_key=api_key).aio
     return _client
 
+
 @retry_with_backoff()
-async def generate_text(system_instruction: str, user_content: str, temperature: float, max_tokens: int) -> str:
+async def generate_text(
+    system_instruction: str, user_content: str, temperature: float, max_tokens: int
+) -> str:
     response = await _get_client().models.generate_content(
         model=MODEL,
         contents=user_content,
@@ -33,7 +37,9 @@ async def generate_text(system_instruction: str, user_content: str, temperature:
 
 
 @retry_with_backoff()
-async def generate_structured_output(system_instruction, user_content, output_schema, temperature, max_tokens) -> dict:
+async def generate_structured_output(
+    system_instruction, user_content, output_schema, temperature, max_tokens
+) -> dict:
     response = await _get_client().models.generate_content(
         model=MODEL,
         contents=user_content,

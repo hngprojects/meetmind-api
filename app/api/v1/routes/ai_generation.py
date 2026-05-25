@@ -22,9 +22,15 @@ async def generate_question(
     db: AsyncSession = Depends(get_session),
 ):
     question = await AIGenerationService.generate_next_question(
-        interview_id=interview_id, db=db, user=user,
+        interview_id=interview_id,
+        db=db,
+        user=user,
     )
-    return success({"question": question}, message="Question generated", status_code=status.HTTP_200_OK)
+    return success(
+        {"question": question},
+        message="Question generated",
+        status_code=status.HTTP_200_OK,
+    )
 
 
 @router.post("/{interview_id}/respond")
@@ -35,7 +41,10 @@ async def respond_to_question(
     db: AsyncSession = Depends(get_session),
 ):
     next_question = await AIGenerationService.record_response(
-        interview_id=interview_id, content=payload.content, user=user, db=db,
+        interview_id=interview_id,
+        content=payload.content,
+        user=user,
+        db=db,
     )
     return success({"response": next_question}, message="Response recorded")
 
@@ -48,13 +57,18 @@ async def complete_interview(
     db: AsyncSession = Depends(get_session),
 ):
     await AIGenerationService.complete_interview(
-        interview_id=interview_id, user=user, db=db,
+        interview_id=interview_id,
+        user=user,
+        db=db,
     )
     background_tasks.add_task(
         AIGenerationService.generate_assessment,
         interview_id=interview_id,
     )
-    return success({"status": "completed"}, message="Interview completed, assessment generation started")
+    return success(
+        {"status": "completed"},
+        message="Interview completed, assessment generation started",
+    )
 
 
 @router.post("/{interview_id}/chat")
@@ -65,7 +79,10 @@ async def ask_question(
     db: AsyncSession = Depends(get_session),
 ):
     result = await AIGenerationService.send_chat_message(
-        interview_id=interview_id, content=payload.query, user=user, db=db,
+        interview_id=interview_id,
+        content=payload.query,
+        user=user,
+        db=db,
     )
     return success(result, message="Query answered")
 

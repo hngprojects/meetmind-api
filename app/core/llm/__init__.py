@@ -1,6 +1,7 @@
 from pydantic import BaseModel
+
 from app.core.llm.fallback import with_fallback
-from app.core.llm.providers import _get_text_providers, _get_structured_providers
+from app.core.llm.providers import _get_structured_providers, _get_text_providers
 
 
 async def generate_text(
@@ -11,7 +12,10 @@ async def generate_text(
 ) -> str:
     return await with_fallback(
         _get_text_providers(),
-        system_instruction, user_content, temperature, max_tokens,
+        system_instruction,
+        user_content,
+        temperature,
+        max_tokens,
     )
 
 
@@ -24,5 +28,9 @@ async def generate_structured_output(
 ) -> dict:
     return await with_fallback(
         _get_structured_providers(),
-        system_instruction, user_content, output_schema, temperature, max_tokens,
+        system_instruction,
+        user_content,
+        output_schema,
+        temperature,
+        max_tokens,
     )

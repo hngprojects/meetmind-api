@@ -1,14 +1,18 @@
 import asyncio
-from random import uniform
 from functools import wraps
+from random import uniform
 
 import httpx
 
-
 RETRYABLE_KEYWORDS = [
-    "timeout", "connection", "rate limit", "quota",
-    "temporarily unavailable", "resource_exhausted",
-    "service unavailable", "too many requests",
+    "timeout",
+    "connection",
+    "rate limit",
+    "quota",
+    "temporarily unavailable",
+    "resource_exhausted",
+    "service unavailable",
+    "too many requests",
 ]
 RETRYABLE_STATUS_CODES = {429, 503, 504}
 

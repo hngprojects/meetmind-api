@@ -137,12 +137,16 @@ class AIGenerationService:
             return None
 
         turns = (
-            await db.execute(
-                select(InterviewTranscriptTurn)
-                .where(InterviewTranscriptTurn.transcript_id == transcript.id)
-                .order_by(InterviewTranscriptTurn.sequence_no.asc())
+            (
+                await db.execute(
+                    select(InterviewTranscriptTurn)
+                    .where(InterviewTranscriptTurn.transcript_id == transcript.id)
+                    .order_by(InterviewTranscriptTurn.sequence_no.asc())
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         if not include_backchannel:
             turns = [t for t in turns if t.speaker in _INTERVIEW_SPEAKERS]
@@ -151,8 +155,7 @@ class AIGenerationService:
             return None
 
         lines = [
-            f"{_SPEAKER_LABELS.get(t.speaker, 'Unknown')}: {t.content}"
-            for t in turns
+            f"{_SPEAKER_LABELS.get(t.speaker, 'Unknown')}: {t.content}" for t in turns
         ]
         return "\n".join(lines)
 
@@ -185,7 +188,9 @@ class AIGenerationService:
         ai_tone: str | None,
         db: AsyncSession,
     ) -> str:
-        resume_context = await cls._retrieve_resume_context(candidate_id, job_description, db)
+        resume_context = await cls._retrieve_resume_context(
+            candidate_id, job_description, db
+        )
         tone_map = {
             "professional": "Maintain a professional and formal tone.",
             "friendly": "Keep the tone warm and approachable.",
@@ -228,7 +233,9 @@ class AIGenerationService:
         scorecard: str,
         db: AsyncSession,
     ) -> str:
-        resume_context = await cls._retrieve_resume_context(candidate_id, job_description, db)
+        resume_context = await cls._retrieve_resume_context(
+            candidate_id, job_description, db
+        )
         return dedent(f"""
             You are MeetMind, an expert Technical Recruiter evaluating a candidate after an interview.
 
@@ -310,9 +317,16 @@ class AIGenerationService:
 
         transcript = await cls._get_or_create_transcript(interview_id, db)
         seq = await cls._next_sequence(transcript.id, db)
-        db.add(cls._add_turn(
-            transcript.id, "ai", "MeetMind", question, seq, is_ai_question=True,
-        ))
+        db.add(
+            cls._add_turn(
+                transcript.id,
+                "ai",
+                "MeetMind",
+                question,
+                seq,
+                is_ai_question=True,
+            )
+        )
         await db.commit()
         return question
 
@@ -434,7 +448,9 @@ class AIGenerationService:
         turns_text = await cls._format_turns_text(
             interview_id, db, include_backchannel=True
         )
-        transcript_text = turns_text if turns_text is not None else "No transcript available."
+        transcript_text = (
+            turns_text if turns_text is not None else "No transcript available."
+        )
 
         return await generate_text(
             system_instruction=dedent("""
@@ -480,12 +496,21 @@ class AIGenerationService:
 
         transcript = await cls._get_or_create_transcript(interview_id, db)
         seq = await cls._next_sequence(transcript.id, db)
-        db.add(cls._add_turn(
-            transcript.id, "candidate", "Candidate", content, seq, is_ai_question=False,
-        ))
+        db.add(
+            cls._add_turn(
+                transcript.id,
+                "candidate",
+                "Candidate",
+                content,
+                seq,
+                is_ai_question=False,
+            )
+        )
         await db.commit()
 
-        return await cls.generate_next_question(interview_id=interview_id, db=db, user=user)
+        return await cls.generate_next_question(
+            interview_id=interview_id, db=db, user=user
+        )
 
     @classmethod
     async def complete_interview(
@@ -508,7 +533,7 @@ class AIGenerationService:
         db: AsyncSession,
     ) -> dict:
         """Answer a recruiter chat message statelessly (no DB save)."""
-        
+
         await cls._get_interview_or_404(interview_id, user, db)
 
         transcript = await cls._get_or_create_transcript(interview_id, db)
@@ -525,5 +550,5 @@ class AIGenerationService:
             "role": "assistant",
             "content": answer,
             "sent_at": datetime.now(timezone.utc),
-            "sequence_no": real_next_seq + 1, 
+            "sequence_no": real_next_seq + 1,
         }
