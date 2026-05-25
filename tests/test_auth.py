@@ -65,6 +65,7 @@ class TestSignupSuccess:
         assert data["refresh_token"] == FAKE_REFRESH
         assert data["email"] == "john@example.com"
         assert data["name"] == "John Doe"
+        assert "onboarding_completed" in data
         assert "id" in data
         assert "access_token_expires_at" in data
         assert "refresh_token_expires_at" in data
