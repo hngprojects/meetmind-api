@@ -84,14 +84,10 @@ async def signup(
         )
 
     try:
-        await verification_service.create_verification_token(
-            db, user, background_tasks=background_tasks
-        )
+        await verification_service.create_verification_token(db, user, background_tasks=background_tasks)
         access_token = await AuthService.create_access_token(user)
         ip = request.client.host if request.client else None
-        refresh_token, refresh_expires_at = await AuthService.create_refresh_token(
-            db, user.id, ip_address=ip
-        )
+        refresh_token, refresh_expires_at = await AuthService.create_refresh_token(db, user.id, ip_address=ip)
     except Exception:
         logger.exception("Failed to complete signup for user %s", user.id)
         raise APIError(
@@ -100,9 +96,7 @@ async def signup(
             code="internal_error",
         )
 
-    access_expires_at = datetime.now(timezone.utc) + timedelta(
-        minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
-    )
+    access_expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
 
     response.set_cookie(
         key="access_token",
@@ -127,6 +121,7 @@ async def signup(
             "email": user.email,
             "name": user.name,
             "next_step": "verify_email",
+            "onboarding_completed": user.onboarding_completed,
             "access_token": access_token,
             "refresh_token": refresh_token,
             "access_token_expires_at": access_expires_at.isoformat(),
@@ -184,9 +179,7 @@ async def resend_verification(
     Returns:
         A standardized success envelope acknowledging the resend.
     """
-    await verification_service.resend_verification(
-        db, payload.email, background_tasks=background_tasks
-    )
+    await verification_service.resend_verification(db, payload.email, background_tasks=background_tasks)
     return success(message="Verification email resent")
 
 
@@ -239,9 +232,7 @@ async def reset_password(
         APIError: 500 for any unexpected DB or network failure.
     """
     try:
-        await AuthService.reset_password(
-            payload.token, payload.password, db, background_tasks=background_tasks
-        )
+        await AuthService.reset_password(payload.token, payload.password, db, background_tasks=background_tasks)
     except APIError:
         raise
     except Exception:
@@ -312,9 +303,7 @@ async def login(
     try:
         access_token = await AuthService.create_access_token(user)
         ip = request.client.host if request.client else None
-        refresh_token, refresh_expires_at = await AuthService.create_refresh_token(
-            db, user.id, ip_address=ip
-        )
+        refresh_token, refresh_expires_at = await AuthService.create_refresh_token(db, user.id, ip_address=ip)
     except Exception:
         logger.exception("Failed to issue tokens for user %s", user.id)
         raise APIError(
@@ -382,9 +371,7 @@ async def refresh(
         APIError: ``invalid_refresh_token`` / ``token_revoked`` / ``token_expired``.
     """
     ip = request.client.host if request.client else None
-    result = await AuthService.refresh_access_token(
-        payload.refresh_token, db, ip_address=ip
-    )
+    result = await AuthService.refresh_access_token(payload.refresh_token, db, ip_address=ip)
 
     response.set_cookie(
         key="access_token",
@@ -544,9 +531,7 @@ async def google_callback(
     try:
         access_token = await AuthService.create_access_token(user)
         ip = request.client.host if request.client else None
-        refresh_token, refresh_expires_at = await AuthService.create_refresh_token(
-            db, user.id, ip_address=ip
-        )
+        refresh_token, refresh_expires_at = await AuthService.create_refresh_token(db, user.id, ip_address=ip)
     except Exception:
         logger.exception("Failed to issue tokens for OAuth user %s", user.id)
         raise APIError(
