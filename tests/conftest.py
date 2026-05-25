@@ -1,3 +1,4 @@
+import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -8,6 +9,15 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.pool import StaticPool
+
+# Stub heavy external modules before any app import to avoid
+# ModuleNotFoundError from transitive dependencies not related to tests.
+_FAKE_MODULES = [
+    "langchain_text_splitters",
+    "openai",
+]
+for _mod in _FAKE_MODULES:
+    sys.modules.setdefault(_mod, MagicMock())
 
 from app.db.session import get_session
 

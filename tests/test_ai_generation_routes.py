@@ -7,6 +7,7 @@ POST /api/v1/interviews/{id}/generate-question
 POST /api/v1/interviews/{id}/respond
 POST /api/v1/interviews/{id}/complete
 POST /api/v1/interviews/{id}/ask
+POST /api/v1/interviews/{id}/summary/generate
 """
 
 from __future__ import annotations
@@ -236,34 +237,43 @@ class TestComplete:
         assert response.json()["error"]["code"] == "interview_not_found"
 
 
-class TestAsk:
-    """POST /interviews/{id}/ask"""
+class TestChat:
+    """POST /interviews/{id}/chat"""
+
+    MOCK_CHAT_RESPONSE = {
+        "role": "assistant",
+        "content": "The candidate showed strong problem-solving skills.",
+        "sent_at": "2026-05-24T22:00:00",
+        "sequence_no": 2,
+    }
 
     @pytest.mark.anyio
-    async def test_returns_answer(self, client: AsyncClient):
+    async def test_returns_chat_response(self, client: AsyncClient):
         token = await signup_and_get_token(client, unique_user())
         iid = await create_interview(client, token)
 
         with patch(
-            f"{PATCH_TARGET}.answer_query",
-            new=AsyncMock(return_value=MOCK_ANSWER),
+            f"{PATCH_TARGET}.send_chat_message",
+            new=AsyncMock(return_value=self.MOCK_CHAT_RESPONSE),
         ):
             response = await client.post(
-                f"{INTERVIEWS_URL}/{iid}/ask",
+                f"{INTERVIEWS_URL}/{iid}/chat",
                 json={"query": "How did the candidate do?"},
                 headers=auth_headers(token),
             )
 
         body = response.json()
         assert response.status_code == 200
-        assert body["data"]["answer"] == MOCK_ANSWER
+        assert body["data"]["role"] == "assistant"
+        assert body["data"]["content"] == self.MOCK_CHAT_RESPONSE["content"]
+        assert body["data"]["sequence_no"] == 2
         assert body["message"] == "Query answered"
 
     @pytest.mark.anyio
     async def test_returns_401_without_token(self, client: AsyncClient):
         response = await client.post(
-            f"{INTERVIEWS_URL}/{uuid.uuid4()}/ask",
-            json={"query": "How did they do?"},
+            f"{INTERVIEWS_URL}/{uuid.uuid4()}/chat",
+            json={"content": "Hello"},
         )
         assert response.status_code == 401
 
@@ -273,8 +283,96 @@ class TestAsk:
         iid = await create_interview(client, token)
 
         response = await client.post(
-            f"{INTERVIEWS_URL}/{iid}/ask",
+            f"{INTERVIEWS_URL}/{iid}/chat",
             json={"query": ""},
             headers=auth_headers(token),
         )
         assert response.status_code == 422
+
+
+class TestSummaryGenerate:
+    """POST /interviews/{id}/summary/generate"""
+
+    @pytest.mark.anyio
+    async def test_returns_accepted(self, client: AsyncClient):
+        token = await signup_and_get_token(client, unique_user())
+        iid = await create_interview(client, token)
+
+        with patch(
+            f"{PATCH_TARGET}._get_interview_or_404",
+            new=AsyncMock(),
+        ):
+            response = await client.post(
+                f"{INTERVIEWS_URL}/{iid}/summary/generate",
+                headers=auth_headers(token),
+            )
+
+        body = response.json()
+        assert response.status_code == 202
+        assert body["data"]["status"] == "generating"
+        assert body["message"] == "Assessment generation started"
+
+    @pytest.mark.anyio
+    async def test_returns_401_without_token(self, client: AsyncClient):
+        response = await client.post(
+            f"{INTERVIEWS_URL}/{uuid.uuid4()}/summary/generate"
+        )
+        assert response.status_code == 401
+
+    @pytest.mark.anyio
+    async def test_returns_404_for_nonexistent_interview(
+        self, client: AsyncClient
+    ):
+        token = await signup_and_get_token(client, unique_user())
+        fake_id = str(uuid.uuid4())
+
+        response = await client.post(
+            f"{INTERVIEWS_URL}/{fake_id}/summary/generate",
+            headers=auth_headers(token),
+        )
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "interview_not_found"
+
+
+class TestSummaryRetry:
+    """POST /interviews/{id}/summary/retry"""
+
+    @pytest.mark.anyio
+    async def test_retries_failed_summary(self, client: AsyncClient):
+        token = await signup_and_get_token(client, unique_user())
+        iid = await create_interview(client, token)
+
+        with patch(
+            "app.api.v1.routes.ai_generation.InterviewService.retry_summary",
+            new=AsyncMock(return_value={"status": "generating"}),
+        ):
+            response = await client.post(
+                f"{INTERVIEWS_URL}/{iid}/summary/retry",
+                headers=auth_headers(token),
+            )
+
+        body = response.json()
+        assert response.status_code == 200
+        assert body["data"]["status"] == "generating"
+        assert body["message"] == "Summary retry started"
+
+    @pytest.mark.anyio
+    async def test_returns_401_without_token(self, client: AsyncClient):
+        response = await client.post(
+            f"{INTERVIEWS_URL}/{uuid.uuid4()}/summary/retry"
+        )
+        assert response.status_code == 401
+
+    @pytest.mark.anyio
+    async def test_returns_404_for_nonexistent_interview(
+        self, client: AsyncClient
+    ):
+        token = await signup_and_get_token(client, unique_user())
+        fake_id = str(uuid.uuid4())
+
+        response = await client.post(
+            f"{INTERVIEWS_URL}/{fake_id}/summary/retry",
+            headers=auth_headers(token),
+        )
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "interview_not_found"
