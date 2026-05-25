@@ -13,7 +13,6 @@ from sqlalchemy.pool import StaticPool
 # Stub heavy external modules before any app import to avoid
 # ModuleNotFoundError from transitive dependencies not related to tests.
 _FAKE_MODULES = [
-    "langchain_text_splitters",
     "openai",
 ]
 for _mod in _FAKE_MODULES:
