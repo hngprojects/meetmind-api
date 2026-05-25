@@ -127,6 +127,7 @@ async def signup(
             "email": user.email,
             "name": user.name,
             "next_step": "verify_email",
+            "onboarding_completed": user.onboarding_completed,
             "access_token": access_token,
             "refresh_token": refresh_token,
             "access_token_expires_at": access_expires_at.isoformat(),
