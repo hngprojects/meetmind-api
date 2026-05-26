@@ -59,6 +59,7 @@ class TestSignupSuccess:
         assert "data" in body
         assert data["email"] == "john@example.com"
         assert data["name"] == "John Doe"
+        assert "onboarding_completed" in data
         assert "id" in data
 
 

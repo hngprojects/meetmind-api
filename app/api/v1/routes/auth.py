@@ -101,6 +101,7 @@ async def signup(
             "email": user.email,
             "name": user.name,
             "next_step": "verify_email",
+            "onboarding_completed": user.onboarding_completed,
         },
         message="Account created successfully",
         status_code=status.HTTP_201_CREATED,
