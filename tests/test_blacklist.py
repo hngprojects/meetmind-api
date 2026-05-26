@@ -4,31 +4,30 @@ import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
+from uuid import uuid4
 
 import jwt
 import pytest
 
 from app.core.config import settings
 from app.models.user import ActiveSession, RefreshToken, User
-from app.schemas.auth import SignupRequest
 from app.services.auth import AuthService
 
 
-async def _create_test_user(db_session, email: str) -> tuple[User, str]:
-    """Create a test user and return the user + access token."""
-    user = await AuthService.create_user(
-        SignupRequest(name="Test User", email=email, password="Abcdefg1"),
-        db_session,
-    )
-    await db_session.commit()
-    access_token = await AuthService.create_access_token(user)
-    return user, access_token
+async def create_verified_user_with_token(db, email: str | None = None) -> User:
+    user = User(email=email or f"{uuid4().hex[:8]}@example.com", is_verified=True)
+    db.add(user)
+    await db.flush()
+    token = await AuthService.create_access_token(user)
+    return user, token
 
 
 @pytest.mark.anyio
 async def test_logout_blacklists_access_token(client, db_session, mock_redis):
     """Logging out should add the access token JTI to the blacklist."""
-    user, access_token = await _create_test_user(db_session, "bl@test.com")
+    user, access_token = await create_verified_user_with_token(
+        db_session, "bl@test.com"
+    )
 
     _, refresh_expires_at = await AuthService.create_refresh_token(db_session, user.id)
 
@@ -79,7 +78,7 @@ async def test_logout_blacklists_access_token(client, db_session, mock_redis):
 @pytest.mark.anyio
 async def test_blacklisted_token_rejected_by_middleware(client, db_session, mock_redis):
     """A request with a blacklisted token should receive a 401."""
-    _, access_token = await _create_test_user(db_session, "mw@test.com")
+    _, access_token = await create_verified_user_with_token(db_session, "mw@test.com")
 
     claims = jwt.decode(
         access_token,
@@ -103,7 +102,7 @@ async def test_blacklisted_token_rejected_by_middleware(client, db_session, mock
 @pytest.mark.anyio
 async def test_non_blacklisted_token_passes_middleware(client, db_session, mock_redis):
     """A valid, non-blacklisted token should reach the route handler."""
-    _, access_token = await _create_test_user(db_session, "pass@test.com")
+    _, access_token = await create_verified_user_with_token(db_session, "pass@test.com")
 
     resp = await client.get(
         "/api/v1/users/me",
