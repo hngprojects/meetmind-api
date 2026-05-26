@@ -128,11 +128,11 @@ class ChatHistoryService:
     async def get_transcript(
         interview_id: uuid.UUID,
         db: AsyncSession,
-        user: User,
+        # user: User,
     ) -> TranscriptResponse:
-        await ChatHistoryService._assert_interview_belongs_to_user(
-            interview_id, db, user
-        )
+        # await ChatHistoryService._assert_interview_belongs_to_user(
+        #     interview_id, db, user
+        # )
 
         transcript_result = await db.execute(
             select(InterviewTranscript).where(

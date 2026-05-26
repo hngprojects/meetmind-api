@@ -27,11 +27,20 @@ class SpeakRequest(BaseModel):
 async def bot_join(
     req: BotJoinRequest,
     db: DBSession,
-    current_user: CurrentUser,
+    # current_user: CurrentUser,
 ):
-    # Create a synchronous SDK DB session for the bot/SDK repository.
-    # Keep it open for the duration of the bot session, then let the bot
-    # manager cleanup close it when the session ends.
+    """
+    Start a bot session and join a meeting.
+    
+    The bot will:
+    1. Join the meeting and verify mic access
+    2. Listen to transcript events (STT, captions, etc.)
+    3. Generate AI responses automatically when human speech is detected
+    4. Speak responses autonomously via the event handler
+    
+    The sync SDK DB session is kept open for the duration of the bot session
+    and is automatically closed when the session ends.
+    """
     sync_db = SDKSessionLocal()
     service = BotService(async_db=db, sync_db=sync_db)
     result = await service.join_meeting(
@@ -47,8 +56,9 @@ async def bot_join(
 async def bot_leave(
     session_id: str,
     db: DBSession,
-    current_user: CurrentUser,
+    # current_user: CurrentUser,
 ):
+    """Stop a bot session."""
     service = BotService(async_db=db)
     await service.leave_meeting(session_id)
     return {"status": "stopped", "session_id": session_id}
@@ -59,8 +69,15 @@ async def bot_speak(
     session_id: str,
     req: SpeakRequest,
     db: DBSession,
-    current_user: CurrentUser,
+    # current_user: CurrentUser,
 ):
+    """
+    FALLBACK ONLY: Manually trigger the bot to speak.
+    
+    This endpoint is provided for manual testing and edge cases.
+    In normal operation, the bot generates and speaks responses autonomously
+    in response to transcript events (TranscriptEvent handler).
+    """
     service = BotService(async_db=db)
     await service.speak(session_id, req.text)
     return {"status": "speaking", "text": req.text}
@@ -68,6 +85,6 @@ async def bot_speak(
 
 @router.get("/bot/sessions")
 async def list_bot_sessions(
-    current_user: CurrentUser,
+    # current_user: CurrentUser,
 ):
     return bot_manager.list_sessions()

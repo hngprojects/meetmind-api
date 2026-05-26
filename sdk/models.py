@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import DateTime, Integer, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, DateTime, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from sdk.db import SDKBase
@@ -73,7 +73,7 @@ class SDKTranscriptTurn(SDKBase):
     speaker_name: Mapped[str | None] = mapped_column(String(255))
     speaker_id: Mapped[str | None] = mapped_column(String(255))
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    timestamp_ms: Mapped[int | None] = mapped_column(Integer)
+    timestamp_ms: Mapped[int | None] = mapped_column(BigInteger)
     provider_stream_id: Mapped[str | None] = mapped_column(String(255))
     sequence_no: Mapped[int] = mapped_column(Integer, nullable=False)
     trigger_reason: Mapped[str | None] = mapped_column(String(60))

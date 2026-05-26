@@ -58,6 +58,9 @@ class SDKSettings:
             "SDK_TOKEN_ENCRYPTION_KEY", default=""
         )
         self.CHROMIUM_PROFILE_DIR: str = config("CHROMIUM_PROFILE_DIR", default="")
+        self.DEEPGRAM_API_KEY: str = config("DEEPGRAM_API_KEY", default="")
+        self.CARTESIA_API_KEY: str = config("CARTESIA_API_KEY", default="")
+        
 
     @property
     def zoom_state_secret(self) -> str:

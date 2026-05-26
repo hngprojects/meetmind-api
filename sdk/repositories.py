@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from threading import Lock
 
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from sdk.config import get_sdk_settings
@@ -24,6 +24,13 @@ _sequence_locks: defaultdict[str, Lock] = defaultdict(Lock)
 class SDKRepository:
     def __init__(self, db: Session):
         self.db = db
+
+    def _commit(self) -> None:
+        try:
+            self.db.commit()
+        except SQLAlchemyError:
+            self.db.rollback()
+            raise
 
     def create_session(
         self,
@@ -47,7 +54,7 @@ class SDKRepository:
         )
         session.set_wake_words(configured_wake_words)
         self.db.add(session)
-        self.db.commit()
+        self._commit()
         self.db.refresh(session)
         return session
 
@@ -73,7 +80,7 @@ class SDKRepository:
         session.status = status
         if provider_session_id:
             session.provider_session_id = provider_session_id
-        self.db.commit()
+        self._commit()
         self.db.refresh(session)
         return session
 
@@ -108,9 +115,8 @@ class SDKRepository:
                 )
                 self.db.add(turn)
                 try:
-                    self.db.commit()
+                    self._commit()
                 except IntegrityError:
-                    self.db.rollback()
                     continue
                 self.db.refresh(turn)
                 return turn
@@ -145,9 +151,8 @@ class SDKRepository:
         )
         self.db.add(event)
         try:
-            self.db.commit()
+            self._commit()
         except IntegrityError:
-            self.db.rollback()
             if event_id is None:
                 raise
             existing = (
@@ -185,7 +190,7 @@ class SDKRepository:
         token.access_token = access_token
         token.refresh_token = refresh_token
         self.db.add(token)
-        self.db.commit()
+        self._commit()
         self.db.refresh(token)
         return token
 

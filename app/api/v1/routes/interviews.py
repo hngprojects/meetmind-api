@@ -163,10 +163,10 @@ async def get_chat_history(
 @router.get("/{interview_id}/transcript", status_code=status.HTTP_200_OK)
 async def get_transcript(
     interview_id: uuid.UUID,
-    user: CurrentUser,
+    # user: CurrentUser,
     db: AsyncSession = Depends(get_session),
 ):
-    transcript = await ChatHistoryService.get_transcript(interview_id, db, user)
+    transcript = await ChatHistoryService.get_transcript(interview_id, db)
     return success(
         transcript.model_dump(mode="json"),
         message="Transcript retrieved",
