@@ -2,14 +2,14 @@
 
 from fastapi import APIRouter
 
-from app.api.deps import CurrentUser
+from app.api.deps import VerifiedUser
 from app.core.responses import success
 
 router = APIRouter()
 
 
 @router.get("/me")
-async def get_me(user: CurrentUser):
+async def get_me(user: VerifiedUser):
     """Return the authenticated user's profile.
 
     Args:

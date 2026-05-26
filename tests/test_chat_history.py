@@ -9,29 +9,24 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
+from app.models.user import User
+from app.services.auth import AuthService
+
+
 # ── URLs ─────────────────────────────────────────────────────────────
 
-SIGNUP_URL = "/api/v1/auth/signup"
+
 INTERVIEWS_URL = "/api/v1/interviews"
 CHAT_HISTORY_URL = "/api/v1/interviews/{id}/chat/history"
 
 
 # ── helpers ──────────────────────────────────────────────────────────
-
-
-def unique_user(tag: str | None = None) -> dict:
-    suffix = tag or uuid.uuid4().hex[:8]
-    return {
-        "name": "Chat Tester",
-        "email": f"chat_{suffix}@example.com",
-        "password": "SecurePass1!",
-    }
-
-
-async def signup_and_get_token(client: AsyncClient, user: dict) -> str:
-    res = await client.post(SIGNUP_URL, json=user)
-    assert res.status_code == 201
-    return res.json()["data"]["access_token"]
+async def create_user(db, email: str | None = None) -> User:
+    user = User(email=email or f"{uuid.uuid4().hex[:8]}@example.com")
+    user.is_verified = True
+    db.add(user)
+    await db.flush()
+    return user
 
 
 def auth_headers(token: str) -> dict:
@@ -52,8 +47,11 @@ VALID_INTERVIEW_PAYLOAD = {
 
 class TestGetChatHistory:
     @pytest.mark.anyio
-    async def test_returns_empty_when_no_transcript(self, client: AsyncClient):
-        token = await signup_and_get_token(client, unique_user())
+    async def test_returns_empty_when_no_transcript(
+        self, client: AsyncClient, db_session
+    ):
+        user = await create_user(db_session)
+        token = await AuthService.create_access_token(user)
 
         create = await client.post(
             INTERVIEWS_URL,
@@ -73,8 +71,9 @@ class TestGetChatHistory:
         assert body["data"]["messages"] == []
 
     @pytest.mark.anyio
-    async def test_returns_404_for_unknown_id(self, client: AsyncClient):
-        token = await signup_and_get_token(client, unique_user())
+    async def test_returns_404_for_unknown_id(self, client: AsyncClient, db_session):
+        user = await create_user(db_session)
+        token = await AuthService.create_access_token(user)
 
         res = await client.get(
             CHAT_HISTORY_URL.format(id=str(uuid.uuid4())),
@@ -84,9 +83,13 @@ class TestGetChatHistory:
         assert res.status_code == 404
 
     @pytest.mark.anyio
-    async def test_returns_404_for_other_users_interview(self, client: AsyncClient):
-        token_a = await signup_and_get_token(client, unique_user("a"))
-        token_b = await signup_and_get_token(client, unique_user("b"))
+    async def test_returns_404_for_other_users_interview(
+        self, client: AsyncClient, db_session
+    ):
+        user_a = await create_user(db_session)
+        token_a = await AuthService.create_access_token(user_a)
+        user_b = await create_user(db_session)
+        token_b = await AuthService.create_access_token(user_b)
 
         create = await client.post(
             INTERVIEWS_URL,
@@ -109,14 +112,15 @@ class TestGetChatHistory:
 
     @pytest.mark.anyio
     async def test_message_fields_present_when_messages_exist(
-        self, client: AsyncClient
+        self, client: AsyncClient, db_session
     ):
         """
         NOTE:
         This assumes your system eventually creates transcript messages.
         If not, this test will fail — which is correct.
         """
-        token = await signup_and_get_token(client, unique_user())
+        user = await create_user(db_session)
+        token = await AuthService.create_access_token(user)
 
         create = await client.post(
             INTERVIEWS_URL,
@@ -139,8 +143,9 @@ class TestGetChatHistory:
                 assert field in msg
 
     @pytest.mark.anyio
-    async def test_roles_are_valid(self, client: AsyncClient):
-        token = await signup_and_get_token(client, unique_user())
+    async def test_roles_are_valid(self, client: AsyncClient, db_session):
+        user = await create_user(db_session)
+        token = await AuthService.create_access_token(user)
 
         create = await client.post(
             INTERVIEWS_URL,

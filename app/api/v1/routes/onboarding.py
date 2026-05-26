@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import CurrentUser
+from app.api.deps import VerifiedUser
 from app.core.responses import success
 from app.db.session import get_session
 from app.schemas.onboarding import (
@@ -19,7 +19,7 @@ router = APIRouter()
 @router.post("/role")
 async def set_role(
     payload: OnboardingRoleRequest,
-    user: CurrentUser,
+    user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
 ):
     await OnboardingService.set_role(db, user, payload)
@@ -29,7 +29,7 @@ async def set_role(
 @router.post("/preferences")
 async def set_preferences(
     payload: OnboardingPreferencesRequest,
-    user: CurrentUser,
+    user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
 ):
     await OnboardingService.set_meeting_preferences(db, user, payload)
@@ -39,7 +39,7 @@ async def set_preferences(
 @router.post("/integrations")
 async def save_integrations(
     payload: OnboardingIntegrationsRequest,
-    user: CurrentUser,
+    user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
 ):
     await OnboardingService.save_integrations(db, user, payload)
@@ -47,7 +47,7 @@ async def save_integrations(
 
 
 @router.post("/submission")
-async def submission(user: CurrentUser, db: AsyncSession = Depends(get_session)):
+async def submission(user: VerifiedUser, db: AsyncSession = Depends(get_session)):
     await OnboardingService.complete_submission(db, user)
     return success(
         {"success": True, "onboardingCompleted": True}, message="Onboarding completed"
@@ -65,7 +65,7 @@ async def invite():
 
 
 @router.post("/trial")
-async def trial(user: CurrentUser, db: AsyncSession = Depends(get_session)):
+async def trial(user: VerifiedUser, db: AsyncSession = Depends(get_session)):
     await OnboardingService.complete_submission(db, user)
     return success(
         {"success": True, "onboardingCompleted": True}, message="Onboarding completed"

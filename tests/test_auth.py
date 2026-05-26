@@ -49,10 +49,6 @@ class TestSignupSuccess:
         user = make_user()
         with (
             patch(CREATE_USER, new_callable=AsyncMock, return_value=user),
-            patch(CREATE_ACCESS, new_callable=AsyncMock, return_value=FAKE_ACCESS),
-            patch(
-                CREATE_REFRESH, new_callable=AsyncMock, return_value=FAKE_REFRESH_TUPLE
-            ),
         ):
             response = await client.post(SIGNUP_URL, json=VALID_PAYLOAD)
         body = response.json()
@@ -61,13 +57,9 @@ class TestSignupSuccess:
         assert body["success"] is True
         assert body["message"] == "Account created successfully"
         assert "data" in body
-        assert data["access_token"] == FAKE_ACCESS
-        assert data["refresh_token"] == FAKE_REFRESH
         assert data["email"] == "john@example.com"
         assert data["name"] == "John Doe"
         assert "id" in data
-        assert "access_token_expires_at" in data
-        assert "refresh_token_expires_at" in data
 
 
 # ── Duplicate email ────────────────────────────────────────────────────────────
@@ -177,6 +169,7 @@ class TestSignupPasswordValidation:
             )
         assert response.status_code == 201
 
+
 class TestAuthSchemaNormalization:
     def test_signup_email_is_normalized_to_lowercase_and_trimmed(self):
         payload = SignupRequest(
@@ -186,16 +179,13 @@ class TestAuthSchemaNormalization:
         )
         assert payload.email == "jane@example.com"
 
-
     def test_login_email_is_normalized_to_lowercase_and_trimmed(self):
         payload = LoginRequest(email="  USER@Example.COM  ", password="ValidPass1")
         assert payload.email == "user@example.com"
 
-
     def test_forgot_password_email_is_normalized_to_lowercase_and_trimmed(self):
         payload = ForgotPasswordRequest(email="  USER@Example.COM  ")
         assert payload.email == "user@example.com"
-
 
     def test_resend_verification_email_is_normalized_to_lowercase_and_trimmed(self):
         payload = ResendVerificationRequest(email="  USER@Example.COM  ")

@@ -40,7 +40,8 @@ async def test_logout_blacklists_access_token(client, db_session, mock_redis):
         RefreshToken(
             user_id=user.id,
             token_hash=token_hash,
-            expires_at=datetime.now(timezone.utc) + timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES),
+            expires_at=datetime.now(timezone.utc)
+            + timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES),
         )
     )
     db_session.add(

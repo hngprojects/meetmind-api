@@ -18,23 +18,17 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from httpx import AsyncClient
 
-SIGNUP_URL = "/api/v1/auth/signup"
+from app.models.user import User
+from app.services.auth import AuthService
+
 INTERVIEWS_URL = "/api/v1/interviews"
 
 
-def unique_user(tag: str | None = None) -> dict:
-    suffix = tag or uuid.uuid4().hex[:8]
-    return {
-        "name": "AI Gen Tester",
-        "email": f"ai_gen_{suffix}@example.com",
-        "password": "SecurePass1!",
-    }
-
-
-async def signup_and_get_token(client: AsyncClient, user: dict) -> str:
-    response = await client.post(SIGNUP_URL, json=user)
-    assert response.status_code == 201
-    return response.json()["data"]["access_token"]
+async def create_user(db, email: str | None = None) -> User:
+    user = User(email=email or f"{uuid.uuid4().hex[:8]}@example.com", is_verified=True,)
+    db.add(user)
+    await db.flush()
+    return user
 
 
 def auth_headers(token: str) -> dict:
@@ -74,8 +68,9 @@ class TestGenerateQuestion:
     """POST /interviews/{id}/generate-question"""
 
     @pytest.mark.anyio
-    async def test_returns_question(self, client: AsyncClient):
-        token = await signup_and_get_token(client, unique_user())
+    async def test_returns_question(self, client: AsyncClient, db_session):
+        user = await create_user(db_session)
+        token = await AuthService.create_access_token(user)
         iid = await create_interview(client, token)
 
         with patch(
@@ -105,9 +100,10 @@ class TestRespond:
 
     @pytest.mark.anyio
     async def test_records_response_and_returns_next_question(
-        self, client: AsyncClient
+        self, client: AsyncClient, db_session
     ):
-        token = await signup_and_get_token(client, unique_user())
+        user = await create_user(db_session)
+        token = await AuthService.create_access_token(user)
         iid = await create_interview(client, token)
 
         with patch(
@@ -135,9 +131,10 @@ class TestRespond:
 
     @pytest.mark.anyio
     async def test_returns_404_for_nonexistent_interview(
-        self, client: AsyncClient
+        self, client: AsyncClient, db_session
     ):
-        token = await signup_and_get_token(client, unique_user())
+        user = await create_user(db_session)
+        token = await AuthService.create_access_token(user)
         fake_id = str(uuid.uuid4())
 
         response = await client.post(
@@ -150,10 +147,12 @@ class TestRespond:
 
     @pytest.mark.anyio
     async def test_returns_404_for_other_users_interview(
-        self, client: AsyncClient
+        self, client: AsyncClient, db_session
     ):
-        token_a = await signup_and_get_token(client, unique_user("r_a"))
-        token_b = await signup_and_get_token(client, unique_user("r_b"))
+        user_a = await create_user(db_session)
+        token_a = await AuthService.create_access_token(user_a)
+        user_b = await create_user(db_session)
+        token_b = await AuthService.create_access_token(user_b)
         iid = await create_interview(client, token_a)
 
         response = await client.post(
@@ -165,8 +164,9 @@ class TestRespond:
         assert response.json()["error"]["code"] == "interview_not_found"
 
     @pytest.mark.anyio
-    async def test_returns_422_for_empty_content(self, client: AsyncClient):
-        token = await signup_and_get_token(client, unique_user())
+    async def test_returns_422_for_empty_content(self, client: AsyncClient, db_session):
+        user = await create_user(db_session)
+        token = await AuthService.create_access_token(user)
         iid = await create_interview(client, token)
 
         response = await client.post(
@@ -181,8 +181,9 @@ class TestComplete:
     """POST /interviews/{id}/complete"""
 
     @pytest.mark.anyio
-    async def test_marks_interview_completed(self, client: AsyncClient):
-        token = await signup_and_get_token(client, unique_user())
+    async def test_marks_interview_completed(self, client: AsyncClient, db_session):
+        user = await create_user(db_session)
+        token = await AuthService.create_access_token(user)
         iid = await create_interview(client, token)
 
         response = await client.post(
@@ -195,23 +196,20 @@ class TestComplete:
         assert body["data"]["status"] == "completed"
         assert body["message"] == "Interview completed, assessment generation started"
 
-        get = await client.get(
-            f"{INTERVIEWS_URL}/{iid}", headers=auth_headers(token)
-        )
+        get = await client.get(f"{INTERVIEWS_URL}/{iid}", headers=auth_headers(token))
         assert get.json()["data"]["status"] == "completed"
 
     @pytest.mark.anyio
     async def test_returns_401_without_token(self, client: AsyncClient):
-        response = await client.post(
-            f"{INTERVIEWS_URL}/{uuid.uuid4()}/complete"
-        )
+        response = await client.post(f"{INTERVIEWS_URL}/{uuid.uuid4()}/complete")
         assert response.status_code == 401
 
     @pytest.mark.anyio
     async def test_returns_404_for_nonexistent_interview(
-        self, client: AsyncClient
+        self, client: AsyncClient, db_session
     ):
-        token = await signup_and_get_token(client, unique_user())
+        user = await create_user(db_session)
+        token = await AuthService.create_access_token(user)
         fake_id = str(uuid.uuid4())
 
         response = await client.post(
@@ -223,10 +221,12 @@ class TestComplete:
 
     @pytest.mark.anyio
     async def test_returns_404_for_other_users_interview(
-        self, client: AsyncClient
+        self, client: AsyncClient, db_session
     ):
-        token_a = await signup_and_get_token(client, unique_user("c_a"))
-        token_b = await signup_and_get_token(client, unique_user("c_b"))
+        user_a = await create_user(db_session)
+        token_a = await AuthService.create_access_token(user_a)
+        user_b = await create_user(db_session)
+        token_b = await AuthService.create_access_token(user_b)
         iid = await create_interview(client, token_a)
 
         response = await client.post(
@@ -248,8 +248,9 @@ class TestChat:
     }
 
     @pytest.mark.anyio
-    async def test_returns_chat_response(self, client: AsyncClient):
-        token = await signup_and_get_token(client, unique_user())
+    async def test_returns_chat_response(self, client: AsyncClient, db_session):
+        user = await create_user(db_session)
+        token = await AuthService.create_access_token(user)
         iid = await create_interview(client, token)
 
         with patch(
@@ -278,8 +279,9 @@ class TestChat:
         assert response.status_code == 401
 
     @pytest.mark.anyio
-    async def test_returns_422_for_empty_query(self, client: AsyncClient):
-        token = await signup_and_get_token(client, unique_user())
+    async def test_returns_422_for_empty_query(self, client: AsyncClient, db_session):
+        user = await create_user(db_session)
+        token = await AuthService.create_access_token(user)
         iid = await create_interview(client, token)
 
         response = await client.post(
@@ -294,8 +296,9 @@ class TestSummaryGenerate:
     """POST /interviews/{id}/summary/generate"""
 
     @pytest.mark.anyio
-    async def test_returns_accepted(self, client: AsyncClient):
-        token = await signup_and_get_token(client, unique_user())
+    async def test_returns_accepted(self, client: AsyncClient, db_session):
+        user = await create_user(db_session)
+        token = await AuthService.create_access_token(user)
         iid = await create_interview(client, token)
 
         with patch(
@@ -321,9 +324,10 @@ class TestSummaryGenerate:
 
     @pytest.mark.anyio
     async def test_returns_404_for_nonexistent_interview(
-        self, client: AsyncClient
+        self, client: AsyncClient, db_session
     ):
-        token = await signup_and_get_token(client, unique_user())
+        user = await create_user(db_session)
+        token = await AuthService.create_access_token(user)
         fake_id = str(uuid.uuid4())
 
         response = await client.post(
@@ -338,8 +342,9 @@ class TestSummaryRetry:
     """POST /interviews/{id}/summary/retry"""
 
     @pytest.mark.anyio
-    async def test_retries_failed_summary(self, client: AsyncClient):
-        token = await signup_and_get_token(client, unique_user())
+    async def test_retries_failed_summary(self, client: AsyncClient, db_session):
+        user = await create_user(db_session)
+        token = await AuthService.create_access_token(user)
         iid = await create_interview(client, token)
 
         with patch(
@@ -358,16 +363,15 @@ class TestSummaryRetry:
 
     @pytest.mark.anyio
     async def test_returns_401_without_token(self, client: AsyncClient):
-        response = await client.post(
-            f"{INTERVIEWS_URL}/{uuid.uuid4()}/summary/retry"
-        )
+        response = await client.post(f"{INTERVIEWS_URL}/{uuid.uuid4()}/summary/retry")
         assert response.status_code == 401
 
     @pytest.mark.anyio
     async def test_returns_404_for_nonexistent_interview(
-        self, client: AsyncClient
+        self, client: AsyncClient, db_session
     ):
-        token = await signup_and_get_token(client, unique_user())
+        user = await create_user(db_session)
+        token = await AuthService.create_access_token(user)
         fake_id = str(uuid.uuid4())
 
         response = await client.post(

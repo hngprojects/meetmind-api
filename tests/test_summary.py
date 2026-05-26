@@ -11,7 +11,7 @@ from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
 from app.services.auth import AuthService
 
-SIGNUP_URL = "/api/v1/auth/signup"
+
 SUMMARY_URL = "/api/v1/interviews/{id}/summary"
 RETRY_URL = "/api/v1/interviews/{id}/summary/retry"
 SESSION_URL = "/api/v1/interviews/{id}/session"
@@ -34,16 +34,20 @@ async def create_user_with_workspace(db_session) -> tuple[User, Workspace]:
     db_session.add(workspace)
     await db_session.flush()
 
-    db_session.add(WorkspaceMember(
-        workspace_id=workspace.id,
-        user_id=user.id,
-        role="owner",
-    ))
+    db_session.add(
+        WorkspaceMember(
+            workspace_id=workspace.id,
+            user_id=user.id,
+            role="owner",
+        )
+    )
     await db_session.commit()
     return user, workspace
 
 
-async def create_interview(db_session, user, workspace, status="completed") -> Interview:
+async def create_interview(
+    db_session, user, workspace, status="completed"
+) -> Interview:
     interview = Interview(
         workspace_id=workspace.id,
         interviewer_id=user.id,
@@ -55,14 +59,18 @@ async def create_interview(db_session, user, workspace, status="completed") -> I
     return interview
 
 
-async def create_summary(db_session, interview, status="completed", with_assessment=True) -> InterviewSummary:
+async def create_summary(
+    db_session, interview, status="completed", with_assessment=True
+) -> InterviewSummary:
     assessment = None
     if with_assessment:
-        assessment = json.dumps({
-            "observation": "Strong candidate",
-            "highlights": ["Clear communication", "Structured thinking"],
-            "red_flags": ["Struggled with ambiguity"],
-        })
+        assessment = json.dumps(
+            {
+                "observation": "Strong candidate",
+                "highlights": ["Clear communication", "Structured thinking"],
+                "red_flags": ["Struggled with ambiguity"],
+            }
+        )
 
     summary = InterviewSummary(
         interview_id=interview.id,
@@ -82,7 +90,9 @@ async def create_summary(db_session, interview, status="completed", with_assessm
 
 class TestGetSummary:
     @pytest.mark.anyio
-    async def test_returns_200_with_structured_summary(self, client: AsyncClient, db_session):
+    async def test_returns_200_with_structured_summary(
+        self, client: AsyncClient, db_session
+    ):
         user, workspace = await create_user_with_workspace(db_session)
         token = await AuthService.create_access_token(user)
         interview = await create_interview(db_session, user, workspace)
@@ -102,7 +112,9 @@ class TestGetSummary:
         assert data["key_skills"] == ["Python", "FastAPI", "PostgreSQL"]
 
     @pytest.mark.anyio
-    async def test_returns_pending_when_no_summary_exists(self, client: AsyncClient, db_session):
+    async def test_returns_pending_when_no_summary_exists(
+        self, client: AsyncClient, db_session
+    ):
         user, workspace = await create_user_with_workspace(db_session)
         token = await AuthService.create_access_token(user)
         interview = await create_interview(db_session, user, workspace)
@@ -120,7 +132,9 @@ class TestGetSummary:
         assert data["key_skills"] == []
 
     @pytest.mark.anyio
-    async def test_returns_404_for_nonexistent_interview(self, client: AsyncClient, db_session):
+    async def test_returns_404_for_nonexistent_interview(
+        self, client: AsyncClient, db_session
+    ):
         user, workspace = await create_user_with_workspace(db_session)
         token = await AuthService.create_access_token(user)
 
@@ -133,7 +147,9 @@ class TestGetSummary:
         assert response.json()["error"]["code"] == "interview_not_found"
 
     @pytest.mark.anyio
-    async def test_returns_404_for_another_users_interview(self, client: AsyncClient, db_session):
+    async def test_returns_404_for_another_users_interview(
+        self, client: AsyncClient, db_session
+    ):
         user_a, workspace_a = await create_user_with_workspace(db_session)
         user_b, _ = await create_user_with_workspace(db_session)
         token_b = await AuthService.create_access_token(user_b)
@@ -152,7 +168,9 @@ class TestGetSummary:
         assert response.status_code == 401
 
     @pytest.mark.anyio
-    async def test_handles_corrupted_assessment_gracefully(self, client: AsyncClient, db_session):
+    async def test_handles_corrupted_assessment_gracefully(
+        self, client: AsyncClient, db_session
+    ):
         user, workspace = await create_user_with_workspace(db_session)
         token = await AuthService.create_access_token(user)
         interview = await create_interview(db_session, user, workspace)
@@ -181,11 +199,15 @@ class TestGetSummary:
 
 class TestRetrySummary:
     @pytest.mark.anyio
-    async def test_returns_200_and_sets_generating(self, client: AsyncClient, db_session):
+    async def test_returns_200_and_sets_generating(
+        self, client: AsyncClient, db_session
+    ):
         user, workspace = await create_user_with_workspace(db_session)
         token = await AuthService.create_access_token(user)
         interview = await create_interview(db_session, user, workspace)
-        await create_summary(db_session, interview, status="failed", with_assessment=False)
+        await create_summary(
+            db_session, interview, status="failed", with_assessment=False
+        )
 
         response = await client.post(
             RETRY_URL.format(id=interview.id),
@@ -196,7 +218,9 @@ class TestRetrySummary:
         assert response.json()["data"]["status"] == "generating"
 
     @pytest.mark.anyio
-    async def test_returns_409_when_summary_not_failed(self, client: AsyncClient, db_session):
+    async def test_returns_409_when_summary_not_failed(
+        self, client: AsyncClient, db_session
+    ):
         user, workspace = await create_user_with_workspace(db_session)
         token = await AuthService.create_access_token(user)
         interview = await create_interview(db_session, user, workspace)
@@ -211,7 +235,9 @@ class TestRetrySummary:
         assert response.json()["error"]["code"] == "summary_not_failed"
 
     @pytest.mark.anyio
-    async def test_returns_404_for_nonexistent_interview(self, client: AsyncClient, db_session):
+    async def test_returns_404_for_nonexistent_interview(
+        self, client: AsyncClient, db_session
+    ):
         user, workspace = await create_user_with_workspace(db_session)
         token = await AuthService.create_access_token(user)
 
@@ -233,10 +259,14 @@ class TestRetrySummary:
 
 class TestGetSession:
     @pytest.mark.anyio
-    async def test_returns_200_with_session_status(self, client: AsyncClient, db_session):
+    async def test_returns_200_with_session_status(
+        self, client: AsyncClient, db_session
+    ):
         user, workspace = await create_user_with_workspace(db_session)
         token = await AuthService.create_access_token(user)
-        interview = await create_interview(db_session, user, workspace, status="in_progress")
+        interview = await create_interview(
+            db_session, user, workspace, status="in_progress"
+        )
 
         response = await client.get(
             SESSION_URL.format(id=interview.id),
@@ -250,10 +280,14 @@ class TestGetSession:
         assert data["connection_status"] == "connected"
 
     @pytest.mark.anyio
-    async def test_elapsed_is_none_when_not_in_progress(self, client: AsyncClient, db_session):
+    async def test_elapsed_is_none_when_not_in_progress(
+        self, client: AsyncClient, db_session
+    ):
         user, workspace = await create_user_with_workspace(db_session)
         token = await AuthService.create_access_token(user)
-        interview = await create_interview(db_session, user, workspace, status="scheduled")
+        interview = await create_interview(
+            db_session, user, workspace, status="scheduled"
+        )
 
         response = await client.get(
             SESSION_URL.format(id=interview.id),
@@ -264,10 +298,14 @@ class TestGetSession:
         assert response.json()["data"]["elapsed"] is None
 
     @pytest.mark.anyio
-    async def test_session_phase_maps_correctly_for_completed(self, client: AsyncClient, db_session):
+    async def test_session_phase_maps_correctly_for_completed(
+        self, client: AsyncClient, db_session
+    ):
         user, workspace = await create_user_with_workspace(db_session)
         token = await AuthService.create_access_token(user)
-        interview = await create_interview(db_session, user, workspace, status="completed")
+        interview = await create_interview(
+            db_session, user, workspace, status="completed"
+        )
 
         response = await client.get(
             SESSION_URL.format(id=interview.id),
@@ -279,7 +317,9 @@ class TestGetSession:
         assert response.json()["data"]["connection_status"] == "idle"
 
     @pytest.mark.anyio
-    async def test_returns_404_for_nonexistent_interview(self, client: AsyncClient, db_session):
+    async def test_returns_404_for_nonexistent_interview(
+        self, client: AsyncClient, db_session
+    ):
         user, workspace = await create_user_with_workspace(db_session)
         token = await AuthService.create_access_token(user)
 
