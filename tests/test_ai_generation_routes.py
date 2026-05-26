@@ -25,7 +25,10 @@ INTERVIEWS_URL = "/api/v1/interviews"
 
 
 async def create_user(db, email: str | None = None) -> User:
-    user = User(email=email or f"{uuid.uuid4().hex[:8]}@example.com", is_verified=True,)
+    user = User(
+        email=email or f"{uuid.uuid4().hex[:8]}@example.com",
+        is_verified=True,
+    )
     db.add(user)
     await db.flush()
     return user

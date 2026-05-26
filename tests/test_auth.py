@@ -8,8 +8,27 @@ from app.core.exceptions import UserAlreadyExistsException
 from app.models.user import User
 from app.schemas.auth import ForgotPasswordRequest, LoginRequest, SignupRequest
 from app.schemas.verification import ResendVerificationRequest
+from app.services.auth import AuthService
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+
+async def create_unverified_user(db, email: str | None = None) -> User:
+    user = User(email=email or f"{uuid4().hex[:8]}@example.com")
+    db.add(user)
+    await db.flush()
+    return user
+
+
+async def create_verified_user(db, email: str | None = None) -> User:
+    user = User(email=email or f"{uuid4().hex[:8]}@example.com", is_verified=True)
+    db.add(user)
+    await db.flush()
+    return user
+
+
+def auth_headers(token: str) -> dict:
+    return {"Authorization": f"Bearer {token}"}
 
 
 def make_user(**kwargs) -> User:
@@ -191,3 +210,31 @@ class TestAuthSchemaNormalization:
     def test_resend_verification_email_is_normalized_to_lowercase_and_trimmed(self):
         payload = ResendVerificationRequest(email="  USER@Example.COM  ")
         assert payload.email == "user@example.com"
+
+
+class TestVerificationAccess:
+    @pytest.mark.anyio
+    async def test_protected_route_blocks_unverified_user_with_403(
+        self, client, db_session
+    ):
+        user = await create_unverified_user(db_session)
+        token = await AuthService.create_access_token(user)
+        verified_url_response = await client.get(
+            "/api/v1/users/me", headers=auth_headers(token)
+        )
+        assert verified_url_response.status_code == 403
+
+    @pytest.mark.anyio
+    async def test_verified_user_can_access_protected_endpoints(
+        self, client, db_session
+    ):
+        user = await create_verified_user(db_session, "verified@test.com")
+        token = await AuthService.create_access_token(user)
+        verified_url_response = await client.get(
+            "/api/v1/users/me", headers=auth_headers(token)
+        )
+        assert verified_url_response.status_code == 200
+
+        data = verified_url_response.json()["data"]
+
+        assert data["email"] == "verified@test.com"

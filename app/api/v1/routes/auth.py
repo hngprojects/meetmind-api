@@ -45,9 +45,7 @@ verification_service = VerificationService()
 @router.post("/signup", status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/minute")
 async def signup(
-    request: Request,
     payload: SignupRequest,
-    response: Response,
     db: AsyncSession = Depends(get_session),
     background_tasks: BackgroundTasks = None,
 ):
