@@ -5,13 +5,15 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import datetime, timezone
+from google import genai
+from google.genai import types
 
 from fastapi import status
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.responses import APIError
-from app.models.interview import Candidate, Interview, InterviewSummary
+from app.models.interview import Candidate, Interview, InterviewSummary, InterviewSession
 from app.models.scorecard import InterviewScorecard, ScorecardCategory, ScorecardScore
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
@@ -22,7 +24,10 @@ from app.schemas.interview import (
     UpdateAIConfigRequest,
     UpdateContextRequest,
     UpdateCriteriaRequest,
+    InterviewPlanOutput
 )
+from app.services.ai_generation_service import AIGenerationService
+from app.core.config import settings
 
 
 async def _get_workspace(db: AsyncSession, user: User) -> uuid.UUID | None:
@@ -189,94 +194,212 @@ def _parse_assessment(summary: InterviewSummary | None) -> dict:
 
 class InterviewService:
     """Encapsulate interview session creation and retrieval."""
+    @classmethod
+    def _client(cls):
+        if not getattr(cls, "_client_instance", None):
+            cls._client_instance = genai.Client(
+                api_key=settings.GEMINI_API_KEY or "dummy_key"
+            ).aio
+        return cls._client_instance
+    
+    @classmethod
+    async def generate_interview_plan(
+        cls,
+        role_title: str,
+        job_description: str,
+        skills_to_assess: list[str],
+        custom_question: str | None = None,
+    ) -> InterviewPlanOutput:
+            """
+            AI Shaping: Generates a structured interview plan (intro, questions, rubric) 
+            from raw inputs. Used during Interview Creation (T-Minus 0).
+            """
+            prompt = f"""
+You are an expert Technical Recruiter. Your task is to design a high-quality 
+structured interview plan for the role of '{role_title}'.
 
-    @staticmethod
+# JOB DESCRIPTION
+{job_description}
+
+# CORE SKILLS TO EVALUATE
+{", ".join(skills_to_assess)}
+
+# SPECIFIC REQUESTS
+{f"Ensure you include this question/topic: {custom_question}" if custom_question else "None"}
+
+# INSTRUCTIONS
+1. Design 5 specific, high-signal interview questions.
+2. For each question, provide a 'followUpHint' to help the AI bot probe deeper.
+3. Create a weighted scoring rubric based on the core skills.
+4. Write a concise, warm intro and a professional closing.
+
+Keep all text suitable for a live audio call (concise and natural).
+"""
+
+            response = await cls._client().models.generate_content(
+                model="gemini-flash-lite-latest", # Use Flash for low latency extraction
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=InterviewPlanOutput
+                )
+            )
+            return InterviewPlanOutput.model_validate_json(response.text)
+
+    @classmethod
     async def create_interview(
+        cls,
         request: CreateInterviewRequest,
         db: AsyncSession,
         user: User,
-    ) -> InterviewResponse:
-        """Create an interview session with its context.
-
-        Steps:
-        1. Resolve or create the user's workspace.
-        2. Create a Candidate record.
-        3. Create an Interview record in ``draft`` status.
-        4. Create an InterviewSummary record holding the context fields.
-        5. Create an InterviewScorecard and persist the criteria.
-
-        Args:
-            request: Validated interview creation payload.
-            db: Active async database session.
-            user: The authenticated user (becomes the interviewer).
-
-        Returns:
-            A populated :class:`InterviewResponse`.
+    ) -> dict:
         """
-        workspace_id = await _get_or_create_workspace(db, user)
-
-        # 1. Create candidate
-        candidate = Candidate(
-            workspace_id=workspace_id,
-            full_name=request.candidate_name,
-            email=request.candidate_email,
+        Standardized creation flow:
+        1. Resolve Workspace.
+        2. Sync Candidate metadata.
+        3. AI Shaping (Generate bot instructions).
+        4. Create InterviewSession (Bot Brain).
+        5. Create Interview (Business Record).
+        6. Create InterviewSummary (Result Placeholder).
+        """
+        # 1. Resolve Workspace
+        workspace_query = select(WorkspaceMember.workspace_id).where(
+            WorkspaceMember.user_id == user.id
         )
-        db.add(candidate)
+        workspace_res = await db.execute(workspace_query)
+        workspace_id = workspace_res.scalar_one_or_none()
+
+        if not workspace_id:
+            raise APIError("No active workspace found for user", status_code=403)
+
+        # 2. Verify/Update Candidate
+        # Since the candidate was created during resume upload, we ensure the 
+        # record reflects any manual edits the user made in the FE form.
+        candidate_id = request.candidate.candidate_id
+        candidate = await db.get(Candidate, candidate_id)
+        
+        if not candidate:
+            raise APIError("Candidate not found", status_code=404)
+        
+        candidate.full_name = request.candidate.full_name
+        candidate.phone = request.candidate.phone
+        candidate.location = request.candidate.location
+        candidate.email = request.candidate.email
+        candidate.current_role = request.candidate.current_role
+        candidate.years_of_experience = request.candidate.years_of_experience
+        
+        if isinstance(request.candidate.skills, list):
+            candidate.skills = ", ".join(request.candidate.skills) if request.candidate.skills else None
+        else:
+            candidate.skills = request.candidate.skills
+
+        # FIX: Ensure portfolio_url is a string (asyncpg rejects Pydantic Url objects)
+        if request.candidate.portfolio_url:
+            candidate.portfolio_url = str(request.candidate.portfolio_url)
+
+        plan = await cls.generate_interview_plan(
+            role_title=request.role_title or "Candidate",
+            job_description=request.job_description or "",
+            skills_to_assess=request.skills_to_assess or [],
+            custom_question=request.custom_question
+        )
+
+        session = InterviewSession(
+            role=request.role_title or "Candidate",
+            candidate_name=candidate.full_name,
+            intro=plan.intro,
+            questions_json=json.dumps([q.model_dump() for q in plan.questions]),
+            rubric_json=json.dumps([r.model_dump() for r in plan.rubric]),
+            closing=plan.closing,
+            duration_minutes=0,
+            status="created"
+        )
+
+        db.add(session)
         await db.flush()
 
-        # 2. Create interview — status starts as "draft" per RFC scope
         interview = Interview(
             workspace_id=workspace_id,
             candidate_id=candidate.id,
             interviewer_id=user.id,
-            role_title=request.role_title or request.title,
+            session_id=session.id,
+            meeting_id=None, 
+            role_title=request.role_title,
+            scheduled_start=request.scheduled_start,
+            scheduled_end=request.scheduled_end,
             platform=request.platform,
+            call_link=str(request.call_link) if request.call_link else None,
             ai_tone=request.ai_tone,
-            status="draft",
+            status="scheduled", # It is ready to be joined
             participation_mode=request.participation_mode.value,
         )
         db.add(interview)
         await db.flush()
 
-        # 3. Create summary to hold context fields
         summary = InterviewSummary(
             interview_id=interview.id,
             job_description=request.job_description,
-            scoring_rubric=request.scoring_rubric,
+            scoring_rubric=session.rubric_json, # Mirror the rubric for easy access
+            key_skills=", ".join(request.skills_to_assess) if request.skills_to_assess else None,
+            custom_question=request.custom_question,
             status="pending",
         )
         db.add(summary)
-        await db.flush()
-
-        # 4. Create scorecard and persist criteria
-        scorecard = InterviewScorecard(interview_id=interview.id)
-        db.add(scorecard)
-        await db.flush()
-
-        if request.criteria:
-            await _persist_criteria(db, scorecard, workspace_id, request.criteria)
 
         await db.commit()
 
+        scheduled_date = None
+        scheduled_time = None
+        if interview.scheduled_start:
+            scheduled_date = interview.scheduled_start.strftime("%Y-%m-%d")
+            scheduled_time = interview.scheduled_start.strftime("%H:%M")
+
+        # Construct the nested Summary Response
+        # During creation, status is 'pending' and assessments are empty
+        summary_resp = InterviewSummaryResponse(
+            job_description=summary.job_description,
+            scoring_rubric=summary.scoring_rubric,
+            ai_assessment=None,
+            status=summary.status,
+        )
+
         return InterviewResponse(
             id=interview.id,
-            title=request.title or request.role_title,
+            title=interview.role_title, # or role_title
             status=interview.status,
             role_title=interview.role_title,
             platform=interview.platform,
             ai_tone=interview.ai_tone,
-            participation_mode=interview.participation_mode,
             candidate_name=candidate.full_name,
             candidate_email=candidate.email,
-            summary=InterviewSummaryResponse(
-                job_description=summary.job_description,
-                scoring_rubric=summary.scoring_rubric,
-                ai_assessment=summary.ai_assessment,
-                status=summary.status,
-            ),
-            criteria=request.criteria if request.criteria else None,
+            phone=candidate.phone,
+            resume_url=candidate.resume_url,
+            portfolio_url=candidate.portfolio_url,
+            scheduled_date=scheduled_date,
+            scheduled_time=scheduled_time,
+            duration=interview.duration_min or 20,
+            
+            # Progress counters start at 0
+            questions_asked=0,
+            questions_total=len(json.loads(session.questions_json)), # From AI Plan
+            question_progress="0%",
+            rating=None,
+            
+            # Technical fields
+            participation_mode=request.participation_mode,
+            session_phase="pre_interview",
+            
+            # Post-interview placeholders (currently empty)
+            summary=summary_resp,
+            custom_question=summary.custom_question,
+            key_skills=request.skills_to_assess or [],
+            criteria=request.skills_to_assess or [],
+            observation=None,
+            highlights=[],
+            red_flags=[],
             created_at=interview.created_at,
         )
+
 
     @staticmethod
     async def get_interview(
