@@ -2,19 +2,30 @@
 
 from __future__ import annotations
 
+import json
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import status
-from sqlalchemy import delete, func, select
+from google import genai
+from google.genai import types
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.responses import APIError
-from app.models.interview import Candidate, Interview, InterviewSummary
+from app.models.interview import (
+    Candidate,
+    Interview,
+    InterviewSession,
+    InterviewSummary,
+)
 from app.models.scorecard import InterviewScorecard, ScorecardCategory, ScorecardScore
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.interview import (
     CreateInterviewRequest,
+    InterviewPlanOutput,
     InterviewResponse,
     InterviewSummaryResponse,
     UpdateAIConfigRequest,
@@ -136,94 +147,255 @@ async def _fetch_criteria(db: AsyncSession, interview_id: uuid.UUID) -> list[str
     return list(result.scalars().all())
 
 
+def _derive_interview_meta(interview: Interview) -> dict:
+    session_phase_map = {
+        "draft": "connecting",
+        "scheduled": "connecting",
+        "in_progress": "live_transcript",
+        "completed": "summary_ready",
+        "cancelled": "none",
+        "needs_attention": "listening",
+    }
+    list_status_map = {
+        "in_progress": "live",
+        "scheduled": "upcoming",
+    }
+
+    elapsed = None
+    if interview.status == "in_progress" and interview.scheduled_start:
+        now = datetime.now(timezone.utc)
+        start = interview.scheduled_start
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+        elapsed = int((now - start).total_seconds())
+
+    question_progress = None
+    if interview.questions_asked is not None and interview.questions_total is not None:
+        question_progress = f"{interview.questions_asked}/{interview.questions_total}"
+
+    return {
+        "session_phase": session_phase_map.get(interview.status, "none"),
+        "list_status": list_status_map.get(interview.status, "none"),
+        "elapsed": elapsed,
+        "question_progress": question_progress,
+        "scheduled_date": interview.scheduled_start.date().isoformat()
+        if interview.scheduled_start
+        else None,
+        "scheduled_time": interview.scheduled_start.time().strftime("%H:%M")
+        if interview.scheduled_start
+        else None,
+    }
+
+
+def _parse_assessment(summary: InterviewSummary | None) -> dict:
+    if not summary or not summary.ai_assessment:
+        return {"observation": None, "highlights": [], "red_flags": []}
+    try:
+        return json.loads(summary.ai_assessment)
+    except (json.JSONDecodeError, ValueError):
+        return {"observation": None, "highlights": [], "red_flags": []}
+
+
 class InterviewService:
     """Encapsulate interview session creation and retrieval."""
 
-    @staticmethod
+    @classmethod
+    def _client(cls):
+        if not getattr(cls, "_client_instance", None):
+            cls._client_instance = genai.Client(
+                api_key=settings.GEMINI_API_KEY or "dummy_key"
+            ).aio
+        return cls._client_instance
+
+    @classmethod
+    async def generate_interview_plan(
+        cls,
+        role_title: str,
+        job_description: str,
+        skills_to_assess: list[str],
+        custom_question: str | None = None,
+    ) -> InterviewPlanOutput:
+        """
+        AI Shaping: Generates a structured interview plan (intro, questions, rubric)
+        from raw inputs. Used during Interview Creation (T-Minus 0).
+        """
+        prompt = f"""
+You are an expert Technical Recruiter. Your task is to design a high-quality 
+structured interview plan for the role of '{role_title}'.
+
+# JOB DESCRIPTION
+{job_description}
+
+# CORE SKILLS TO EVALUATE
+{", ".join(skills_to_assess)}
+
+# SPECIFIC REQUESTS
+{f"Ensure you include this question:{custom_question}" if custom_question else "None"}
+
+# INSTRUCTIONS
+1. Design 5 specific, high-signal interview questions.
+2. For each question, provide a 'followUpHint' to help the AI bot probe deeper.
+3. Create a weighted scoring rubric based on the core skills.
+4. Write a concise, warm intro and a professional closing.
+
+Keep all text suitable for a live audio call (concise and natural).
+"""
+
+        response = await cls._client().models.generate_content(
+            model="gemini-flash-lite-latest",  # Use Flash for low latency extraction
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=InterviewPlanOutput,
+            ),
+        )
+        return InterviewPlanOutput.model_validate_json(response.text)
+
+    @classmethod
     async def create_interview(
+        cls,
         request: CreateInterviewRequest,
         db: AsyncSession,
         user: User,
     ) -> InterviewResponse:
-        """Create an interview session with its context.
-
-        Steps:
-        1. Resolve or create the user's workspace.
-        2. Create a Candidate record.
-        3. Create an Interview record in ``draft`` status.
-        4. Create an InterviewSummary record holding the context fields.
-        5. Create an InterviewScorecard and persist the criteria.
-
-        Args:
-            request: Validated interview creation payload.
-            db: Active async database session.
-            user: The authenticated user (becomes the interviewer).
-
-        Returns:
-            A populated :class:`InterviewResponse`.
         """
+        Standardized creation flow:
+        1. Resolve Workspace.
+        2. Sync Candidate metadata.
+        3. AI Shaping (Generate bot instructions).
+        4. Create InterviewSession (Bot Brain).
+        5. Create Interview (Business Record).
+        6. Create InterviewSummary (Result Placeholder).
+        """
+        # 1. Resolve Workspace
         workspace_id = await _get_or_create_workspace(db, user)
 
-        # 1. Create candidate
-        candidate = Candidate(
-            workspace_id=workspace_id,
-            full_name=request.candidate_name,
-            email=request.candidate_email,
+        candidate_id = request.candidate.candidate_id
+        candidate = await db.get(Candidate, candidate_id)
+
+        if not candidate:
+            raise APIError("Candidate not found", status_code=404)
+
+        candidate.full_name = request.candidate.full_name
+        candidate.phone = request.candidate.phone
+        candidate.location = request.candidate.location
+        candidate.email = request.candidate.email
+        candidate.current_role = request.candidate.current_role
+        candidate.years_of_experience = request.candidate.years_of_experience
+
+        if isinstance(request.candidate.skills, list):
+            candidate.skills = (
+                ", ".join(request.candidate.skills)
+                if request.candidate.skills
+                else None
+            )
+        else:
+            candidate.skills = request.candidate.skills
+
+        # FIX: Ensure portfolio_url is a string (asyncpg rejects Pydantic Url objects)
+        if request.candidate.portfolio_url:
+            candidate.portfolio_url = str(request.candidate.portfolio_url)
+
+        plan = await cls.generate_interview_plan(
+            role_title=request.role_title or "Candidate",
+            job_description=request.job_description or "",
+            skills_to_assess=request.skills_to_assess or [],
+            custom_question=request.custom_question,
         )
-        db.add(candidate)
+
+        session = InterviewSession(
+            role=request.role_title or "Candidate",
+            candidate_name=candidate.full_name,
+            intro=plan.intro,
+            questions_json=json.dumps([q.model_dump() for q in plan.questions]),
+            rubric_json=json.dumps([r.model_dump() for r in plan.rubric]),
+            closing=plan.closing,
+            duration_minutes=0,
+            status="created",
+        )
+
+        db.add(session)
         await db.flush()
 
-        # 2. Create interview — status starts as "draft" per RFC scope
         interview = Interview(
             workspace_id=workspace_id,
             candidate_id=candidate.id,
             interviewer_id=user.id,
-            role_title=request.role_title or request.title,
+            session_id=session.id,
+            meeting_id=None,
+            role_title=request.role_title,
+            scheduled_start=request.scheduled_start,
+            scheduled_end=request.scheduled_end,
             platform=request.platform,
+            call_link=str(request.call_link) if request.call_link else None,
             ai_tone=request.ai_tone,
-            status="draft",
+            status="scheduled",  # It is ready to be joined
             participation_mode=request.participation_mode.value,
         )
         db.add(interview)
         await db.flush()
 
-        # 3. Create summary to hold context fields
         summary = InterviewSummary(
             interview_id=interview.id,
             job_description=request.job_description,
-            scoring_rubric=request.scoring_rubric,
+            scoring_rubric=session.rubric_json,  # Mirror the rubric for easy access
+            key_skills=", ".join(request.skills_to_assess)
+            if request.skills_to_assess
+            else None,
+            custom_question=request.custom_question,
             status="pending",
         )
         db.add(summary)
-        await db.flush()
-
-        # 4. Create scorecard and persist criteria
-        scorecard = InterviewScorecard(interview_id=interview.id)
-        db.add(scorecard)
-        await db.flush()
-
-        if request.criteria:
-            await _persist_criteria(db, scorecard, workspace_id, request.criteria)
 
         await db.commit()
+        await db.refresh(interview)
+
+        scheduled_date = None
+        scheduled_time = None
+        if interview.scheduled_start:
+            scheduled_date = interview.scheduled_start.strftime("%Y-%m-%d")
+            scheduled_time = interview.scheduled_start.strftime("%H:%M")
+
+        # Construct the nested Summary Response
+        # During creation, status is 'pending' and assessments are empty
+        summary_resp = InterviewSummaryResponse(
+            job_description=summary.job_description,
+            scoring_rubric=summary.scoring_rubric,
+            ai_assessment=None,
+            status=summary.status,
+        )
 
         return InterviewResponse(
             id=interview.id,
-            title=request.title or request.role_title,
+            title=interview.role_title,  # or role_title
             status=interview.status,
             role_title=interview.role_title,
             platform=interview.platform,
             ai_tone=interview.ai_tone,
-            participation_mode=interview.participation_mode,
             candidate_name=candidate.full_name,
             candidate_email=candidate.email,
-            summary=InterviewSummaryResponse(
-                job_description=summary.job_description,
-                scoring_rubric=summary.scoring_rubric,
-                ai_assessment=summary.ai_assessment,
-                status=summary.status,
-            ),
-            criteria=request.criteria if request.criteria else None,
+            phone=candidate.phone,
+            resume_url=candidate.resume_url,
+            portfolio_url=candidate.portfolio_url,
+            scheduled_date=scheduled_date,
+            scheduled_time=scheduled_time,
+            duration=interview.duration_min or 20,
+            # Progress counters start at 0
+            questions_asked=0,
+            questions_total=len(json.loads(session.questions_json)),  # From AI Plan
+            question_progress="0%",
+            rating=None,
+            # Technical fields
+            participation_mode=request.participation_mode,
+            session_phase="pre_interview",
+            # Post-interview placeholders (currently empty)
+            summary=summary_resp,
+            custom_question=summary.custom_question,
+            key_skills=request.skills_to_assess or [],
+            criteria=request.skills_to_assess or [],
+            observation=None,
+            highlights=[],
+            red_flags=[],
             created_at=interview.created_at,
         )
 
@@ -233,23 +405,6 @@ class InterviewService:
         db: AsyncSession,
         user: User,
     ) -> InterviewResponse:
-        """Retrieve an interview session by ID.
-
-        Only returns interviews where the authenticated user is the interviewer,
-        preventing cross-user data leakage.
-
-        Args:
-            interview_id: UUID of the interview to retrieve.
-            db: Active async database session.
-            user: The authenticated user.
-
-        Returns:
-            A populated :class:`InterviewResponse`.
-
-        Raises:
-            APIError: 404 if the interview does not exist or does not belong
-                to the requesting user.
-        """
         result = await db.execute(
             select(Interview).where(
                 Interview.id == interview_id,
@@ -257,7 +412,6 @@ class InterviewService:
             )
         )
         interview = result.scalar_one_or_none()
-
         if not interview:
             raise APIError(
                 "Interview not found",
@@ -265,13 +419,11 @@ class InterviewService:
                 code="interview_not_found",
             )
 
-        # Fetch candidate
         candidate_result = await db.execute(
             select(Candidate).where(Candidate.id == interview.candidate_id)
         )
         candidate = candidate_result.scalar_one_or_none()
 
-        # Fetch summary (context)
         summary_result = await db.execute(
             select(InterviewSummary).where(
                 InterviewSummary.interview_id == interview.id
@@ -279,8 +431,8 @@ class InterviewService:
         )
         summary = summary_result.scalar_one_or_none()
 
-        # Fetch criteria
-        criteria = await _fetch_criteria(db, interview.id)
+        meta = _derive_interview_meta(interview)
+        assessment = _parse_assessment(summary)
 
         return InterviewResponse(
             id=interview.id,
@@ -292,16 +444,35 @@ class InterviewService:
             participation_mode=interview.participation_mode,
             candidate_name=candidate.full_name if candidate else "Unknown",
             candidate_email=candidate.email if candidate else None,
+            phone=candidate.phone if candidate else None,
+            resume_url=candidate.resume_url if candidate else None,
+            portfolio_url=candidate.portfolio_url if candidate else None,
+            duration=interview.duration_min,
+            questions_asked=interview.questions_asked,
+            questions_total=interview.questions_total,
+            rating=interview.rating,
+            participants=None,
             summary=InterviewSummaryResponse(
                 job_description=summary.job_description if summary else None,
                 scoring_rubric=summary.scoring_rubric if summary else None,
-                ai_assessment=summary.ai_assessment if summary else None,
+                ai_assessment=assessment.get("observation"),
                 status=summary.status if summary else None,
+                key_skills=summary.key_skills if summary else None,
             )
             if summary
             else None,
-            criteria=criteria,
+            custom_question=summary.custom_question if summary else None,
+            observation=assessment.get("observation"),
+            highlights=assessment.get("highlights", []),
+            red_flags=assessment.get("red_flags", []),
+            criteria=[s.strip() for s in summary.key_skills.split(",")]
+            if summary and summary.key_skills
+            else [],
+            key_skills=[s.strip() for s in summary.key_skills.split(",")]
+            if summary and summary.key_skills
+            else [],
             created_at=interview.created_at,
+            **meta,
         )
 
     @staticmethod
@@ -341,7 +512,7 @@ class InterviewService:
                 code="interview_not_found",
             )
 
-        if interview.status != "draft":
+        if interview.status not in ["draft", "scheduled"]:
             raise APIError(
                 "Criteria can only be updated for draft interviews",
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -350,6 +521,15 @@ class InterviewService:
 
         # Resolve workspace
         workspace_id = interview.workspace_id
+
+        summary_result = await db.execute(
+            select(InterviewSummary).where(
+                InterviewSummary.interview_id == interview.id
+            )
+        )
+        summary = summary_result.scalar_one_or_none()
+        if summary:
+            summary.key_skills = ", ".join(request.criteria)
 
         # Get or create scorecard
         sc_result = await db.execute(
@@ -397,6 +577,11 @@ class InterviewService:
                 "Interview not found",
                 status_code=status.HTTP_404_NOT_FOUND,
                 code="interview_not_found",
+            )
+
+        if interview.status not in ["draft", "scheduled"]:
+            raise APIError(
+                "Cannot update an active or completed interview", status_code=400
             )
 
         if interview.role_title is None and request.role_title:
@@ -448,6 +633,11 @@ class InterviewService:
                 code="interview_not_found",
             )
 
+        if interview.status not in ["draft", "scheduled"]:
+            raise APIError(
+                "Cannot update an active or completed interview", status_code=400
+            )
+
         if request.participation_mode:
             interview.participation_mode = request.participation_mode
         if request.platform:
@@ -489,11 +679,11 @@ class InterviewService:
             )
 
         if interview.status == "scheduled":
-            raise APIError(
-                "Interview already confirmed",
-                status_code=status.HTTP_409_CONFLICT,
-                code="already_confirmed",
-            )
+            return {
+                "interview_id": str(interview.id),
+                "status": interview.status,
+                "confirmed_at": interview.updated_at,
+            }
 
         if interview.status in ("cancelled", "completed"):
             raise APIError(
@@ -582,17 +772,36 @@ class InterviewService:
         user: User,
         page: int = 1,
         page_size: int = 20,
+        status: str | None = None,
+        search: str | None = None,
     ) -> tuple[list, int]:
 
+        filters = [Interview.interviewer_id == user.id]
+
+        if status:
+            status_list = [s.strip() for s in status.split(",")]
+            filters.append(Interview.status.in_(status_list))
+
+        if search:
+            pattern = f"%{search.strip()}%"
+            filters.append(
+                or_(
+                    Interview.role_title.ilike(pattern),
+                    Candidate.full_name.ilike(pattern),
+                )
+            )
+
         count_result = await db.execute(
-            select(func.count(Interview.id)).where(Interview.interviewer_id == user.id)
+            select(func.count(Interview.id))
+            .outerjoin(Candidate, Candidate.id == Interview.candidate_id)
+            .where(*filters)
         )
         total = count_result.scalar() or 0
 
         result = await db.execute(
             select(Interview, Candidate.full_name)
             .outerjoin(Candidate, Candidate.id == Interview.candidate_id)
-            .where(Interview.interviewer_id == user.id)
+            .where(*filters)
             .order_by(Interview.created_at.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
@@ -696,3 +905,149 @@ class InterviewService:
             criteria=criteria,
             created_at=interview.created_at,
         )
+
+    @staticmethod
+    async def get_summary(
+        interview_id: uuid.UUID,
+        db: AsyncSession,
+        user: User,
+    ) -> dict:
+        result = await db.execute(
+            select(Interview).where(
+                Interview.id == interview_id,
+                Interview.interviewer_id == user.id,
+            )
+        )
+        interview = result.scalar_one_or_none()
+        if not interview:
+            raise APIError(
+                "Interview not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="interview_not_found",
+            )
+
+        result = await db.execute(
+            select(InterviewSummary).where(
+                InterviewSummary.interview_id == interview_id
+            )
+        )
+        summary = result.scalar_one_or_none()
+
+        if not summary:
+            return {
+                "interview_id": str(interview_id),
+                "status": "pending",
+                "observation": None,
+                "highlights": [],
+                "red_flags": [],
+                "custom_question": None,
+                "key_skills": [],
+            }
+
+        assessment = {}
+        if summary.ai_assessment:
+            try:
+                assessment = json.loads(summary.ai_assessment)
+            except (json.JSONDecodeError, ValueError):
+                assessment = {}
+
+        return {
+            "interview_id": str(interview_id),
+            "status": summary.status,
+            "observation": assessment.get("observation"),
+            "highlights": assessment.get("highlights", []),
+            "red_flags": assessment.get("red_flags", []),
+            "custom_question": summary.custom_question,
+            "key_skills": summary.key_skills.split(",") if summary.key_skills else [],
+        }
+
+    @staticmethod
+    async def retry_summary(
+        interview_id: uuid.UUID,
+        db: AsyncSession,
+        user: User,
+    ) -> dict:
+        result = await db.execute(
+            select(Interview).where(
+                Interview.id == interview_id,
+                Interview.interviewer_id == user.id,
+            )
+        )
+        interview = result.scalar_one_or_none()
+        if not interview:
+            raise APIError(
+                "Interview not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="interview_not_found",
+            )
+
+        result = await db.execute(
+            select(InterviewSummary).where(
+                InterviewSummary.interview_id == interview_id
+            )
+        )
+        summary = result.scalar_one_or_none()
+
+        if not summary or summary.status != "failed":
+            raise APIError(
+                "Summary is not in a failed state",
+                status_code=status.HTTP_409_CONFLICT,
+                code="summary_not_failed",
+            )
+
+        summary.status = "generating"
+        await db.commit()
+
+        return {
+            "interview_id": str(interview_id),
+            "status": "generating",
+        }
+
+    @staticmethod
+    async def get_session_status(
+        interview_id: uuid.UUID,
+        db: AsyncSession,
+        user: User,
+    ) -> dict:
+        result = await db.execute(
+            select(Interview).where(
+                Interview.id == interview_id,
+                Interview.interviewer_id == user.id,
+            )
+        )
+        interview = result.scalar_one_or_none()
+        if not interview:
+            raise APIError(
+                "Interview not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="interview_not_found",
+            )
+
+        session_phase_map = {
+            "draft": "connecting",
+            "scheduled": "connecting",
+            "in_progress": "live_transcript",
+            "completed": "summary_ready",
+            "cancelled": "none",
+            "needs_attention": "listening",
+        }
+
+        elapsed = None
+        if interview.status == "in_progress" and interview.scheduled_start:
+            now = datetime.now(timezone.utc)
+            start = interview.scheduled_start
+            if start.tzinfo is None:
+                start = start.replace(tzinfo=timezone.utc)
+            elapsed = int((now - start).total_seconds())
+
+        return {
+            "interview_id": str(interview_id),
+            "status": interview.status,
+            "session_phase": session_phase_map.get(interview.status, "none"),
+            "elapsed": elapsed,
+            "participants": None,
+            "platform": interview.platform,
+            "connection_status": "connected"
+            if interview.status == "in_progress"
+            else "idle",
+        }

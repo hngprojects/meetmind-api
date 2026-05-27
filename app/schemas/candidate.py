@@ -66,3 +66,14 @@ class CandidateProfile(BaseModel):
     updated_at: datetime | None
 
     model_config = {"from_attributes": True}
+
+
+class CandidateExtraction(BaseModel):
+    full_name: str
+    email: str
+    phone: str | None
+    current_role: str | None
+    years_of_experience: int | None
+    skills: list[str]
+    location: str | None
+    portfolio_url: str | None

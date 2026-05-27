@@ -4,11 +4,11 @@ and scorecard endpoints."""
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import CurrentUser
+from app.api.deps import VerifiedUser
 from app.core.responses import paginated, success
 from app.db.session import get_session
 from app.schemas.interview import (
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_interview(
     payload: CreateInterviewRequest,
-    user: CurrentUser,
+    user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
 ):
     """Create a new interview session with context.
@@ -57,17 +57,20 @@ async def create_interview(
 
 @router.get("", status_code=status.HTTP_200_OK)
 async def list_interviews(
-    user: CurrentUser,
+    user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
     page: int = 1,
     page_size: int = 20,
+    status: str | None = Query(default=None),
+    search: str | None = Query(default=None),
 ):
-
-    rows, total = await InterviewService.list_interviews(db, user, page, page_size)
+    rows, total = await InterviewService.list_interviews(
+        db, user, page, page_size, status, search
+    )
     items = [
         InterviewListItem(
             id=i.id,
-            candidate_name=full_name,  # resolved below
+            candidate_name=full_name,
             role_title=i.role_title,
             platform=i.platform,
             status=i.status,
@@ -85,7 +88,7 @@ async def list_interviews(
 @router.get("/{interview_id}", status_code=status.HTTP_200_OK)
 async def get_interview(
     interview_id: uuid.UUID,
-    user: CurrentUser,
+    user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
 ):
     """Retrieve an interview session by ID.
@@ -113,7 +116,7 @@ async def get_interview(
 @router.post("/{interview_id}/confirm", status_code=status.HTTP_200_OK)
 async def confirm_interview(
     interview_id: uuid.UUID,
-    user: CurrentUser,
+    user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
 ):
     result = await InterviewService.confirm_interview(interview_id, db, user)
@@ -122,7 +125,7 @@ async def confirm_interview(
 
 @router.patch("/{interview_id}/cancel", status_code=status.HTTP_200_OK)
 async def cancel_interview(
-    interview_id: uuid.UUID, user: CurrentUser, db: AsyncSession = Depends(get_session)
+    interview_id: uuid.UUID, user: VerifiedUser, db: AsyncSession = Depends(get_session)
 ):
     interview = await InterviewService.cancel_interview(interview_id, db, user)
     return success(
@@ -134,7 +137,7 @@ async def cancel_interview(
 @router.get("/{interview_id}/chat/history", status_code=status.HTTP_200_OK)
 async def get_chat_history(
     interview_id: uuid.UUID,
-    user: CurrentUser,
+    user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
 ):
     """Retrieve the full chat history for an interview session.
@@ -163,7 +166,7 @@ async def get_chat_history(
 @router.get("/{interview_id}/transcript", status_code=status.HTTP_200_OK)
 async def get_transcript(
     interview_id: uuid.UUID,
-    user: CurrentUser,
+    user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
 ):
     transcript = await ChatHistoryService.get_transcript(interview_id, db, user)
@@ -176,7 +179,7 @@ async def get_transcript(
 @router.get("/{interview_id}/transcript/export", status_code=status.HTTP_200_OK)
 async def export_transcript(
     interview_id: uuid.UUID,
-    user: CurrentUser,
+    user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
 ):
     lines = await ChatHistoryService.get_transcript_export(interview_id, db, user)
@@ -191,7 +194,7 @@ async def export_transcript(
 @router.post("/{interview_id}/transcript/stop", status_code=status.HTTP_200_OK)
 async def stop_transcript(
     interview_id: uuid.UUID,
-    user: CurrentUser,
+    user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
 ):
     result = await InterviewService.stop_transcript(interview_id, db, user)
@@ -205,7 +208,7 @@ async def stop_transcript(
 async def update_criteria(
     interview_id: uuid.UUID,
     payload: UpdateCriteriaRequest,
-    user: CurrentUser,
+    user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
 ):
     """Update scorecard criteria for a draft interview.
@@ -236,7 +239,7 @@ async def update_criteria(
 async def update_context(
     interview_id: uuid.UUID,
     payload: UpdateContextRequest,
-    user: CurrentUser,
+    user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
 ):
     result = await InterviewService.update_context(interview_id, payload, db, user)
@@ -247,10 +250,30 @@ async def update_context(
 async def update_ai_config(
     interview_id: uuid.UUID,
     payload: UpdateAIConfigRequest,
-    user: CurrentUser,
+    user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
 ):
     result = await InterviewService.update_session_config(
         interview_id, payload, db, user
     )
     return success(result, message="AI config updated successfully")
+
+
+@router.get("/{interview_id}/summary", status_code=status.HTTP_200_OK)
+async def get_interview_summary(
+    interview_id: uuid.UUID,
+    user: VerifiedUser,
+    db: AsyncSession = Depends(get_session),
+):
+    summary = await InterviewService.get_summary(interview_id, db, user)
+    return success(summary, message="Summary retrieved successfully")
+
+
+@router.get("/{interview_id}/session", status_code=status.HTTP_200_OK)
+async def get_interview_session(
+    interview_id: uuid.UUID,
+    user: VerifiedUser,
+    db: AsyncSession = Depends(get_session),
+):
+    session = await InterviewService.get_session_status(interview_id, db, user)
+    return success(session, message="Session status retrieved")

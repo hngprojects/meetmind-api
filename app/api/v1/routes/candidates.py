@@ -1,4 +1,3 @@
-# app/api/v1/routes/candidates.py
 import math
 from datetime import datetime, timezone
 from uuid import UUID
@@ -14,11 +13,12 @@ from fastapi import (
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 
-from app.api.deps import CurrentUser, DBSession
+from app.api.deps import DBSession, VerifiedUser
 from app.core.responses import APIError, success
 from app.models.document import CandidateDocument, DocumentStatus
-from app.models.interview import Candidate
-from app.schemas.candidate import CandidateProfile, CandidateSearchResult
+from app.models.interview import Candidate, Interview
+from app.models.workspace import WorkspaceMember
+from app.schemas.candidate import CandidateSearchResult
 from app.services.candidate import CandidateService
 from app.services.document_service import DocumentService
 from app.services.interview import _get_workspace
@@ -31,7 +31,7 @@ MAX_FILE_SIZE = 10 * 1024 * 1024
 @router.get("/search")
 async def search_candidates(
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: VerifiedUser,
     q: str = Query(..., min_length=1, description="Search term"),
     page: int = Query(default=1, ge=1, description="Page number"),
     page_size: int = Query(default=20, ge=1, le=100, description="Results per page"),
@@ -99,7 +99,7 @@ async def search_candidates(
 @router.get("/export")
 async def export_candidates(
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: VerifiedUser,
     q: str | None = Query(default=None, description="Optional search filter"),
 ):
 
@@ -132,11 +132,64 @@ async def export_candidates(
     )
 
 
+@router.get("")
+async def list_candidates(
+    db: DBSession,
+    current_user: VerifiedUser,
+    q: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    sort_by: str | None = Query(default="date", alias="sort_by"),
+    sort_direction: str | None = Query(default="desc", alias="sort_direction"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100, alias="page_size"),
+):
+    workspace_id = await _get_workspace(db, current_user)
+    if not workspace_id:
+        return success(
+            data=[],
+            meta={
+                "pagination": {
+                    "page": page,
+                    "page_size": page_size,
+                    "total": 0,
+                    "total_pages": 0,
+                }
+            },
+        )
+
+    candidates, total = await CandidateService.list_candidates(
+        db=db,
+        workspace_id=workspace_id,
+        q=q,
+        status=status,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
+        page=page,
+        page_size=page_size,
+    )
+
+    import math
+
+    total_pages = math.ceil(total / page_size) if total > 0 else 0
+
+    return success(
+        data=candidates,
+        meta={
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total": total,
+                "total_pages": total_pages,
+            }
+        },
+    )
+
+
 @router.get("/{candidate_id}")
 async def get_candidate(
     candidate_id: UUID,
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: VerifiedUser,
 ):
     """
     Get a single candidate's profile.
@@ -145,23 +198,6 @@ async def get_candidate(
 
     Returns all fields from the Candidate model — no nested interviews or
     computed stats. Use the dedicated /interviews endpoints for that data.
-
-    WHY UUID for candidate_id?
-    FastAPI validates UUID path parameters automatically and returns 422 for
-    non-UUID values before the handler runs — garbage IDs never hit the DB.
-
-    WHY db.scalar()?
-    Unwraps the first column of the first row and returns None if no results
-    without raising. Idential to scalar_one_or_none() for the single-PK case.
-
-    WHY workspace scoping?
-    Every candidate belongs to a workspace. _get_workspace resolves the
-    current user's workspace via WorkspaceMember. Cross-workspace candidates
-    are invisible — prevents data leakage.
-
-    WHY CandidateProfile.model_validate(candidate)?
-    model_validate reads ORM attributes because from_attributes=True is set
-    in the schema. This avoids manually mapping every field.
     """
 
     workspace_id = await _get_workspace(db, current_user)
@@ -187,20 +223,63 @@ async def get_candidate(
             code="candidate_not_found",
         )
 
+    latest_interview_result = await db.execute(
+        select(Interview)
+        .where(Interview.candidate_id == candidate_id)
+        .order_by(Interview.created_at.desc())
+        .limit(1)
+    )
+    latest_interview = latest_interview_result.scalar_one_or_none()
+
+    interview_status_map = {
+        "in_progress": "ongoing",
+        "completed": "completed",
+        "needs_attention": "needs_review",
+    }
+
     return success(
-        CandidateProfile.model_validate(candidate),
+        {
+            "id": str(candidate.id),
+            "name": candidate.full_name,
+            "email": candidate.email,
+            "role": latest_interview.role_title if latest_interview else None,
+            "status": interview_status_map.get(latest_interview.status, "ongoing")
+            if latest_interview
+            else "ongoing",
+            "score": latest_interview.rating if latest_interview else None,
+            "action": "none",
+            "created_at": candidate.created_at.isoformat()
+            if candidate.created_at
+            else None,
+            "updated_at": candidate.updated_at.isoformat()
+            if candidate.updated_at
+            else None,
+            "avatarUrl": candidate.avatar_initials,
+            "notes": None,
+        },
         message="Candidate profile retrieved",
     )
 
 
-@router.post("/{candidate_id}/documents/upload")
+@router.post("/upload-resume")
 async def upload_candidate_document(
-    current_user: CurrentUser,
-    candidate_id: UUID,
+    current_user: VerifiedUser,
     db: DBSession,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(..., description="The document file (PDF, DOCX, TXT)"),
 ):
+    workspace_query = select(WorkspaceMember.workspace_id).where(
+        WorkspaceMember.user_id == current_user.id
+    )
+    workspace_res = await db.execute(workspace_query)
+    workspace_id = workspace_res.scalar_one_or_none()
+
+    if not workspace_id:
+        raise APIError(
+            "User is not a member of any workspace",
+            status_code=status.HTTP_403_FORBIDDEN,
+            code="no_workspace_found",
+        )
     content = await file.read()
 
     if len(content) > MAX_FILE_SIZE:
@@ -210,8 +289,28 @@ async def upload_candidate_document(
             code="file_too_large",
         )
 
+    raw_text = await DocumentService.extract_text(file.filename, content)
+
+    extracted_data = await DocumentService.extract_candidate_info(raw_text)
+
+    candidate = Candidate(
+        workspace_id=workspace_id,
+        full_name=extracted_data.full_name,
+        email=extracted_data.email,
+        phone=extracted_data.phone,
+        current_role=extracted_data.current_role,
+        years_of_experience=extracted_data.years_of_experience,
+        skills=", ".join(extracted_data.skills),
+        location=extracted_data.location,
+        portfolio_url=extracted_data.portfolio_url,
+    )
+
+    db.add(candidate)
+    await db.commit()
+    await db.refresh(candidate)
+
     document = CandidateDocument(
-        candidate_id=candidate_id,
+        candidate_id=candidate.id,
         filename=file.filename,
         status=DocumentStatus.PENDING.value,
     )
@@ -237,5 +336,8 @@ async def upload_candidate_document(
     )
 
     return success(
-        message="Document uploaded successfully. Processing started.",
+        data={
+            "candidate_id": candidate.id,
+            "extracted_details": extracted_data.model_dump(),
+        }
     )

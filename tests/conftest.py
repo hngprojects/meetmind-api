@@ -1,4 +1,6 @@
+import sys
 from unittest.mock import AsyncMock, MagicMock, patch
+from app.schemas.interview import InterviewPlanOutput, InterviewQuestionSchema, RubricCriterion
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -8,6 +10,14 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.pool import StaticPool
+
+# Stub heavy external modules before any app import to avoid
+# ModuleNotFoundError from transitive dependencies not related to tests.
+_FAKE_MODULES = [
+    "openai",
+]
+for _mod in _FAKE_MODULES:
+    sys.modules.setdefault(_mod, MagicMock())
 
 from app.db.session import get_session
 
@@ -137,3 +147,47 @@ async def client():
         base_url="http://test",
     ) as ac:
         yield ac
+
+@pytest.fixture(autouse=True)
+def mock_ai_generation():
+    """
+    Global mock for all AI-related service calls. 
+    Prevents 503 errors and saves API costs during testing.
+    """
+    fake_plan = InterviewPlanOutput(
+        intro="Welcome to the mock interview.",
+        questions=[
+            InterviewQuestionSchema(
+                text="Mock Question?", 
+                followUpHint="Hint", 
+                maxFollowUps=2
+            )
+        ],
+        rubric=[
+            # Add all three standard test criteria here
+            RubricCriterion(name="Communication", description="Clear speech", weight=1),
+            RubricCriterion(name="API Design", description="Design skills", weight=1),
+            RubricCriterion(name="Problem Solving", description="Solving skills", weight=1),
+        ],
+        closing="Thank you."
+    )
+
+    with patch("app.services.interview.InterviewService.generate_interview_plan", 
+               new=AsyncMock(return_value=fake_plan)) as mock_plan:
+        
+        with patch("app.services.ai_generation_service.generate_text", 
+                   new=AsyncMock(return_value="Mocked AI Response")) as mock_text:
+            
+            yield (mock_plan, mock_text)
+
+
+@pytest.fixture(autouse=True)
+def mock_ai_planner():
+    with patch("app.services.ai_generation_service.AIGenerationService.generate_interview_plan") as mock:
+        mock.return_value = InterviewPlanOutput(
+            intro="Hello, welcome.",
+            questions=[{"text": "Question 1", "followUpHint": "Hint", "maxFollowUps": 2}],
+            rubric=[{"name": "Skill 1", "description": "Desc", "weight": 3}],
+            closing="Goodbye."
+        )
+        yield mock

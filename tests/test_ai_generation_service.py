@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -17,11 +18,13 @@ for _mod in ("pdfplumber", "docx"):
 # langchain_text_splitters needs to behave like the real module so tests in
 # other files (e.g. test_candidates.py) don't break.
 _lts = MagicMock()
-_lts.RecursiveCharacterTextSplitter.return_value.split_text.side_effect = (
-    lambda text: [text]
-)
+_lts.RecursiveCharacterTextSplitter.return_value.split_text.side_effect = lambda text: [
+    text
+]
 if "langchain_text_splitters" not in sys.modules:
     sys.modules["langchain_text_splitters"] = _lts
+
+from sqlalchemy import select
 
 from app.core.responses import APIError
 from app.models.interview import (
@@ -40,7 +43,7 @@ from app.services.ai_generation_service import AIGenerationService
 
 
 async def create_user(db, email: str | None = None) -> User:
-    user = User(email=email or f"{uuid.uuid4().hex[:8]}@example.com")
+    user = User(email=email or f"{uuid.uuid4().hex[:8]}@example.com", is_verified=True)
     db.add(user)
     await db.flush()
     return user
@@ -91,14 +94,28 @@ async def create_summary(db, interview: Interview) -> InterviewSummary:
     return s
 
 
+# ── fixtures ──────────────────────────────────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def _mock_async_session_local():
+    """Mock AsyncSessionLocal so generate_assessment uses a test-friendly session.
+
+    Without this, tests for generate_assessment would open a real DB session
+    that might not share the test transaction, making assertions unreliable.
+    """
+    with patch(
+        "app.services.ai_generation_service.AsyncSessionLocal",
+    ) as mock:
+        yield mock
+
+
 # ── tests ─────────────────────────────────────────────────────────────
 
 
 RETRIEVE_PATCH = patch(
     "app.services.ai_generation_service.InterviewContextService.retrieve_relevant_chunks",
-    new=AsyncMock(
-        return_value=["Mocked candidate context from resume."]
-    ),
+    new=AsyncMock(return_value=["Mocked candidate context from resume."]),
 )
 
 
@@ -110,9 +127,12 @@ class TestGenerateNextQuestion:
         interview = await create_interview(db_session, candidate, user, ws)
         await create_summary(db_session, interview)
 
-        with RETRIEVE_PATCH, patch(
-            "app.services.ai_generation_service.generate_text",
-            new=AsyncMock(return_value="What is your experience with Python?"),
+        with (
+            RETRIEVE_PATCH,
+            patch(
+                "app.services.ai_generation_service.generate_text",
+                new=AsyncMock(return_value="What is your experience with Python?"),
+            ),
         ):
             question = await AIGenerationService.generate_next_question(
                 interview_id=interview.id,
@@ -129,9 +149,12 @@ class TestGenerateNextQuestion:
         interview = await create_interview(db_session, candidate, user, ws)
         await create_summary(db_session, interview)
 
-        with RETRIEVE_PATCH, patch(
-            "app.services.ai_generation_service.generate_text",
-            new=AsyncMock(return_value="Tell me about your background."),
+        with (
+            RETRIEVE_PATCH,
+            patch(
+                "app.services.ai_generation_service.generate_text",
+                new=AsyncMock(return_value="Tell me about your background."),
+            ),
         ):
             await AIGenerationService.generate_next_question(
                 interview_id=interview.id,
@@ -141,20 +164,24 @@ class TestGenerateNextQuestion:
 
         transcript = (
             await db_session.execute(
-                __import__("sqlalchemy").select(InterviewTranscript).where(
-                    InterviewTranscript.interview_id == interview.id
-                )
+                __import__("sqlalchemy")
+                .select(InterviewTranscript)
+                .where(InterviewTranscript.interview_id == interview.id)
             )
         ).scalar_one_or_none()
         assert transcript is not None
 
         turn = (
-            await db_session.execute(
-                __import__("sqlalchemy").select(InterviewTranscriptTurn).where(
-                    InterviewTranscriptTurn.transcript_id == transcript.id
+            (
+                await db_session.execute(
+                    __import__("sqlalchemy")
+                    .select(InterviewTranscriptTurn)
+                    .where(InterviewTranscriptTurn.transcript_id == transcript.id)
                 )
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         assert turn is not None
         assert turn.speaker == "ai"
         assert turn.content == "Tell me about your background."
@@ -222,28 +249,69 @@ class TestGenerateNextQuestion:
 
 
 class TestGenerateAssessment:
-    async def test_persists_assessment(self, db_session):
+    async def test_persists_assessment(self, db_session, _mock_async_session_local):
+        _mock_async_session_local.return_value.__aenter__.return_value = db_session
+
         user = await create_user(db_session)
         ws = await create_workspace(db_session, user)
         candidate = await create_candidate(db_session, ws)
         interview = await create_interview(db_session, candidate, user, ws)
         summary = await create_summary(db_session, interview)
 
-        with RETRIEVE_PATCH, patch(
-            "app.services.ai_generation_service.generate_text",
-            new=AsyncMock(return_value="Strong Python skills, good communicator."),
+        transcript = InterviewTranscript(interview_id=interview.id, status="completed")
+        db_session.add(transcript)
+        await db_session.flush()
+
+        db_session.add_all(
+            [
+                InterviewTranscriptTurn(
+                    transcript_id=transcript.id,
+                    speaker="ai",
+                    content="Tell me about yourself.",
+                    sequence_no=1,
+                    is_ai_question=True,
+                ),
+                InterviewTranscriptTurn(
+                    transcript_id=transcript.id,
+                    speaker="candidate",
+                    content="I have 5 years of Python experience.",
+                    sequence_no=2,
+                    is_ai_question=False,
+                ),
+            ]
+        )
+        await db_session.flush()
+
+        mock_assessment = {
+            "observation": "Strong Python skills, good communicator.",
+            "highlights": ["Clear communication"],
+            "red_flags": [],
+        }
+
+        with (
+            RETRIEVE_PATCH,
+            patch(
+                "app.services.ai_generation_service.generate_structured_output",
+                new=AsyncMock(return_value=mock_assessment),
+            ),
         ):
             await AIGenerationService.generate_assessment(
                 interview_id=interview.id,
-                db=db_session,
             )
 
         await db_session.refresh(summary)
-        assert summary.ai_assessment == "Strong Python skills, good communicator."
         assert summary.status == "completed"
         assert summary.generated_at is not None
+        parsed = json.loads(summary.ai_assessment)
+        assert parsed["observation"] == "Strong Python skills, good communicator."
+        assert parsed["highlights"] == ["Clear communication"]
+        assert parsed["red_flags"] == []
 
-    async def test_marks_failed_if_no_job_description(self, db_session):
+    async def test_marks_failed_if_no_job_description(
+        self, db_session, _mock_async_session_local
+    ):
+        _mock_async_session_local.return_value.__aenter__.return_value = db_session
+
         user = await create_user(db_session)
         ws = await create_workspace(db_session, user)
         candidate = await create_candidate(db_session, ws)
@@ -254,42 +322,49 @@ class TestGenerateAssessment:
 
         await AIGenerationService.generate_assessment(
             interview_id=interview.id,
-            db=db_session,
         )
 
         await db_session.refresh(summary)
         assert summary.status == "failed"
         assert summary.ai_assessment is None
 
-    async def test_marks_failed_on_api_error(self, db_session):
+    async def test_marks_failed_on_api_error(
+        self, db_session, _mock_async_session_local
+    ):
+        _mock_async_session_local.return_value.__aenter__.return_value = db_session
+
         user = await create_user(db_session)
         ws = await create_workspace(db_session, user)
         candidate = await create_candidate(db_session, ws)
         interview = await create_interview(db_session, candidate, user, ws)
         summary = await create_summary(db_session, interview)
 
-        with RETRIEVE_PATCH, patch(
-            "app.services.ai_generation_service.generate_text",
-            new=AsyncMock(side_effect=RuntimeError("API down")),
+        with (
+            RETRIEVE_PATCH,
+            patch(
+                "app.services.ai_generation_service.generate_text",
+                new=AsyncMock(side_effect=RuntimeError("API down")),
+            ),
         ):
             await AIGenerationService.generate_assessment(
                 interview_id=interview.id,
-                db=db_session,
             )
 
         await db_session.refresh(summary)
         assert summary.status == "failed"
 
-    async def test_generates_from_transcript_turns(self, db_session):
+    async def test_generates_from_transcript_turns(
+        self, db_session, _mock_async_session_local
+    ):
+        _mock_async_session_local.return_value.__aenter__.return_value = db_session
+
         user = await create_user(db_session)
         ws = await create_workspace(db_session, user)
         candidate = await create_candidate(db_session, ws)
         interview = await create_interview(db_session, candidate, user, ws)
         summary = await create_summary(db_session, interview)
 
-        transcript = InterviewTranscript(
-            interview_id=interview.id, status="completed"
-        )
+        transcript = InterviewTranscript(interview_id=interview.id, status="completed")
         db_session.add(transcript)
         await db_session.flush()
 
@@ -310,18 +385,27 @@ class TestGenerateAssessment:
         db_session.add_all([turn1, turn2])
         await db_session.flush()
 
-        with RETRIEVE_PATCH, patch(
-            "app.services.ai_generation_service.generate_text",
-            new=AsyncMock(return_value="Good experience."),
+        mock_assessment = {
+            "observation": "Good experience.",
+            "highlights": ["5 years Python experience"],
+            "red_flags": [],
+        }
+
+        with (
+            RETRIEVE_PATCH,
+            patch(
+                "app.services.ai_generation_service.generate_structured_output",
+                new=AsyncMock(return_value=mock_assessment),
+            ),
         ):
             await AIGenerationService.generate_assessment(
                 interview_id=interview.id,
-                db=db_session,
             )
 
         await db_session.refresh(summary)
         assert summary.status == "completed"
-        assert summary.ai_assessment == "Good experience."
+        parsed = json.loads(summary.ai_assessment)
+        assert parsed["observation"] == "Good experience."
 
 
 class TestAnswerQuery:
@@ -392,3 +476,197 @@ class TestAnswerQuery:
                 db=db_session,
             )
         assert answer == "No data available."
+
+
+class TestRecordResponse:
+    """record_response — saves candidate turn and generates next question."""
+
+    async def test_saves_candidate_turn_and_returns_next_question(self, db_session):
+        user = await create_user(db_session)
+        ws = await create_workspace(db_session, user)
+        candidate = await create_candidate(db_session, ws)
+        interview = await create_interview(db_session, candidate, user, ws)
+        await create_summary(db_session, interview)
+
+        with (
+            RETRIEVE_PATCH,
+            patch(
+                "app.services.ai_generation_service.generate_text",
+                new=AsyncMock(return_value="What is your experience with Python?"),
+            ),
+        ):
+            result = await AIGenerationService.record_response(
+                interview_id=interview.id,
+                content="I have 5 years of experience.",
+                user=user,
+                db=db_session,
+            )
+
+        assert result == "What is your experience with Python?"
+
+        # Verify the candidate turn was saved
+        transcript = (
+            await db_session.execute(
+                select(InterviewTranscript).where(
+                    InterviewTranscript.interview_id == interview.id
+                )
+            )
+        ).scalar_one_or_none()
+        assert transcript is not None
+
+        turn = (
+            (
+                await db_session.execute(
+                    select(InterviewTranscriptTurn).where(
+                        InterviewTranscriptTurn.transcript_id == transcript.id
+                    )
+                )
+            )
+            .scalars()
+            .first()
+        )
+        assert turn is not None
+        assert turn.speaker == "candidate"
+        assert turn.content == "I have 5 years of experience."
+        assert turn.is_ai_question is False
+
+    async def test_raises_404_if_interview_not_found(self, db_session):
+        user = await create_user(db_session)
+
+        with pytest.raises(APIError) as exc:
+            await AIGenerationService.record_response(
+                interview_id=uuid.uuid4(),
+                content="Hello",
+                user=user,
+                db=db_session,
+            )
+        assert exc.value.status_code == 404
+
+    async def test_raises_404_if_not_owned(self, db_session):
+        user1 = await create_user(db_session, "alice@example.com")
+        user2 = await create_user(db_session, "bob@example.com")
+        ws = await create_workspace(db_session, user1)
+        candidate = await create_candidate(db_session, ws)
+        interview = await create_interview(db_session, candidate, user1, ws)
+        await create_summary(db_session, interview)
+
+        with pytest.raises(APIError) as exc:
+            await AIGenerationService.record_response(
+                interview_id=interview.id,
+                content="Hello",
+                user=user2,
+                db=db_session,
+            )
+        assert exc.value.status_code == 404
+
+
+class TestCompleteInterview:
+    """complete_interview — marks interview as completed."""
+
+    async def test_marks_interview_completed(self, db_session):
+        user = await create_user(db_session)
+        ws = await create_workspace(db_session, user)
+        candidate = await create_candidate(db_session, ws)
+        interview = await create_interview(db_session, candidate, user, ws)
+        await create_summary(db_session, interview)
+
+        await AIGenerationService.complete_interview(
+            interview_id=interview.id,
+            user=user,
+            db=db_session,
+        )
+
+        await db_session.refresh(interview)
+        assert interview.status == "completed"
+
+    async def test_raises_404_if_interview_not_found(self, db_session):
+        user = await create_user(db_session)
+
+        with pytest.raises(APIError) as exc:
+            await AIGenerationService.complete_interview(
+                interview_id=uuid.uuid4(),
+                user=user,
+                db=db_session,
+            )
+        assert exc.value.status_code == 404
+
+    async def test_raises_404_if_not_owned(self, db_session):
+        user1 = await create_user(db_session, "alice@example.com")
+        user2 = await create_user(db_session, "bob@example.com")
+        ws = await create_workspace(db_session, user1)
+        candidate = await create_candidate(db_session, ws)
+        interview = await create_interview(db_session, candidate, user1, ws)
+        await create_summary(db_session, interview)
+
+        with pytest.raises(APIError) as exc:
+            await AIGenerationService.complete_interview(
+                interview_id=interview.id,
+                user=user2,
+                db=db_session,
+            )
+        assert exc.value.status_code == 404
+
+
+MOCK_CHAT_RESPONSE = {
+    "role": "assistant",
+    "content": "The candidate showed strong problem-solving skills.",
+    "sent_at": "2026-05-24T22:00:00",
+    "sequence_no": 2,
+}
+
+
+class TestSendChatMessage:
+    """send_chat_message — stateless chat answer."""
+
+    async def test_returns_chat_response(self, db_session):
+        user = await create_user(db_session)
+        ws = await create_workspace(db_session, user)
+        candidate = await create_candidate(db_session, ws)
+        interview = await create_interview(db_session, candidate, user, ws)
+        await create_summary(db_session, interview)
+
+        with patch(
+            "app.services.ai_generation_service.generate_text",
+            new=AsyncMock(
+                return_value="The candidate showed strong problem-solving skills."
+            ),
+        ):
+            result = await AIGenerationService.send_chat_message(
+                interview_id=interview.id,
+                content="How did the candidate do?",
+                user=user,
+                db=db_session,
+            )
+
+        assert result["role"] == "assistant"
+        assert result["content"] == MOCK_CHAT_RESPONSE["content"]
+        assert result["sequence_no"] == 2
+
+    async def test_raises_404_if_interview_not_found(self, db_session):
+        user = await create_user(db_session)
+
+        with pytest.raises(APIError) as exc:
+            await AIGenerationService.send_chat_message(
+                interview_id=uuid.uuid4(),
+                content="Hello",
+                user=user,
+                db=db_session,
+            )
+        assert exc.value.status_code == 404
+
+    async def test_raises_404_if_not_owned(self, db_session):
+        user1 = await create_user(db_session, "alice@example.com")
+        user2 = await create_user(db_session, "bob@example.com")
+        ws = await create_workspace(db_session, user1)
+        candidate = await create_candidate(db_session, ws)
+        interview = await create_interview(db_session, candidate, user1, ws)
+        await create_summary(db_session, interview)
+
+        with pytest.raises(APIError) as exc:
+            await AIGenerationService.send_chat_message(
+                interview_id=interview.id,
+                content="Hello",
+                user=user2,
+                db=db_session,
+            )
+        assert exc.value.status_code == 404

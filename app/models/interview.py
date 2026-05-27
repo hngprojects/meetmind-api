@@ -20,6 +20,10 @@ class Candidate(Base, UUIDPrimaryKey, TimestampMixin):
     avatar_initials: Mapped[str | None] = mapped_column(String(3))
     resume_url: Mapped[str | None] = mapped_column(Text)
     portfolio_url: Mapped[str | None] = mapped_column(Text)
+    location: Mapped[str | None] = mapped_column(String(120))
+    current_role: Mapped[str | None] = mapped_column(String(120))
+    years_of_experience: Mapped[int | None] = mapped_column(Integer)
+    skills: Mapped[str | None] = mapped_column(Text)  # Comma separated list
 
 
 class Interview(Base, UUIDPrimaryKey, TimestampMixin):
@@ -40,6 +44,9 @@ class Interview(Base, UUIDPrimaryKey, TimestampMixin):
     )
     meeting_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("meetings.id")
+    )
+    session_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("interview_sessions.id")
     )
     role_title: Mapped[str | None] = mapped_column(String(120))
     scheduled_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -128,3 +135,24 @@ class InterviewRedFlag(Base, UUIDPrimaryKey, TimestampMixin):
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
     sort_order: Mapped[int | None] = mapped_column(Integer)
+
+
+class InterviewSession(Base, UUIDPrimaryKey, TimestampMixin):
+    __tablename__ = "interview_sessions"
+
+    role: Mapped[str] = mapped_column(String(255), nullable=False)
+    candidate_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    intro: Mapped[str] = mapped_column(Text, nullable=False)
+    questions_json: Mapped[str] = mapped_column(Text, nullable=False)
+    rubric_json: Mapped[str] = mapped_column(Text, nullable=False)
+    duration_minutes: Mapped[int] = mapped_column(Integer, default=20, nullable=False)
+    closing: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(50), default="created", nullable=False)
+    transcript_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    report_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

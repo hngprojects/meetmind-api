@@ -47,7 +47,6 @@ verification_service = VerificationService()
 async def signup(
     request: Request,
     payload: SignupRequest,
-    response: Response,
     db: AsyncSession = Depends(get_session),
     background_tasks: BackgroundTasks = None,
 ):
@@ -87,11 +86,6 @@ async def signup(
         await verification_service.create_verification_token(
             db, user, background_tasks=background_tasks
         )
-        access_token = await AuthService.create_access_token(user)
-        ip = request.client.host if request.client else None
-        refresh_token, refresh_expires_at = await AuthService.create_refresh_token(
-            db, user.id, ip_address=ip
-        )
     except Exception:
         logger.exception("Failed to complete signup for user %s", user.id)
         raise APIError(
@@ -100,37 +94,13 @@ async def signup(
             code="internal_error",
         )
 
-    access_expires_at = datetime.now(timezone.utc) + timedelta(
-        minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
-    )
-
-    response.set_cookie(
-        key="access_token",
-        value=access_token,
-        httponly=True,
-        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        secure=True,
-        samesite="lax",
-    )
-    response.set_cookie(
-        key="refresh_token",
-        value=refresh_token,
-        httponly=True,
-        max_age=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
-        secure=True,
-        samesite="lax",
-    )
-
     return success(
         {
             "id": str(user.id),
             "email": user.email,
             "name": user.name,
             "next_step": "verify_email",
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-            "access_token_expires_at": access_expires_at.isoformat(),
-            "refresh_token_expires_at": refresh_expires_at.isoformat(),
+            "onboarding_completed": user.onboarding_completed,
         },
         message="Account created successfully",
         status_code=status.HTTP_201_CREATED,
