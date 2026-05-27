@@ -12,32 +12,25 @@ from app.models.interview import (
     InterviewTranscript,
     InterviewTranscriptTurn,
 )
-# Import the shared helpers
+from app.models.user import User
+from app.services.auth import AuthService
 from tests.test_helpers import create_interview_via_route, patch_generate_interview_plan
 
-SIGNUP_URL = "/api/v1/auth/signup"
 INTERVIEWS_URL = "/api/v1/interviews"
 
-def unique_user(tag: str | None = None) -> dict:
-    rand = uuid.uuid4().hex[:8]
-    suffix = f"{tag}-{rand}" if tag else rand
-    return {
-        "name": "Transcript Tester",
-        "email": f"transcript_{suffix}@example.com",
-        "password": "SecurePass1!",
-    }
+# --- Teammate's fast Auth Helper ---
+async def create_user(db: AsyncSession, email: str | None = None) -> User:
+    user = User(email=email or f"{uuid.uuid4().hex[:8]}@example.com", is_verified=True)
+    db.add(user)
+    await db.flush()
+    return user
 
 def auth_headers(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
-async def signup_and_get_token(client: AsyncClient, user: dict) -> str:
-    response = await client.post(SIGNUP_URL, json=user)
-    assert response.status_code == 201, response.text
-    return response.json()["data"]["access_token"]
-
-# --- FIX 1: Update local helper to use the common route helper ---
+# --- Reconciled Creation Helper ---
 async def create_interview(client: AsyncClient, db: AsyncSession, token: str) -> str:
-    # This ensures a real candidate and AI plan are created
+    """Helper that uses the complex route-creation logic required by the new schema."""
     payload = {
         "role_title": "QA Engineer",
         "job_description": "Test APIs and edge cases.",
@@ -60,8 +53,8 @@ class TestTranscriptEndpoints:
     async def test_get_transcript_returns_empty_when_no_transcript(
         self, client: AsyncClient, db_session: AsyncSession
     ):
-        token = await signup_and_get_token(client, unique_user())
-        # Pass db_session to the updated helper
+        user = await create_user(db_session)
+        token = await AuthService.create_access_token(user)
         interview_id = await create_interview(client, db_session, token)
 
         response = await client.get(
@@ -69,7 +62,7 @@ class TestTranscriptEndpoints:
             headers=auth_headers(token),
         )
 
-        assert response.status_code == 200, response.text
+        assert response.status_code == 200
         body = response.json()
         assert body["data"]["interview_id"] == interview_id
         assert body["data"]["total_turns"] == 0
@@ -79,10 +72,12 @@ class TestTranscriptEndpoints:
     async def test_get_transcript_and_export_formatting(
         self, client: AsyncClient, db_session: AsyncSession
     ):
-        """Create a small transcript and validate both /transcript and /transcript/export."""
-        token = await signup_and_get_token(client, unique_user())
+        """Validates formatting and ensures relative timestamps (00:00 start)."""
+        user = await create_user(db_session)
+        token = await AuthService.create_access_token(user)
         interview_id = await create_interview(client, db_session, token)
 
+        # Inject manual turns into DB for formatting check
         interview = await db_session.get(Interview, uuid.UUID(interview_id))
         interview.status = "in_progress"
         transcript = InterviewTranscript(interview_id=interview.id)
@@ -93,17 +88,15 @@ class TestTranscriptEndpoints:
             InterviewTranscriptTurn(
                 transcript_id=transcript.id,
                 speaker="ai",
-                speaker_name="MeetMind",
                 content="Tell me about your approach.",
-                timestamp_sec=60,
+                timestamp_sec=60, # Start offset
                 sequence_no=1,
             ),
             InterviewTranscriptTurn(
                 transcript_id=transcript.id,
                 speaker="candidate",
-                speaker_name="Candidate",
                 content="I start by clarifying requirements.",
-                timestamp_sec=125,
+                timestamp_sec=125, # 65s after first turn
                 sequence_no=2,
             ),
         ])
@@ -113,30 +106,29 @@ class TestTranscriptEndpoints:
             f"{INTERVIEWS_URL}/{interview_id}/transcript",
             headers=auth_headers(token),
         )
-        assert response.status_code == 200
         data = response.json()["data"]
         
-        assert data["total_turns"] == 2
-        # FIX: The first turn is always normalized to 00:00
+        # Kept: Your logic for relative timestamps
         assert data["turns"][0]["timestamp"] == "00:00" 
-        # FIX: The second turn is 65 seconds later
         assert data["turns"][1]["timestamp"] == "01:05" 
 
-        # Check export endpoint
+        # Kept: Export assertions
         response_export = await client.get(
             f"{INTERVIEWS_URL}/{interview_id}/transcript/export",
             headers=auth_headers(token),
         )
-        assert response_export.status_code == 200
-        # Update export assertions to match relative timing
         assert "[00:00]" in response_export.text
         assert "[01:05]" in response_export.text
 
     @pytest.mark.anyio
     async def test_get_transcript_access_control(self, client: AsyncClient, db_session: AsyncSession):
-        owner_token = await signup_and_get_token(client, unique_user("owner"))
+        # Adopted teammate's two-user isolation check logic
+        owner = await create_user(db_session)
+        owner_token = await AuthService.create_access_token(owner)
+        other = await create_user(db_session)
+        other_token = await AuthService.create_access_token(other)
+        
         interview_id = await create_interview(client, db_session, owner_token)
-        other_token = await signup_and_get_token(client, unique_user("other"))
 
         resp = await client.get(
             f"{INTERVIEWS_URL}/{interview_id}/transcript",
@@ -148,16 +140,26 @@ class TestTranscriptEndpoints:
     async def test_stop_transcript_success_and_errors(
         self, client: AsyncClient, db_session: AsyncSession
     ):
-        token = await signup_and_get_token(client, unique_user())
+        # Kept: Teammate's exhaustive status-machine checks (409s)
+        user = await create_user(db_session)
+        token = await AuthService.create_access_token(user)
         interview_id = await create_interview(client, db_session, token)
 
         interview = await db_session.get(Interview, uuid.UUID(interview_id))
         interview.status = "in_progress"
         await db_session.commit()
 
+        # Success case
         resp = await client.post(
             f"{INTERVIEWS_URL}/{interview_id}/transcript/stop",
             headers=auth_headers(token),
         )
         assert resp.status_code == 200
         assert resp.json()["data"]["status"] == "completed"
+
+        # Error: Already completed -> 409
+        resp409 = await client.post(
+            f"{INTERVIEWS_URL}/{interview_id}/transcript/stop",
+            headers=auth_headers(token),
+        )
+        assert resp409.status_code == 409

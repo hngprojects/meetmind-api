@@ -14,7 +14,7 @@ from fastapi import (
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 
-from app.api.deps import CurrentUser, DBSession
+from app.api.deps import DBSession, VerifiedUser
 from app.core.responses import APIError, success
 from app.models.document import CandidateDocument, DocumentStatus
 from app.models.workspace import WorkspaceMember
@@ -32,7 +32,7 @@ MAX_FILE_SIZE = 10 * 1024 * 1024
 @router.get("/search")
 async def search_candidates(
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: VerifiedUser,
     q: str = Query(..., min_length=1, description="Search term"),
     page: int = Query(default=1, ge=1, description="Page number"),
     page_size: int = Query(default=20, ge=1, le=100, description="Results per page"),
@@ -100,7 +100,7 @@ async def search_candidates(
 @router.get("/export")
 async def export_candidates(
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: VerifiedUser,
     q: str | None = Query(default=None, description="Optional search filter"),
 ):
 
@@ -136,7 +136,7 @@ async def export_candidates(
 @router.get("")
 async def list_candidates(
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: VerifiedUser,
     q: str | None = Query(default=None),
     status: str | None = Query(default=None),
     sort_by: str | None = Query(default="date", alias="sort_by"),
@@ -190,7 +190,7 @@ async def list_candidates(
 async def get_candidate(
     candidate_id: UUID,
     db: DBSession,
-    current_user: CurrentUser,
+    current_user: VerifiedUser,
 ):
     """
     Get a single candidate's profile.
@@ -264,7 +264,7 @@ async def get_candidate(
 
 @router.post("/upload-resume")
 async def upload_candidate_document(
-    current_user: CurrentUser,
+    current_user: VerifiedUser,
     db: DBSession,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(..., description="The document file (PDF, DOCX, TXT)"),

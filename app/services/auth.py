@@ -131,8 +131,12 @@ class AuthService:
             email=request.email,
             password_hash=hashed_password,
         )
+        if settings.MOCK_EMAILS:
+            user.is_verified = True
         db.add(user)
         await db.flush()
+        await db.commit()
+        await db.refresh(user)
         return user
 
     @staticmethod

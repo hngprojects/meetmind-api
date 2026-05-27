@@ -133,3 +133,16 @@ Usage in a protected route::
     async def get_me(user: CurrentUser):
         return success({"id": str(user.id), "email": user.email})
 """
+
+
+async def require_verified(user: CurrentUser) -> User:
+    if not user.is_verified:
+        raise APIError(
+            "Email not verified",
+            status_code=status.HTTP_403_FORBIDDEN,
+            code="email_not_verified",
+        )
+    return user
+
+
+VerifiedUser = Annotated[User, Depends(require_verified)]
