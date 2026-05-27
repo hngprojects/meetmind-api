@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Literal
+from typing import Literal, Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field, HttpUrl, field_validator
+from pydantic import BaseModel, Field, HttpUrl, field_validator, model_serializer
 
 # ── Shared validators ──────────────────────────────────────────────────────────
 
@@ -35,24 +35,69 @@ class ParticipationMode(str, Enum):
 
 # ── Request schemas ────────────────────────────────────────────────────────────
 
+class InterviewQuestionSchema(BaseModel):
+    text: str = Field(description="The actual question to ask the candidate")
+    followUpHint: str = Field(description="Guidance for the bot on what to listen for or probe further")
+    maxFollowUps: int = Field(default=2, description="Maximum number of follow-up questions for this topic")
+
+class RubricCriterion(BaseModel):
+    name: str = Field(description="The name of the skill or attribute (e.g., Python Proficiency)")
+    description: str = Field(description="What a good answer looks like")
+    weight: int = Field(default=1, description="Importance from 1 to 5")
+
+class InterviewPlanOutput(BaseModel):
+    intro: str = Field(description="A warm, professional opening greeting")
+    questions: list[InterviewQuestionSchema]
+    rubric: list[RubricCriterion]
+    closing: str = Field(description="A friendly closing statement with next steps")
+
+class CandidateProfile(BaseModel):
+    candidate_id: UUID = Field(..., description="Unique identifier for the candidate")
+    full_name: str = Field(..., min_length=1, max_length=120)
+    email: str = Field(..., description="Candidate email address")
+    phone: str = Field(..., description="Candidate phone number with country code")
+    current_role: str | None = Field(default=None, max_length=120)
+    years_of_experience: int = Field(default=0, ge=0)
+    skills: list[str] = Field(default_factory=list)
+    location: str | None = Field(default=None, max_length=100)
+    portfolio_url: str | None = Field(default=None)
+
+    @model_serializer(mode="wrap")
+    def serialize_for_db(self, handler) -> dict[str, Any]:
+        """
+        Automatically prepares Pydantic types for flat SQLAlchemy columns 
+        when calling model_dump()
+        """
+        data = handler(self)
+        
+        
+        if isinstance(data.get("skills"), list):
+            data["skills"] = ", ".join(data["skills"]) if data["skills"] else None
+            
+        # 3. Coerce HttpUrl object into a plain string so asyncpg doesn't reject it
+        if data.get("portfolio_url"):
+            data["portfolio_url"] = str(data["portfolio_url"])
+            
+        return data
+
+
 
 class CreateInterviewRequest(BaseModel):
-    candidate_name: str = Field(..., min_length=1, max_length=120)
-    platform: Literal["zoom", "google_meet"] | None = Field(default=None)
+    candidate: CandidateProfile = Field(..., description="Complete profile details of the candidate")
+    
+    platform: Literal["zoom", "google_meet", "livekit"] | None = Field(default=None)
     call_link: HttpUrl | None = Field(default=None)
     scheduled_start: datetime | None = Field(default=None)
     scheduled_end: datetime | None = Field(default=None)
-    # Kept optional for backward compat
-    title: str | None = Field(default=None, max_length=200)
-    candidate_email: str | None = Field(default=None)
+    
+    role_title: str | None = Field(default=None, max_length=200)
+    custom_question: str | None = Field(default=None, max_length=200)
     job_description: str | None = Field(default=None)
-    scoring_rubric: str | None = Field(default=None)
-    role_title: str | None = Field(default=None, max_length=120)
     ai_tone: str | None = Field(default=None, max_length=20)
     participation_mode: ParticipationMode = Field(default=ParticipationMode.standard)
-    criteria: list[str] | None = Field(default=None, max_length=10)
+    skills_to_assess: list[str] | None = Field(default=None, max_length=30)
 
-    @field_validator("criteria")
+    @field_validator("skills_to_assess")
     @classmethod
     def validate_criteria(cls, v: list[str] | None) -> list[str] | None:
         if v is None:
