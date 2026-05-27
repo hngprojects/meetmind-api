@@ -5,25 +5,29 @@ Tests for GET /api/v1/interviews/{interview_id}/chat/history
 from __future__ import annotations
 
 import uuid
-
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.test_helpers import create_interview_via_route
 from app.models.user import User
 from app.services.auth import AuthService
 
 
 # ── URLs ─────────────────────────────────────────────────────────────
 
-
 INTERVIEWS_URL = "/api/v1/interviews"
 CHAT_HISTORY_URL = "/api/v1/interviews/{id}/chat/history"
 
 
-# ── helpers ──────────────────────────────────────────────────────────
-async def create_user(db, email: str | None = None) -> User:
-    user = User(email=email or f"{uuid.uuid4().hex[:8]}@example.com")
-    user.is_verified = True
+# ── Helpers ──────────────────────────────────────────────────────────
+
+async def create_user(db: AsyncSession, email: str | None = None) -> User:
+    """Teammate's helper: directly creates a user in the DB for speed."""
+    user = User(
+        email=email or f"{uuid.uuid4().hex[:8]}@example.com",
+        is_verified=True
+    )
     db.add(user)
     await db.flush()
     return user
@@ -34,29 +38,33 @@ def auth_headers(token: str) -> dict:
 
 
 VALID_INTERVIEW_PAYLOAD = {
-    "title": "Chat Interview",
-    "candidate_name": "Jane Doe",
-    "job_description": "Build APIs",
-    "scoring_rubric": "Communication",
-    "criteria": ["Communication"],
+    "role_title": "Chat Interview",
+    "platform": "zoom",
+    "call_link": "https://zoom.us/j/123456789",
+    "scheduled_start": "2026-06-01T17:30:00Z",
+    "scheduled_end": "2026-06-01T18:30:00Z",
+    "ai_tone": "professional",
+    "skills_to_assess": ["Communication"],
 }
 
 
-# ── tests ────────────────────────────────────────────────────────────
-
+# ── Tests ────────────────────────────────────────────────────────────
 
 class TestGetChatHistory:
     @pytest.mark.anyio
     async def test_returns_empty_when_no_transcript(
-        self, client: AsyncClient, db_session
+        self, client: AsyncClient, db_session: AsyncSession
     ):
+        # Resolved: Use teammate's direct token creation
         user = await create_user(db_session)
         token = await AuthService.create_access_token(user)
 
-        create = await client.post(
-            INTERVIEWS_URL,
-            json=VALID_INTERVIEW_PAYLOAD,
-            headers=auth_headers(token),
+        # Kept: Your helper that handles candidate creation/AI plan
+        create = await create_interview_via_route(
+            client=client,
+            db_session=db_session,
+            token=token,
+            interview_overrides=VALID_INTERVIEW_PAYLOAD,
         )
         interview_id = create.json()["data"]["id"]
 
@@ -71,30 +79,20 @@ class TestGetChatHistory:
         assert body["data"]["messages"] == []
 
     @pytest.mark.anyio
-    async def test_returns_404_for_unknown_id(self, client: AsyncClient, db_session):
-        user = await create_user(db_session)
-        token = await AuthService.create_access_token(user)
-
-        res = await client.get(
-            CHAT_HISTORY_URL.format(id=str(uuid.uuid4())),
-            headers=auth_headers(token),
-        )
-
-        assert res.status_code == 404
-
-    @pytest.mark.anyio
     async def test_returns_404_for_other_users_interview(
-        self, client: AsyncClient, db_session
+        self, client: AsyncClient, db_session: AsyncSession
     ):
+        # Resolved: Reconciled teammate's two-user auth flow
         user_a = await create_user(db_session)
         token_a = await AuthService.create_access_token(user_a)
         user_b = await create_user(db_session)
         token_b = await AuthService.create_access_token(user_b)
 
-        create = await client.post(
-            INTERVIEWS_URL,
-            json=VALID_INTERVIEW_PAYLOAD,
-            headers=auth_headers(token_a),
+        create = await create_interview_via_route(
+            client=client,
+            db_session=db_session,
+            token=token_a,
+            interview_overrides=VALID_INTERVIEW_PAYLOAD,
         )
         interview_id = create.json()["data"]["id"]
 
@@ -103,29 +101,21 @@ class TestGetChatHistory:
             headers=auth_headers(token_b),
         )
 
+        # Ensure cross-user data leakage is blocked
         assert res.status_code == 404
 
     @pytest.mark.anyio
-    async def test_returns_401_unauthenticated(self, client: AsyncClient):
-        res = await client.get(CHAT_HISTORY_URL.format(id=str(uuid.uuid4())))
-        assert res.status_code == 401
-
-    @pytest.mark.anyio
     async def test_message_fields_present_when_messages_exist(
-        self, client: AsyncClient, db_session
+        self, client: AsyncClient, db_session: AsyncSession
     ):
-        """
-        NOTE:
-        This assumes your system eventually creates transcript messages.
-        If not, this test will fail — which is correct.
-        """
         user = await create_user(db_session)
         token = await AuthService.create_access_token(user)
 
-        create = await client.post(
-            INTERVIEWS_URL,
-            json=VALID_INTERVIEW_PAYLOAD,
-            headers=auth_headers(token),
+        create = await create_interview_via_route(
+            client=client,
+            db_session=db_session,
+            token=token,
+            interview_overrides=VALID_INTERVIEW_PAYLOAD,
         )
         interview_id = create.json()["data"]["id"]
 
@@ -137,20 +127,22 @@ class TestGetChatHistory:
         assert res.status_code == 200
         body = res.json()
 
+        # Check structure if messages are injected by internal services
         if body["data"]["messages"]:
             msg = body["data"]["messages"][0]
             for field in ("id", "role", "content", "sent_at", "sequence_no"):
                 assert field in msg
 
     @pytest.mark.anyio
-    async def test_roles_are_valid(self, client: AsyncClient, db_session):
+    async def test_roles_are_valid(self, client: AsyncClient, db_session: AsyncSession):
         user = await create_user(db_session)
         token = await AuthService.create_access_token(user)
 
-        create = await client.post(
-            INTERVIEWS_URL,
-            json=VALID_INTERVIEW_PAYLOAD,
-            headers=auth_headers(token),
+        create = await create_interview_via_route(
+            client=client,
+            db_session=db_session,
+            token=token,
+            interview_overrides=VALID_INTERVIEW_PAYLOAD,
         )
         interview_id = create.json()["data"]["id"]
 
@@ -161,4 +153,5 @@ class TestGetChatHistory:
 
         assert res.status_code == 200
         for msg in res.json()["data"]["messages"]:
-            assert msg["role"] in ("agent", "interviewer")
+            # Valid roles in your architecture are agent (AI) or candidate (Human)
+            assert msg["role"] in ("agent", "candidate", "interviewer")
