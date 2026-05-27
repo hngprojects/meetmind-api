@@ -3,8 +3,9 @@
 import logging
 import logging.config
 
-from app.core.config import settings
 from opentelemetry import trace
+
+from app.core.config import settings
 
 
 class OTelFormatter(logging.Formatter):
