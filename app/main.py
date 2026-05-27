@@ -24,15 +24,14 @@ from app.core.redis import redis_client
 from app.core.responses import APIError, error, success
 from app.db.session import engine
 
-# OpenTelemetry Imports
 from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.redis import RedisInstrumentor
+from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
-from opentelemetry.instrumentation.redis import RedisInstrumentor
 
 def setup_otel() -> None:
     """Initialize OpenTelemetry tracing and instrumentation."""
@@ -40,7 +39,10 @@ def setup_otel() -> None:
     provider = TracerProvider(resource=resource)
 
     # Use OTLP exporter to send spans to the collector
-    exporter = OTLPSpanExporter(endpoint=settings.OTEL_EXPORTER_OTLP_ENDPOINT, insecure=True)
+    exporter = OTLPSpanExporter(
+        endpoint=settings.OTEL_EXPORTER_OTLP_ENDPOINT,
+        insecure=True
+    )
     provider.add_span_processor(BatchSpanProcessor(exporter))
 
     trace.set_tracer_provider(provider)

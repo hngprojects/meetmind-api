@@ -3,8 +3,8 @@
 import logging
 import logging.config
 
-from opentelemetry import trace
 from app.core.config import settings
+from opentelemetry import trace
 
 
 class OTelFormatter(logging.Formatter):
@@ -39,7 +39,10 @@ def setup_logging() -> None:
             "formatters": {
                 "standard": {
                     "()": OTelFormatter,
-                    "format": "%(asctime)s [%(levelname)-8s] [%(trace_id)s-%(span_id)s] %(name)s: %(message)s",
+                    "format": (
+                        "%(asctime)s [%(levelname)-8s] [%(trace_id)s-%(span_id)s] "
+                        "%(name)s: %(message)s"
+                    ),
                     "datefmt": "%Y-%m-%dT%H:%M:%S",
                 },
             },
