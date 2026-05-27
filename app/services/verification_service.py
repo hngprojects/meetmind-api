@@ -15,6 +15,7 @@ from app.core.responses import APIError
 from app.models.email_verification import EmailVerificationToken
 from app.models.user import User
 from app.services.email_service import send_verification_email
+from app.services.interview import _get_or_create_workspace
 
 TOKEN_EXPIRY_MINUTES = 30
 
@@ -112,6 +113,7 @@ class VerificationService:
         await db.commit()
         return raw_token
 
+
     async def verify_email(self, db: AsyncSession, token: str) -> User:
         """Redeem a verification token and mark the owning user as verified.
 
@@ -166,6 +168,7 @@ class VerificationService:
             )
 
         user.is_verified = True
+        await _get_or_create_workspace(db, user)
         await db.commit()
         return user
 
