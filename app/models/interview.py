@@ -20,6 +20,10 @@ class Candidate(Base, UUIDPrimaryKey, TimestampMixin):
     avatar_initials: Mapped[str | None] = mapped_column(String(3))
     resume_url: Mapped[str | None] = mapped_column(Text)
     portfolio_url: Mapped[str | None] = mapped_column(Text)
+    location: Mapped[str | None] = mapped_column(String(120))
+    current_role: Mapped[str | None] = mapped_column(String(120))
+    years_of_experience: Mapped[int | None] = mapped_column(Integer)
+    skills: Mapped[str | None] = mapped_column(Text) # Comma separated list
 
 
 class Interview(Base, UUIDPrimaryKey, TimestampMixin):
@@ -40,6 +44,9 @@ class Interview(Base, UUIDPrimaryKey, TimestampMixin):
     )
     meeting_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("meetings.id")
+    )
+    session_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("interview_sessions.id")
     )
     role_title: Mapped[str | None] = mapped_column(String(120))
     scheduled_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
