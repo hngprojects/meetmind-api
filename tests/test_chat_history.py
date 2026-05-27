@@ -8,6 +8,9 @@ import uuid
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tests.test_helpers import create_interview_via_route
 
 # ── URLs ─────────────────────────────────────────────────────────────
 
@@ -39,11 +42,13 @@ def auth_headers(token: str) -> dict:
 
 
 VALID_INTERVIEW_PAYLOAD = {
-    "title": "Chat Interview",
-    "candidate_name": "Jane Doe",
-    "job_description": "Build APIs",
-    "scoring_rubric": "Communication",
-    "criteria": ["Communication"],
+    "role_title": "Chat Interview",
+    "platform": "zoom",
+    "call_link": "https://zoom.us/j/123456789",
+    "scheduled_start": "2026-06-01T17:30:00Z",
+    "scheduled_end": "2026-06-01T18:30:00Z",
+    "ai_tone": "professional",
+    "skills_to_assess": ["Communication"],
 }
 
 
@@ -52,13 +57,14 @@ VALID_INTERVIEW_PAYLOAD = {
 
 class TestGetChatHistory:
     @pytest.mark.anyio
-    async def test_returns_empty_when_no_transcript(self, client: AsyncClient):
+    async def test_returns_empty_when_no_transcript(self, client: AsyncClient, db_session: AsyncSession):
         token = await signup_and_get_token(client, unique_user())
 
-        create = await client.post(
-            INTERVIEWS_URL,
-            json=VALID_INTERVIEW_PAYLOAD,
-            headers=auth_headers(token),
+        create = await create_interview_via_route(
+            client=client,
+            db_session=db_session,
+            token=token,
+            interview_overrides=VALID_INTERVIEW_PAYLOAD,
         )
         interview_id = create.json()["data"]["id"]
 
@@ -84,14 +90,15 @@ class TestGetChatHistory:
         assert res.status_code == 404
 
     @pytest.mark.anyio
-    async def test_returns_404_for_other_users_interview(self, client: AsyncClient):
+    async def test_returns_404_for_other_users_interview(self, client: AsyncClient, db_session: AsyncSession):
         token_a = await signup_and_get_token(client, unique_user("a"))
         token_b = await signup_and_get_token(client, unique_user("b"))
 
-        create = await client.post(
-            INTERVIEWS_URL,
-            json=VALID_INTERVIEW_PAYLOAD,
-            headers=auth_headers(token_a),
+        create = await create_interview_via_route(
+            client=client,
+            db_session=db_session,
+            token=token_a,
+            interview_overrides=VALID_INTERVIEW_PAYLOAD,
         )
         interview_id = create.json()["data"]["id"]
 
@@ -109,7 +116,7 @@ class TestGetChatHistory:
 
     @pytest.mark.anyio
     async def test_message_fields_present_when_messages_exist(
-        self, client: AsyncClient
+        self, client: AsyncClient, db_session: AsyncSession
     ):
         """
         NOTE:
@@ -118,10 +125,11 @@ class TestGetChatHistory:
         """
         token = await signup_and_get_token(client, unique_user())
 
-        create = await client.post(
-            INTERVIEWS_URL,
-            json=VALID_INTERVIEW_PAYLOAD,
-            headers=auth_headers(token),
+        create = await create_interview_via_route(
+            client=client,
+            db_session=db_session,
+            token=token,
+            interview_overrides=VALID_INTERVIEW_PAYLOAD,
         )
         interview_id = create.json()["data"]["id"]
 
@@ -139,13 +147,14 @@ class TestGetChatHistory:
                 assert field in msg
 
     @pytest.mark.anyio
-    async def test_roles_are_valid(self, client: AsyncClient):
+    async def test_roles_are_valid(self, client: AsyncClient, db_session: AsyncSession):
         token = await signup_and_get_token(client, unique_user())
 
-        create = await client.post(
-            INTERVIEWS_URL,
-            json=VALID_INTERVIEW_PAYLOAD,
-            headers=auth_headers(token),
+        create = await create_interview_via_route(
+            client=client,
+            db_session=db_session,
+            token=token,
+            interview_overrides=VALID_INTERVIEW_PAYLOAD,
         )
         interview_id = create.json()["data"]["id"]
 

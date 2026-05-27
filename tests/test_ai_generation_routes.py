@@ -13,10 +13,14 @@ POST /api/v1/interviews/{id}/summary/generate
 from __future__ import annotations
 
 import uuid
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tests.test_helpers import create_interview_via_route
 
 SIGNUP_URL = "/api/v1/auth/signup"
 INTERVIEWS_URL = "/api/v1/interviews"
@@ -42,26 +46,26 @@ def auth_headers(token: str) -> dict:
 
 
 VALID_INTERVIEW_PAYLOAD = {
-    "title": "Backend Engineer Interview",
-    "candidate_name": "Jane Doe",
-    "candidate_email": "jane@example.com",
-    "job_description": "Build scalable APIs using FastAPI and PostgreSQL.",
-    "scoring_rubric": "Communication, API design, problem-solving, scalability.",
     "role_title": "Senior Backend Engineer",
     "platform": "zoom",
+    "call_link": "https://zoom.us/j/123456789",
+    "scheduled_start": "2026-06-01T17:30:00Z",
+    "scheduled_end": "2026-06-01T18:30:00Z",
     "ai_tone": "professional",
-    "criteria": ["Communication", "API Design", "Problem Solving"],
+    "skills_to_assess": ["Communication", "API Design", "Problem Solving"],
+    "custom_question": "Validate backend architecture thinking.",
 }
 
 
-async def create_interview(client: AsyncClient, token: str) -> str:
-    response = await client.post(
-        INTERVIEWS_URL,
-        json=VALID_INTERVIEW_PAYLOAD,
-        headers=auth_headers(token),
+async def create_interview(client: AsyncClient, db_session: AsyncSession, token: str) -> str:
+    response = await create_interview_via_route(
+        client=client,
+        db_session=db_session,
+        token=token,
+        interview_overrides=VALID_INTERVIEW_PAYLOAD,
     )
     assert response.status_code == 201
-    return response.json()["data"]["id"]
+    return str(response.json()["data"]["id"])
 
 
 MOCK_QUESTION = "What is your experience with Python?"
@@ -74,9 +78,9 @@ class TestGenerateQuestion:
     """POST /interviews/{id}/generate-question"""
 
     @pytest.mark.anyio
-    async def test_returns_question(self, client: AsyncClient):
+    async def test_returns_question(self, client: AsyncClient, db_session: AsyncSession):
         token = await signup_and_get_token(client, unique_user())
-        iid = await create_interview(client, token)
+        iid = await create_interview(client, db_session, token)
 
         with patch(
             f"{PATCH_TARGET}.generate_next_question",
@@ -105,10 +109,10 @@ class TestRespond:
 
     @pytest.mark.anyio
     async def test_records_response_and_returns_next_question(
-        self, client: AsyncClient
+        self, client: AsyncClient, db_session: AsyncSession
     ):
         token = await signup_and_get_token(client, unique_user())
-        iid = await create_interview(client, token)
+        iid = await create_interview(client, db_session, token)
 
         with patch(
             f"{PATCH_TARGET}.generate_next_question",
@@ -150,11 +154,11 @@ class TestRespond:
 
     @pytest.mark.anyio
     async def test_returns_404_for_other_users_interview(
-        self, client: AsyncClient
+        self, client: AsyncClient, db_session: AsyncSession
     ):
         token_a = await signup_and_get_token(client, unique_user("r_a"))
         token_b = await signup_and_get_token(client, unique_user("r_b"))
-        iid = await create_interview(client, token_a)
+        iid = await create_interview(client, db_session, token_a)
 
         response = await client.post(
             f"{INTERVIEWS_URL}/{iid}/respond",
@@ -165,9 +169,9 @@ class TestRespond:
         assert response.json()["error"]["code"] == "interview_not_found"
 
     @pytest.mark.anyio
-    async def test_returns_422_for_empty_content(self, client: AsyncClient):
+    async def test_returns_422_for_empty_content(self, client: AsyncClient, db_session: AsyncSession):
         token = await signup_and_get_token(client, unique_user())
-        iid = await create_interview(client, token)
+        iid = await create_interview(client, db_session, token)
 
         response = await client.post(
             f"{INTERVIEWS_URL}/{iid}/respond",
@@ -181,9 +185,9 @@ class TestComplete:
     """POST /interviews/{id}/complete"""
 
     @pytest.mark.anyio
-    async def test_marks_interview_completed(self, client: AsyncClient):
+    async def test_marks_interview_completed(self, client: AsyncClient, db_session: AsyncSession):
         token = await signup_and_get_token(client, unique_user())
-        iid = await create_interview(client, token)
+        iid = await create_interview(client, db_session, token)
 
         response = await client.post(
             f"{INTERVIEWS_URL}/{iid}/complete",
@@ -223,11 +227,11 @@ class TestComplete:
 
     @pytest.mark.anyio
     async def test_returns_404_for_other_users_interview(
-        self, client: AsyncClient
+        self, client: AsyncClient, db_session: AsyncSession
     ):
         token_a = await signup_and_get_token(client, unique_user("c_a"))
         token_b = await signup_and_get_token(client, unique_user("c_b"))
-        iid = await create_interview(client, token_a)
+        iid = await create_interview(client, db_session, token_a)
 
         response = await client.post(
             f"{INTERVIEWS_URL}/{iid}/complete",
@@ -248,9 +252,9 @@ class TestChat:
     }
 
     @pytest.mark.anyio
-    async def test_returns_chat_response(self, client: AsyncClient):
+    async def test_returns_chat_response(self, client: AsyncClient, db_session: AsyncSession):
         token = await signup_and_get_token(client, unique_user())
-        iid = await create_interview(client, token)
+        iid = await create_interview(client, db_session, token)
 
         with patch(
             f"{PATCH_TARGET}.send_chat_message",
@@ -278,9 +282,9 @@ class TestChat:
         assert response.status_code == 401
 
     @pytest.mark.anyio
-    async def test_returns_422_for_empty_query(self, client: AsyncClient):
+    async def test_returns_422_for_empty_query(self, client: AsyncClient, db_session: AsyncSession):
         token = await signup_and_get_token(client, unique_user())
-        iid = await create_interview(client, token)
+        iid = await create_interview(client, db_session, token)
 
         response = await client.post(
             f"{INTERVIEWS_URL}/{iid}/chat",
@@ -294,9 +298,9 @@ class TestSummaryGenerate:
     """POST /interviews/{id}/summary/generate"""
 
     @pytest.mark.anyio
-    async def test_returns_accepted(self, client: AsyncClient):
+    async def test_returns_accepted(self, client: AsyncClient, db_session: AsyncSession):
         token = await signup_and_get_token(client, unique_user())
-        iid = await create_interview(client, token)
+        iid = await create_interview(client, db_session, token)
 
         with patch(
             f"{PATCH_TARGET}._get_interview_or_404",
@@ -338,9 +342,9 @@ class TestSummaryRetry:
     """POST /interviews/{id}/summary/retry"""
 
     @pytest.mark.anyio
-    async def test_retries_failed_summary(self, client: AsyncClient):
+    async def test_retries_failed_summary(self, client: AsyncClient, db_session: AsyncSession):
         token = await signup_and_get_token(client, unique_user())
-        iid = await create_interview(client, token)
+        iid = await create_interview(client, db_session, token)
 
         with patch(
             "app.api.v1.routes.ai_generation.InterviewService.retry_summary",
