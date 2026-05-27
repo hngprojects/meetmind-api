@@ -149,6 +149,6 @@ def get_default_interview_plan() -> InterviewPlanOutput:
 
 def patch_generate_interview_plan():
     return patch(
-        "app.services.interview.AIGenerationService.generate_interview_plan",
+        "app.services.ai_generation_service.AIGenerationService.generate_interview_plan",
         new=AsyncMock(return_value=get_default_interview_plan()),
     )
