@@ -113,7 +113,6 @@ class VerificationService:
         await db.commit()
         return raw_token
 
-
     async def verify_email(self, db: AsyncSession, token: str) -> User:
         """Redeem a verification token and mark the owning user as verified.
 

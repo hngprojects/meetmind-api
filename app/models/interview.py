@@ -23,7 +23,7 @@ class Candidate(Base, UUIDPrimaryKey, TimestampMixin):
     location: Mapped[str | None] = mapped_column(String(120))
     current_role: Mapped[str | None] = mapped_column(String(120))
     years_of_experience: Mapped[int | None] = mapped_column(Integer)
-    skills: Mapped[str | None] = mapped_column(Text) # Comma separated list
+    skills: Mapped[str | None] = mapped_column(Text)  # Comma separated list
 
 
 class Interview(Base, UUIDPrimaryKey, TimestampMixin):

@@ -11,8 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
-from app.schemas.candidate import CandidateExtraction
 from app.models.document import CandidateDocument, DocumentChunk, DocumentStatus
+from app.schemas.candidate import CandidateExtraction
 
 
 class DocumentService:
@@ -47,7 +47,7 @@ class DocumentService:
             raise ValueError(f"Failed to parse document: {str(e)}")
 
         return text
-    
+
     @classmethod
     async def extract_candidate_info(cls, text: str) -> CandidateExtraction:
         """Uses Gemini to turn raw resume text into a structured JSON object."""
@@ -59,17 +59,17 @@ class DocumentService:
         Resume Text:
         {text}
         """
-        
+
         # We use the 'generate_content' with a response_mime_type constraint
         response = await cls._client().models.generate_content(
-            model="gemini-flash-lite-latest", # Use Flash for low latency extraction
+            model="gemini-flash-lite-latest",  # Use Flash for low latency extraction
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
-                response_schema=CandidateExtraction
-            )
+                response_schema=CandidateExtraction,
+            ),
         )
-    
+
         return CandidateExtraction.model_validate_json(response.text)
 
     @staticmethod

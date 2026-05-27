@@ -1,4 +1,3 @@
-# app/api/v1/routes/candidates.py
 import math
 from datetime import datetime, timezone
 from uuid import UUID
@@ -17,8 +16,8 @@ from sqlalchemy import select
 from app.api.deps import DBSession, VerifiedUser
 from app.core.responses import APIError, success
 from app.models.document import CandidateDocument, DocumentStatus
-from app.models.workspace import WorkspaceMember
 from app.models.interview import Candidate, Interview
+from app.models.workspace import WorkspaceMember
 from app.schemas.candidate import CandidateSearchResult
 from app.services.candidate import CandidateService
 from app.services.document_service import DocumentService
@@ -279,7 +278,7 @@ async def upload_candidate_document(
         raise APIError(
             "User is not a member of any workspace",
             status_code=status.HTTP_403_FORBIDDEN,
-            code="no_workspace_found"
+            code="no_workspace_found",
         )
     content = await file.read()
 
@@ -289,7 +288,7 @@ async def upload_candidate_document(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             code="file_too_large",
         )
-    
+
     raw_text = await DocumentService.extract_text(file.filename, content)
 
     extracted_data = await DocumentService.extract_candidate_info(raw_text)
@@ -303,7 +302,7 @@ async def upload_candidate_document(
         years_of_experience=extracted_data.years_of_experience,
         skills=", ".join(extracted_data.skills),
         location=extracted_data.location,
-        portfolio_url=extracted_data.portfolio_url
+        portfolio_url=extracted_data.portfolio_url,
     )
 
     db.add(candidate)
@@ -339,6 +338,6 @@ async def upload_candidate_document(
     return success(
         data={
             "candidate_id": candidate.id,
-            "extracted_details": extracted_data.model_dump()
+            "extracted_details": extracted_data.model_dump(),
         }
     )

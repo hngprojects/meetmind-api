@@ -5,29 +5,33 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import datetime, timezone
-from google import genai
-from google.genai import types
 
 from fastapi import status
+from google import genai
+from google.genai import types
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.responses import APIError
-from app.models.interview import Candidate, Interview, InterviewSummary, InterviewSession
+from app.models.interview import (
+    Candidate,
+    Interview,
+    InterviewSession,
+    InterviewSummary,
+)
 from app.models.scorecard import InterviewScorecard, ScorecardCategory, ScorecardScore
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.interview import (
     CreateInterviewRequest,
+    InterviewPlanOutput,
     InterviewResponse,
     InterviewSummaryResponse,
     UpdateAIConfigRequest,
     UpdateContextRequest,
     UpdateCriteriaRequest,
-    InterviewPlanOutput
 )
-from app.services.ai_generation_service import AIGenerationService
-from app.core.config import settings
 
 
 async def _get_workspace(db: AsyncSession, user: User) -> uuid.UUID | None:
@@ -194,6 +198,7 @@ def _parse_assessment(summary: InterviewSummary | None) -> dict:
 
 class InterviewService:
     """Encapsulate interview session creation and retrieval."""
+
     @classmethod
     def _client(cls):
         if not getattr(cls, "_client_instance", None):
@@ -201,7 +206,7 @@ class InterviewService:
                 api_key=settings.GEMINI_API_KEY or "dummy_key"
             ).aio
         return cls._client_instance
-    
+
     @classmethod
     async def generate_interview_plan(
         cls,
@@ -210,11 +215,11 @@ class InterviewService:
         skills_to_assess: list[str],
         custom_question: str | None = None,
     ) -> InterviewPlanOutput:
-            """
-            AI Shaping: Generates a structured interview plan (intro, questions, rubric) 
-            from raw inputs. Used during Interview Creation (T-Minus 0).
-            """
-            prompt = f"""
+        """
+        AI Shaping: Generates a structured interview plan (intro, questions, rubric)
+        from raw inputs. Used during Interview Creation (T-Minus 0).
+        """
+        prompt = f"""
 You are an expert Technical Recruiter. Your task is to design a high-quality 
 structured interview plan for the role of '{role_title}'.
 
@@ -225,7 +230,7 @@ structured interview plan for the role of '{role_title}'.
 {", ".join(skills_to_assess)}
 
 # SPECIFIC REQUESTS
-{f"Ensure you include this question/topic: {custom_question}" if custom_question else "None"}
+{f"Ensure you include this question:{custom_question}" if custom_question else "None"}
 
 # INSTRUCTIONS
 1. Design 5 specific, high-signal interview questions.
@@ -236,15 +241,15 @@ structured interview plan for the role of '{role_title}'.
 Keep all text suitable for a live audio call (concise and natural).
 """
 
-            response = await cls._client().models.generate_content(
-                model="gemini-flash-lite-latest", # Use Flash for low latency extraction
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=InterviewPlanOutput
-                )
-            )
-            return InterviewPlanOutput.model_validate_json(response.text)
+        response = await cls._client().models.generate_content(
+            model="gemini-flash-lite-latest",  # Use Flash for low latency extraction
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=InterviewPlanOutput,
+            ),
+        )
+        return InterviewPlanOutput.model_validate_json(response.text)
 
     @classmethod
     async def create_interview(
@@ -267,10 +272,10 @@ Keep all text suitable for a live audio call (concise and natural).
 
         candidate_id = request.candidate.candidate_id
         candidate = await db.get(Candidate, candidate_id)
-        
+
         if not candidate:
             raise APIError("Candidate not found", status_code=404)
-        
+
         candidate.full_name = request.candidate.full_name
         candidate.phone = request.candidate.phone
         candidate.location = request.candidate.location
@@ -279,7 +284,11 @@ Keep all text suitable for a live audio call (concise and natural).
         candidate.years_of_experience = request.candidate.years_of_experience
 
         if isinstance(request.candidate.skills, list):
-            candidate.skills = ", ".join(request.candidate.skills) if request.candidate.skills else None
+            candidate.skills = (
+                ", ".join(request.candidate.skills)
+                if request.candidate.skills
+                else None
+            )
         else:
             candidate.skills = request.candidate.skills
 
@@ -291,7 +300,7 @@ Keep all text suitable for a live audio call (concise and natural).
             role_title=request.role_title or "Candidate",
             job_description=request.job_description or "",
             skills_to_assess=request.skills_to_assess or [],
-            custom_question=request.custom_question
+            custom_question=request.custom_question,
         )
 
         session = InterviewSession(
@@ -302,7 +311,7 @@ Keep all text suitable for a live audio call (concise and natural).
             rubric_json=json.dumps([r.model_dump() for r in plan.rubric]),
             closing=plan.closing,
             duration_minutes=0,
-            status="created"
+            status="created",
         )
 
         db.add(session)
@@ -313,14 +322,14 @@ Keep all text suitable for a live audio call (concise and natural).
             candidate_id=candidate.id,
             interviewer_id=user.id,
             session_id=session.id,
-            meeting_id=None, 
+            meeting_id=None,
             role_title=request.role_title,
             scheduled_start=request.scheduled_start,
             scheduled_end=request.scheduled_end,
             platform=request.platform,
             call_link=str(request.call_link) if request.call_link else None,
             ai_tone=request.ai_tone,
-            status="scheduled", # It is ready to be joined
+            status="scheduled",  # It is ready to be joined
             participation_mode=request.participation_mode.value,
         )
         db.add(interview)
@@ -329,8 +338,10 @@ Keep all text suitable for a live audio call (concise and natural).
         summary = InterviewSummary(
             interview_id=interview.id,
             job_description=request.job_description,
-            scoring_rubric=session.rubric_json, # Mirror the rubric for easy access
-            key_skills=", ".join(request.skills_to_assess) if request.skills_to_assess else None,
+            scoring_rubric=session.rubric_json,  # Mirror the rubric for easy access
+            key_skills=", ".join(request.skills_to_assess)
+            if request.skills_to_assess
+            else None,
             custom_question=request.custom_question,
             status="pending",
         )
@@ -356,7 +367,7 @@ Keep all text suitable for a live audio call (concise and natural).
 
         return InterviewResponse(
             id=interview.id,
-            title=interview.role_title, # or role_title
+            title=interview.role_title,  # or role_title
             status=interview.status,
             role_title=interview.role_title,
             platform=interview.platform,
@@ -369,17 +380,14 @@ Keep all text suitable for a live audio call (concise and natural).
             scheduled_date=scheduled_date,
             scheduled_time=scheduled_time,
             duration=interview.duration_min or 20,
-            
             # Progress counters start at 0
             questions_asked=0,
-            questions_total=len(json.loads(session.questions_json)), # From AI Plan
+            questions_total=len(json.loads(session.questions_json)),  # From AI Plan
             question_progress="0%",
             rating=None,
-            
             # Technical fields
             participation_mode=request.participation_mode,
             session_phase="pre_interview",
-            
             # Post-interview placeholders (currently empty)
             summary=summary_resp,
             custom_question=summary.custom_question,
@@ -390,7 +398,6 @@ Keep all text suitable for a live audio call (concise and natural).
             red_flags=[],
             created_at=interview.created_at,
         )
-
 
     @staticmethod
     async def get_interview(
@@ -424,7 +431,6 @@ Keep all text suitable for a live audio call (concise and natural).
         )
         summary = summary_result.scalar_one_or_none()
 
-        criteria = await _fetch_criteria(db, interview.id)
         meta = _derive_interview_meta(interview)
         assessment = _parse_assessment(summary)
 
@@ -451,14 +457,20 @@ Keep all text suitable for a live audio call (concise and natural).
                 scoring_rubric=summary.scoring_rubric if summary else None,
                 ai_assessment=assessment.get("observation"),
                 status=summary.status if summary else None,
-                key_skills=summary.key_skills if summary else None, 
-            ) if summary else None,
+                key_skills=summary.key_skills if summary else None,
+            )
+            if summary
+            else None,
             custom_question=summary.custom_question if summary else None,
             observation=assessment.get("observation"),
             highlights=assessment.get("highlights", []),
             red_flags=assessment.get("red_flags", []),
-            criteria=[s.strip() for s in summary.key_skills.split(",")] if summary and summary.key_skills else [],
-            key_skills=[s.strip() for s in summary.key_skills.split(",")] if summary and summary.key_skills else [],
+            criteria=[s.strip() for s in summary.key_skills.split(",")]
+            if summary and summary.key_skills
+            else [],
+            key_skills=[s.strip() for s in summary.key_skills.split(",")]
+            if summary and summary.key_skills
+            else [],
             created_at=interview.created_at,
             **meta,
         )
@@ -511,7 +523,9 @@ Keep all text suitable for a live audio call (concise and natural).
         workspace_id = interview.workspace_id
 
         summary_result = await db.execute(
-            select(InterviewSummary).where(InterviewSummary.interview_id == interview.id)
+            select(InterviewSummary).where(
+                InterviewSummary.interview_id == interview.id
+            )
         )
         summary = summary_result.scalar_one_or_none()
         if summary:
@@ -564,9 +578,11 @@ Keep all text suitable for a live audio call (concise and natural).
                 status_code=status.HTTP_404_NOT_FOUND,
                 code="interview_not_found",
             )
-    
+
         if interview.status not in ["draft", "scheduled"]:
-            raise APIError("Cannot update an active or completed interview", status_code=400)
+            raise APIError(
+                "Cannot update an active or completed interview", status_code=400
+            )
 
         if interview.role_title is None and request.role_title:
             interview.role_title = request.role_title
@@ -616,9 +632,11 @@ Keep all text suitable for a live audio call (concise and natural).
                 status_code=status.HTTP_404_NOT_FOUND,
                 code="interview_not_found",
             )
-        
+
         if interview.status not in ["draft", "scheduled"]:
-            raise APIError("Cannot update an active or completed interview", status_code=400)
+            raise APIError(
+                "Cannot update an active or completed interview", status_code=400
+            )
 
         if request.participation_mode:
             interview.participation_mode = request.participation_mode

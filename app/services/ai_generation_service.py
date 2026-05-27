@@ -553,7 +553,7 @@ class AIGenerationService:
             "sent_at": datetime.now(timezone.utc),
             "sequence_no": real_next_seq + 1,
         }
-    
+
     @classmethod
     async def generate_interview_plan(
         cls,
@@ -562,11 +562,11 @@ class AIGenerationService:
         skills_to_assess: list[str],
         custom_question: str | None = None,
     ) -> InterviewPlanOutput:
-            """
-            AI Shaping: Generates a structured interview plan (intro, questions, rubric) 
-            from raw inputs. Used during Interview Creation (T-Minus 0).
-            """
-            system_instruction = dedent(f"""
+        """
+        AI Shaping: Generates a structured interview plan (intro, questions, rubric)
+        from raw inputs. Used during Interview Creation (T-Minus 0).
+        """
+        system_instruction = dedent(f"""
 You are an expert Technical Recruiter. Your task is to design a high-quality 
 structured interview plan for the role of '{role_title}'.
 
@@ -588,13 +588,13 @@ structured interview plan for the role of '{role_title}'.
 Keep all text suitable for a live audio call (concise and natural).
             """).strip()
 
-            result_dict = await generate_structured_output(
-                system_instruction=system_instruction,
-                user_content="Generate the complete interview plan based on the provided context.",
-                output_schema=InterviewPlanOutput,
-                temperature=0.7,
-                max_tokens=2000,
-            )
+        result_dict = await generate_structured_output(
+            system_instruction=system_instruction,
+            user_content="Generate the complete interview plan based on the provided context.",
+            output_schema=InterviewPlanOutput,
+            temperature=0.7,
+            max_tokens=2000,
+        )
 
-            # result_dict is already a dict or Pydantic model depending on your provider implementation
-            return InterviewPlanOutput.model_validate(result_dict)
+        # result_dict is already a dict or Pydantic model depending on your provider implementation
+        return InterviewPlanOutput.model_validate(result_dict)
