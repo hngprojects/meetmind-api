@@ -3,7 +3,23 @@
 import logging
 import logging.config
 
+from opentelemetry import trace
 from app.core.config import settings
+
+
+class OTelFormatter(logging.Formatter):
+    """Injects trace_id and span_id into log records if available."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        span = trace.get_current_span()
+        if span and span.get_span_context().is_valid:
+            ctx = span.get_span_context()
+            record.trace_id = format(ctx.trace_id, "032x")
+            record.span_id = format(ctx.span_id, "016x")
+        else:
+            record.trace_id = "0" * 32
+            record.span_id = "0" * 16
+        return super().format(record)
 
 
 def setup_logging() -> None:
@@ -22,7 +38,8 @@ def setup_logging() -> None:
             "disable_existing_loggers": False,
             "formatters": {
                 "standard": {
-                    "format": "%(asctime)s [%(levelname)-8s] %(name)s: %(message)s",
+                    "()": OTelFormatter,
+                    "format": "%(asctime)s [%(levelname)-8s] [%(trace_id)s-%(span_id)s] %(name)s: %(message)s",
                     "datefmt": "%Y-%m-%dT%H:%M:%S",
                 },
             },

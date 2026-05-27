@@ -24,7 +24,29 @@ from app.core.redis import redis_client
 from app.core.responses import APIError, error, success
 from app.db.session import engine
 
+# OpenTelemetry Imports
+from opentelemetry import trace
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+from opentelemetry.instrumentation.redis import RedisInstrumentor
+
+def setup_otel() -> None:
+    """Initialize OpenTelemetry tracing and instrumentation."""
+    resource = Resource.create({"service.name": settings.OTEL_SERVICE_NAME})
+    provider = TracerProvider(resource=resource)
+
+    # Use OTLP exporter to send spans to the collector
+    exporter = OTLPSpanExporter(endpoint=settings.OTEL_EXPORTER_OTLP_ENDPOINT, insecure=True)
+    provider.add_span_processor(BatchSpanProcessor(exporter))
+
+    trace.set_tracer_provider(provider)
+
 setup_logging()
+setup_otel()
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +62,11 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
 app.state.limiter = limiter
+
+# Instrument the application
+FastAPIInstrumentor.instrument_app(app)
+SQLAlchemyInstrumentor().instrument()
+RedisInstrumentor().instrument()
 
 app.add_middleware(
     CORSMiddleware,
