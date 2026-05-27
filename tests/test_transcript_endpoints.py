@@ -13,30 +13,22 @@ from app.models.interview import (
     InterviewTranscript,
     InterviewTranscriptTurn,
 )
+from app.models.user import User
+from app.services.auth import AuthService
 
-SIGNUP_URL = "/api/v1/auth/signup"
+
 INTERVIEWS_URL = "/api/v1/interviews"
 
 
-def unique_user(tag: str | None = None) -> dict:
-    # Always include a short random suffix to avoid collisions across tests
-    rand = uuid.uuid4().hex[:8]
-    suffix = f"{tag}-{rand}" if tag else rand
-    return {
-        "name": "Transcript Tester",
-        "email": f"transcript_{suffix}@example.com",
-        "password": "SecurePass1!",
-    }
+async def create_user(db, email: str | None = None) -> User:
+    user = User(email=email or f"{uuid.uuid4().hex[:8]}@example.com", is_verified=True)
+    db.add(user)
+    await db.flush()
+    return user
 
 
 def auth_headers(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
-
-
-async def signup_and_get_token(client: AsyncClient, user: dict) -> str:
-    response = await client.post(SIGNUP_URL, json=user)
-    assert response.status_code == 201, response.text
-    return response.json()["data"]["access_token"]
 
 
 async def create_interview(client: AsyncClient, token: str) -> str:
@@ -63,9 +55,10 @@ async def create_interview(client: AsyncClient, token: str) -> str:
 class TestTranscriptEndpoints:
     @pytest.mark.anyio
     async def test_get_transcript_returns_empty_when_no_transcript(
-        self, client: AsyncClient
+        self, client: AsyncClient, db_session
     ):
-        token = await signup_and_get_token(client, unique_user())
+        user = await create_user(db_session)
+        token = await AuthService.create_access_token(user)
         interview_id = await create_interview(client, token)
 
         response = await client.get(
@@ -84,7 +77,8 @@ class TestTranscriptEndpoints:
         self, client: AsyncClient, db_session: AsyncSession
     ):
         """Create a small transcript and validate both /transcript and /transcript/export."""
-        token = await signup_and_get_token(client, unique_user())
+        user = await create_user(db_session)
+        token = await AuthService.create_access_token(user)
         interview_id = await create_interview(client, token)
 
         # Update interview status and add transcript turns without starting a nested transaction
@@ -137,14 +131,19 @@ class TestTranscriptEndpoints:
             f"attachment; filename=transcript_{interview_id}.txt"
         )
         assert "[00:00] Meet Mind: Tell me about your approach." in response_export.text
-        assert "[01:05] Candidate: I start by clarifying requirements." in response_export.text
+        assert (
+            "[01:05] Candidate: I start by clarifying requirements."
+            in response_export.text
+        )
 
     @pytest.mark.anyio
-    async def test_get_transcript_access_control(self, client: AsyncClient):
+    async def test_get_transcript_access_control(self, client: AsyncClient, db_session):
         # Non-owner should get 404
-        owner_token = await signup_and_get_token(client, unique_user("owner"))
+        owner = await create_user(db_session)
+        owner_token = await AuthService.create_access_token(owner)
+        other = await create_user(db_session)
+        other_token = await AuthService.create_access_token(other)
         interview_id = await create_interview(client, owner_token)
-        other_token = await signup_and_get_token(client, unique_user("other"))
 
         resp = await client.get(
             f"{INTERVIEWS_URL}/{interview_id}/transcript",
@@ -164,7 +163,8 @@ class TestTranscriptEndpoints:
         self, client: AsyncClient, db_session: AsyncSession
     ):
         # Success case: in_progress -> completed
-        token = await signup_and_get_token(client, unique_user())
+        user = await create_user(db_session)
+        token = await AuthService.create_access_token(user)
         interview_id = await create_interview(client, token)
 
         interview = await db_session.get(Interview, uuid.UUID(interview_id))
@@ -199,9 +199,11 @@ class TestTranscriptEndpoints:
         assert resp409b.status_code == 409, resp409b.text
 
         # Non-owner -> 404
-        owner_token = await signup_and_get_token(client, unique_user("owner"))
+        owner = await create_user(db_session)
+        owner_token = await AuthService.create_access_token(owner)
         new_interview = await create_interview(client, owner_token)
-        other_token = await signup_and_get_token(client, unique_user("other"))
+        other = await create_user(db_session)
+        other_token = await AuthService.create_access_token(other)
         resp404 = await client.post(
             f"{INTERVIEWS_URL}/{new_interview}/transcript/stop",
             headers=auth_headers(other_token),

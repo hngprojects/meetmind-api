@@ -663,9 +663,12 @@ class TestDocumentProcessing:
 
         assert doc.status == DocumentStatus.FAILED
 
+
 class TestListCandidates:
     @pytest.mark.anyio
-    async def test_list_candidates_returns_200_with_valid_request(self, client, db_session):
+    async def test_list_candidates_returns_200_with_valid_request(
+        self, client, db_session
+    ):
         from app.services.auth import AuthService
 
         user, _ = await create_user_with_workspace(db_session)
@@ -689,7 +692,9 @@ class TestListCandidates:
 
         user, workspace = await create_user_with_workspace(db_session)
         token = await AuthService.create_access_token(user)
-        candidate = await create_candidate(db_session, workspace.id, "Filter Test", "filter@test.com")
+        candidate = await create_candidate(
+            db_session, workspace.id, "Filter Test", "filter@test.com"
+        )
 
         interview = Interview(
             workspace_id=workspace.id,
@@ -716,8 +721,12 @@ class TestListCandidates:
 
         user, workspace = await create_user_with_workspace(db_session)
         token = await AuthService.create_access_token(user)
-        await create_candidate(db_session, workspace.id, "Searchable Name", "search@test.com")
-        await create_candidate(db_session, workspace.id, "Other Person", "other@test.com")
+        await create_candidate(
+            db_session, workspace.id, "Searchable Name", "search@test.com"
+        )
+        await create_candidate(
+            db_session, workspace.id, "Other Person", "other@test.com"
+        )
 
         response = await client.get(
             "/api/v1/candidates",
@@ -731,7 +740,9 @@ class TestListCandidates:
         assert any("Searchable" in c["name"] for c in data)
 
     @pytest.mark.anyio
-    async def test_list_candidates_returns_empty_when_no_match(self, client, db_session):
+    async def test_list_candidates_returns_empty_when_no_match(
+        self, client, db_session
+    ):
         from app.services.auth import AuthService
 
         user, workspace = await create_user_with_workspace(db_session)

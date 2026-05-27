@@ -5,7 +5,7 @@ import uuid
 from fastapi import APIRouter, BackgroundTasks, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import CurrentUser
+from app.api.deps import VerifiedUser
 from app.core.responses import success
 from app.db.session import get_session
 from app.schemas.chat import AskRequest, RespondRequest
@@ -18,7 +18,7 @@ router = APIRouter()
 @router.post("/{interview_id}/generate-question")
 async def generate_question(
     interview_id: uuid.UUID,
-    user: CurrentUser,
+    user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
 ):
     question = await AIGenerationService.generate_next_question(
@@ -37,7 +37,7 @@ async def generate_question(
 async def respond_to_question(
     interview_id: uuid.UUID,
     payload: RespondRequest,
-    user: CurrentUser,
+    user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
 ):
     next_question = await AIGenerationService.record_response(
@@ -53,7 +53,7 @@ async def respond_to_question(
 async def complete_interview(
     interview_id: uuid.UUID,
     background_tasks: BackgroundTasks,
-    user: CurrentUser,
+    user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
 ):
     await AIGenerationService.complete_interview(
@@ -75,7 +75,7 @@ async def complete_interview(
 async def ask_question(
     interview_id: uuid.UUID,
     payload: AskRequest,
-    user: CurrentUser,
+    user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
 ):
     result = await AIGenerationService.send_chat_message(
@@ -90,7 +90,7 @@ async def ask_question(
 @router.post("/{interview_id}/summary/retry", status_code=status.HTTP_200_OK)
 async def retry_interview_summary(
     interview_id: uuid.UUID,
-    user: CurrentUser,
+    user: VerifiedUser,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_session),
 ):
@@ -106,7 +106,7 @@ async def retry_interview_summary(
 async def generate_interview_summary(
     interview_id: uuid.UUID,
     background_tasks: BackgroundTasks,
-    user: CurrentUser,
+    user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
 ):
     await AIGenerationService._get_interview_or_404(interview_id, user, db)

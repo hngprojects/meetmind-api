@@ -18,9 +18,9 @@ for _mod in ("pdfplumber", "docx"):
 # langchain_text_splitters needs to behave like the real module so tests in
 # other files (e.g. test_candidates.py) don't break.
 _lts = MagicMock()
-_lts.RecursiveCharacterTextSplitter.return_value.split_text.side_effect = (
-    lambda text: [text]
-)
+_lts.RecursiveCharacterTextSplitter.return_value.split_text.side_effect = lambda text: [
+    text
+]
 if "langchain_text_splitters" not in sys.modules:
     sys.modules["langchain_text_splitters"] = _lts
 
@@ -43,7 +43,7 @@ from app.services.ai_generation_service import AIGenerationService
 
 
 async def create_user(db, email: str | None = None) -> User:
-    user = User(email=email or f"{uuid.uuid4().hex[:8]}@example.com")
+    user = User(email=email or f"{uuid.uuid4().hex[:8]}@example.com", is_verified=True)
     db.add(user)
     await db.flush()
     return user
@@ -115,9 +115,7 @@ def _mock_async_session_local():
 
 RETRIEVE_PATCH = patch(
     "app.services.ai_generation_service.InterviewContextService.retrieve_relevant_chunks",
-    new=AsyncMock(
-        return_value=["Mocked candidate context from resume."]
-    ),
+    new=AsyncMock(return_value=["Mocked candidate context from resume."]),
 )
 
 
@@ -129,9 +127,12 @@ class TestGenerateNextQuestion:
         interview = await create_interview(db_session, candidate, user, ws)
         await create_summary(db_session, interview)
 
-        with RETRIEVE_PATCH, patch(
-            "app.services.ai_generation_service.generate_text",
-            new=AsyncMock(return_value="What is your experience with Python?"),
+        with (
+            RETRIEVE_PATCH,
+            patch(
+                "app.services.ai_generation_service.generate_text",
+                new=AsyncMock(return_value="What is your experience with Python?"),
+            ),
         ):
             question = await AIGenerationService.generate_next_question(
                 interview_id=interview.id,
@@ -148,9 +149,12 @@ class TestGenerateNextQuestion:
         interview = await create_interview(db_session, candidate, user, ws)
         await create_summary(db_session, interview)
 
-        with RETRIEVE_PATCH, patch(
-            "app.services.ai_generation_service.generate_text",
-            new=AsyncMock(return_value="Tell me about your background."),
+        with (
+            RETRIEVE_PATCH,
+            patch(
+                "app.services.ai_generation_service.generate_text",
+                new=AsyncMock(return_value="Tell me about your background."),
+            ),
         ):
             await AIGenerationService.generate_next_question(
                 interview_id=interview.id,
@@ -160,20 +164,24 @@ class TestGenerateNextQuestion:
 
         transcript = (
             await db_session.execute(
-                __import__("sqlalchemy").select(InterviewTranscript).where(
-                    InterviewTranscript.interview_id == interview.id
-                )
+                __import__("sqlalchemy")
+                .select(InterviewTranscript)
+                .where(InterviewTranscript.interview_id == interview.id)
             )
         ).scalar_one_or_none()
         assert transcript is not None
 
         turn = (
-            await db_session.execute(
-                __import__("sqlalchemy").select(InterviewTranscriptTurn).where(
-                    InterviewTranscriptTurn.transcript_id == transcript.id
+            (
+                await db_session.execute(
+                    __import__("sqlalchemy")
+                    .select(InterviewTranscriptTurn)
+                    .where(InterviewTranscriptTurn.transcript_id == transcript.id)
                 )
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         assert turn is not None
         assert turn.speaker == "ai"
         assert turn.content == "Tell me about your background."
@@ -250,28 +258,28 @@ class TestGenerateAssessment:
         interview = await create_interview(db_session, candidate, user, ws)
         summary = await create_summary(db_session, interview)
 
-        transcript = InterviewTranscript(
-            interview_id=interview.id, status="completed"
-        )
+        transcript = InterviewTranscript(interview_id=interview.id, status="completed")
         db_session.add(transcript)
         await db_session.flush()
 
-        db_session.add_all([
-            InterviewTranscriptTurn(
-                transcript_id=transcript.id,
-                speaker="ai",
-                content="Tell me about yourself.",
-                sequence_no=1,
-                is_ai_question=True,
-            ),
-            InterviewTranscriptTurn(
-                transcript_id=transcript.id,
-                speaker="candidate",
-                content="I have 5 years of Python experience.",
-                sequence_no=2,
-                is_ai_question=False,
-            ),
-        ])
+        db_session.add_all(
+            [
+                InterviewTranscriptTurn(
+                    transcript_id=transcript.id,
+                    speaker="ai",
+                    content="Tell me about yourself.",
+                    sequence_no=1,
+                    is_ai_question=True,
+                ),
+                InterviewTranscriptTurn(
+                    transcript_id=transcript.id,
+                    speaker="candidate",
+                    content="I have 5 years of Python experience.",
+                    sequence_no=2,
+                    is_ai_question=False,
+                ),
+            ]
+        )
         await db_session.flush()
 
         mock_assessment = {
@@ -280,9 +288,12 @@ class TestGenerateAssessment:
             "red_flags": [],
         }
 
-        with RETRIEVE_PATCH, patch(
-            "app.services.ai_generation_service.generate_structured_output",
-            new=AsyncMock(return_value=mock_assessment),
+        with (
+            RETRIEVE_PATCH,
+            patch(
+                "app.services.ai_generation_service.generate_structured_output",
+                new=AsyncMock(return_value=mock_assessment),
+            ),
         ):
             await AIGenerationService.generate_assessment(
                 interview_id=interview.id,
@@ -296,7 +307,9 @@ class TestGenerateAssessment:
         assert parsed["highlights"] == ["Clear communication"]
         assert parsed["red_flags"] == []
 
-    async def test_marks_failed_if_no_job_description(self, db_session, _mock_async_session_local):
+    async def test_marks_failed_if_no_job_description(
+        self, db_session, _mock_async_session_local
+    ):
         _mock_async_session_local.return_value.__aenter__.return_value = db_session
 
         user = await create_user(db_session)
@@ -315,7 +328,9 @@ class TestGenerateAssessment:
         assert summary.status == "failed"
         assert summary.ai_assessment is None
 
-    async def test_marks_failed_on_api_error(self, db_session, _mock_async_session_local):
+    async def test_marks_failed_on_api_error(
+        self, db_session, _mock_async_session_local
+    ):
         _mock_async_session_local.return_value.__aenter__.return_value = db_session
 
         user = await create_user(db_session)
@@ -324,9 +339,12 @@ class TestGenerateAssessment:
         interview = await create_interview(db_session, candidate, user, ws)
         summary = await create_summary(db_session, interview)
 
-        with RETRIEVE_PATCH, patch(
-            "app.services.ai_generation_service.generate_text",
-            new=AsyncMock(side_effect=RuntimeError("API down")),
+        with (
+            RETRIEVE_PATCH,
+            patch(
+                "app.services.ai_generation_service.generate_text",
+                new=AsyncMock(side_effect=RuntimeError("API down")),
+            ),
         ):
             await AIGenerationService.generate_assessment(
                 interview_id=interview.id,
@@ -334,8 +352,10 @@ class TestGenerateAssessment:
 
         await db_session.refresh(summary)
         assert summary.status == "failed"
-    
-    async def test_generates_from_transcript_turns(self, db_session, _mock_async_session_local):
+
+    async def test_generates_from_transcript_turns(
+        self, db_session, _mock_async_session_local
+    ):
         _mock_async_session_local.return_value.__aenter__.return_value = db_session
 
         user = await create_user(db_session)
@@ -344,9 +364,7 @@ class TestGenerateAssessment:
         interview = await create_interview(db_session, candidate, user, ws)
         summary = await create_summary(db_session, interview)
 
-        transcript = InterviewTranscript(
-            interview_id=interview.id, status="completed"
-        )
+        transcript = InterviewTranscript(interview_id=interview.id, status="completed")
         db_session.add(transcript)
         await db_session.flush()
 
@@ -373,9 +391,12 @@ class TestGenerateAssessment:
             "red_flags": [],
         }
 
-        with RETRIEVE_PATCH, patch(
-            "app.services.ai_generation_service.generate_structured_output",
-            new=AsyncMock(return_value=mock_assessment),
+        with (
+            RETRIEVE_PATCH,
+            patch(
+                "app.services.ai_generation_service.generate_structured_output",
+                new=AsyncMock(return_value=mock_assessment),
+            ),
         ):
             await AIGenerationService.generate_assessment(
                 interview_id=interview.id,
@@ -467,9 +488,12 @@ class TestRecordResponse:
         interview = await create_interview(db_session, candidate, user, ws)
         await create_summary(db_session, interview)
 
-        with RETRIEVE_PATCH, patch(
-            "app.services.ai_generation_service.generate_text",
-            new=AsyncMock(return_value="What is your experience with Python?"),
+        with (
+            RETRIEVE_PATCH,
+            patch(
+                "app.services.ai_generation_service.generate_text",
+                new=AsyncMock(return_value="What is your experience with Python?"),
+            ),
         ):
             result = await AIGenerationService.record_response(
                 interview_id=interview.id,
@@ -491,12 +515,16 @@ class TestRecordResponse:
         assert transcript is not None
 
         turn = (
-            await db_session.execute(
-                select(InterviewTranscriptTurn).where(
-                    InterviewTranscriptTurn.transcript_id == transcript.id
+            (
+                await db_session.execute(
+                    select(InterviewTranscriptTurn).where(
+                        InterviewTranscriptTurn.transcript_id == transcript.id
+                    )
                 )
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         assert turn is not None
         assert turn.speaker == "candidate"
         assert turn.content == "I have 5 years of experience."
@@ -599,7 +627,9 @@ class TestSendChatMessage:
 
         with patch(
             "app.services.ai_generation_service.generate_text",
-            new=AsyncMock(return_value="The candidate showed strong problem-solving skills."),
+            new=AsyncMock(
+                return_value="The candidate showed strong problem-solving skills."
+            ),
         ):
             result = await AIGenerationService.send_chat_message(
                 interview_id=interview.id,
