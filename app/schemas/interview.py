@@ -7,7 +7,7 @@ from enum import Enum
 from typing import Literal, Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field, HttpUrl, field_validator, model_serializer
+from pydantic import BaseModel, Field, HttpUrl, field_validator, model_serializer, model_validator
 
 # ── Shared validators ──────────────────────────────────────────────────────────
 
@@ -95,7 +95,7 @@ class CreateInterviewRequest(BaseModel):
     job_description: str | None = Field(default=None)
     ai_tone: str | None = Field(default=None, max_length=20)
     participation_mode: ParticipationMode = Field(default=ParticipationMode.standard)
-    skills_to_assess: list[str] | None = Field(default=None, max_length=30)
+    skills_to_assess: list[str] | None = Field(default=None, max_length=10)
 
     @field_validator("skills_to_assess")
     @classmethod
@@ -143,6 +143,9 @@ class InterviewSummaryResponse(BaseModel):
     scoring_rubric: str | None
     ai_assessment: str | None
     status: str | None
+    key_skills: str | None = None
+    
+    model_config = {"from_attributes": True}
 
 
 class InterviewResponse(BaseModel):
@@ -175,8 +178,25 @@ class InterviewResponse(BaseModel):
     observation: str | None = None
     highlights: list[str] = []
     red_flags: list[str] = []
-    criteria: list[str] | None = Field(default=None)
+    criteria: list[str] = []
     created_at: datetime | None
+
+    @model_validator(mode="after")
+    def sync_criteria_from_summary(self) -> "InterviewResponse":
+        """
+        Post-initialization: Sync the flat string from the DB summary 
+        into the list fields expected by the UI and tests.
+        """
+        if self.summary and self.summary.key_skills:
+            # Split "Skill A, Skill B" -> ["Skill A", "Skill B"]
+            skills_list = [
+                s.strip() 
+                for s in self.summary.key_skills.split(",") 
+                if s.strip()
+            ]
+            self.criteria = skills_list
+            self.key_skills = skills_list
+        return self
 
     model_config = {"from_attributes": True}
 

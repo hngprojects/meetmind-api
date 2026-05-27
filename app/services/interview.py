@@ -252,7 +252,7 @@ Keep all text suitable for a live audio call (concise and natural).
         request: CreateInterviewRequest,
         db: AsyncSession,
         user: User,
-    ) -> dict:
+    ) -> InterviewResponse:
         """
         Standardized creation flow:
         1. Resolve Workspace.
@@ -263,18 +263,8 @@ Keep all text suitable for a live audio call (concise and natural).
         6. Create InterviewSummary (Result Placeholder).
         """
         # 1. Resolve Workspace
-        workspace_query = select(WorkspaceMember.workspace_id).where(
-            WorkspaceMember.user_id == user.id
-        )
-        workspace_res = await db.execute(workspace_query)
-        workspace_id = workspace_res.scalar_one_or_none()
+        workspace_id = await _get_or_create_workspace(db, user)
 
-        if not workspace_id:
-            raise APIError("No active workspace found for user", status_code=403)
-
-        # 2. Verify/Update Candidate
-        # Since the candidate was created during resume upload, we ensure the 
-        # record reflects any manual edits the user made in the FE form.
         candidate_id = request.candidate.candidate_id
         candidate = await db.get(Candidate, candidate_id)
         
@@ -287,7 +277,7 @@ Keep all text suitable for a live audio call (concise and natural).
         candidate.email = request.candidate.email
         candidate.current_role = request.candidate.current_role
         candidate.years_of_experience = request.candidate.years_of_experience
-        
+
         if isinstance(request.candidate.skills, list):
             candidate.skills = ", ".join(request.candidate.skills) if request.candidate.skills else None
         else:
@@ -347,6 +337,7 @@ Keep all text suitable for a live audio call (concise and natural).
         db.add(summary)
 
         await db.commit()
+        await db.refresh(interview)
 
         scheduled_date = None
         scheduled_time = None
@@ -460,17 +451,14 @@ Keep all text suitable for a live audio call (concise and natural).
                 scoring_rubric=summary.scoring_rubric if summary else None,
                 ai_assessment=assessment.get("observation"),
                 status=summary.status if summary else None,
-            )
-            if summary
-            else None,
+                key_skills=summary.key_skills if summary else None, 
+            ) if summary else None,
             custom_question=summary.custom_question if summary else None,
-            key_skills=summary.key_skills.split(",")
-            if summary and summary.key_skills
-            else [],
             observation=assessment.get("observation"),
             highlights=assessment.get("highlights", []),
             red_flags=assessment.get("red_flags", []),
-            criteria=criteria,
+            criteria=[s.strip() for s in summary.key_skills.split(",")] if summary and summary.key_skills else [],
+            key_skills=[s.strip() for s in summary.key_skills.split(",")] if summary and summary.key_skills else [],
             created_at=interview.created_at,
             **meta,
         )
@@ -512,7 +500,7 @@ Keep all text suitable for a live audio call (concise and natural).
                 code="interview_not_found",
             )
 
-        if interview.status != "draft":
+        if interview.status not in ["draft", "scheduled"]:
             raise APIError(
                 "Criteria can only be updated for draft interviews",
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -521,6 +509,13 @@ Keep all text suitable for a live audio call (concise and natural).
 
         # Resolve workspace
         workspace_id = interview.workspace_id
+
+        summary_result = await db.execute(
+            select(InterviewSummary).where(InterviewSummary.interview_id == interview.id)
+        )
+        summary = summary_result.scalar_one_or_none()
+        if summary:
+            summary.key_skills = ", ".join(request.criteria)
 
         # Get or create scorecard
         sc_result = await db.execute(
@@ -569,6 +564,9 @@ Keep all text suitable for a live audio call (concise and natural).
                 status_code=status.HTTP_404_NOT_FOUND,
                 code="interview_not_found",
             )
+    
+        if interview.status not in ["draft", "scheduled"]:
+            raise APIError("Cannot update an active or completed interview", status_code=400)
 
         if interview.role_title is None and request.role_title:
             interview.role_title = request.role_title
@@ -618,6 +616,9 @@ Keep all text suitable for a live audio call (concise and natural).
                 status_code=status.HTTP_404_NOT_FOUND,
                 code="interview_not_found",
             )
+        
+        if interview.status not in ["draft", "scheduled"]:
+            raise APIError("Cannot update an active or completed interview", status_code=400)
 
         if request.participation_mode:
             interview.participation_mode = request.participation_mode
@@ -660,11 +661,11 @@ Keep all text suitable for a live audio call (concise and natural).
             )
 
         if interview.status == "scheduled":
-            raise APIError(
-                "Interview already confirmed",
-                status_code=status.HTTP_409_CONFLICT,
-                code="already_confirmed",
-            )
+            return {
+                "interview_id": str(interview.id),
+                "status": interview.status,
+                "confirmed_at": interview.updated_at,
+            }
 
         if interview.status in ("cancelled", "completed"):
             raise APIError(
