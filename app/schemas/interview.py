@@ -227,6 +227,10 @@ class InterviewListItem(BaseModel):
     scheduled_start: datetime | None
     scheduled_time: str | None = None
     participation_mode: str | None
+    avatar_initials: str | None = None
+    avatar_color: str | None = None
+    candidate_email: str | None = None
+    time_display: str | None = None
     created_at: datetime | None
 
     model_config = {"from_attributes": True}

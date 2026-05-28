@@ -799,7 +799,7 @@ Keep all text suitable for a live audio call (concise and natural).
         total = count_result.scalar() or 0
 
         result = await db.execute(
-            select(Interview, Candidate.full_name)
+            select(Interview, Candidate.full_name, Candidate.email)
             .outerjoin(Candidate, Candidate.id == Interview.candidate_id)
             .where(*filters)
             .order_by(Interview.created_at.desc())

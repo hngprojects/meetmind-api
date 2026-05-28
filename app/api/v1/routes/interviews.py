@@ -9,6 +9,8 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import VerifiedUser
+from app.core.avatar import avatar_color, avatar_initials
+from app.core.formatting import time_range_display
 from app.core.responses import paginated, success
 from app.db.session import get_session
 from app.schemas.interview import (
@@ -71,6 +73,17 @@ async def list_interviews(
         InterviewListItem(
             id=i.id,
             candidate_name=full_name,
+            candidate_email=candidate_email,
+            avatar_initials=avatar_initials(
+                full_name,
+                email=candidate_email,
+            ),
+            avatar_color=avatar_color(i.candidate_id)
+                if i.candidate_id else None,
+            time_display=time_range_display(
+                i.scheduled_start,
+                i.scheduled_end,
+            ),
             role_title=i.role_title,
             platform=i.platform,
             status=i.status,
@@ -78,7 +91,7 @@ async def list_interviews(
             participation_mode=i.participation_mode,
             created_at=i.created_at,
         ).model_dump(mode="json")
-        for i, full_name in rows
+        for i, full_name, candidate_email in rows
     ]
     return paginated(
         items, page=page, page_size=page_size, total=total, message="Sessions retrieved"
