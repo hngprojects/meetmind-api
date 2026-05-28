@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     OPENROUTER_API_KEY: str = ""
     GROQ_API_KEY: str = ""
 
+    # OpenTelemetry
+    OTEL_SERVICE_NAME: str = "meetmind-be"
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = "http://localhost:4317"
+
     GEMINI_MODEL: str = "gemini-2.5-flash-lite"
     OPENROUTER_MODEL: str = "meta-llama/llama-3.1-8b-instruct"
     GROQ_MODEL: str = "llama-3.1-8b-instant"
