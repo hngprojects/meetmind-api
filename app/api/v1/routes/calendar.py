@@ -1,0 +1,38 @@
+from datetime import date
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import VerifiedUser
+from app.core.responses import success
+from app.db.session import get_session
+from app.services.calendar import CalendarService
+
+router = APIRouter()
+
+@router.get("/appointments", status_code=status.HTTP_200_OK)
+async def list_appointments(
+    user: VerifiedUser,
+    db: AsyncSession = Depends(get_session),
+    filter: str = Query("all_upcoming"),
+    date_filter: Optional[date] = Query(None, alias="date"),
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+):
+    appointments = await CalendarService.list_appointments(
+        db, user, filter, date_filter, start_date, end_date
+    )
+
+    message = None
+    if not appointments:
+        if date_filter or filter == "today":
+            message = "You don't have any interviews scheduled for this day."
+        else:
+            message = "You don't have any upcoming interviews."
+
+    return success({
+        "filter": filter,
+        "appointments": appointments,
+        "message": message
+    })
