@@ -19,6 +19,7 @@ from tests.test_helpers import (
 )
 
 from app.models.user import User
+from app.models.interview import Interview, InterviewSession
 from app.services.auth import AuthService
 
 logger = logging.getLogger(__name__)
@@ -180,3 +181,48 @@ class TestListInterviewsFiltered:
         assert response.status_code == 200
         data = response.json()["data"]
         assert all(i["status"] == "scheduled" for i in data)
+
+class TestInterviewSessionDuration:
+    @pytest.mark.anyio
+    async def test_create_interview_derives_duration_from_schedule(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        user = await create_user(db_session)
+        token = await AuthService.create_access_token(user)
+        
+        response = await create_interview_via_route(
+            client=client,
+            db_session=db_session,
+            token=token,
+            interview_overrides={
+                "scheduled_start": "2026-06-01T09:00:00Z",
+                "scheduled_end": "2026-06-01T10:30:00Z",
+            },
+        )
+        
+        interview_id = response.json()["data"]["id"]
+        interview = await db_session.get(Interview, uuid.UUID(interview_id))
+        session = await db_session.get(InterviewSession, interview.session_id)
+        assert session.duration_minutes == 90
+
+    @pytest.mark.anyio
+    async def test_create_interview_defaults_duration_to_45(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        user = await create_user(db_session)
+        token = await AuthService.create_access_token(user)
+        
+        response = await create_interview_via_route(
+            client=client,
+            db_session=db_session,
+            token=token,
+            interview_overrides={
+                "scheduled_start": None,
+                "scheduled_end": None,
+            },
+        )
+        
+        interview_id = response.json()["data"]["id"]
+        interview = await db_session.get(Interview, uuid.UUID(interview_id))
+        session = await db_session.get(InterviewSession, interview.session_id)
+        assert session.duration_minutes == 45
