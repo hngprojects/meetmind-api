@@ -304,20 +304,22 @@ Keep all text suitable for a live audio call (concise and natural).
         )
 
         if request.scheduled_start and request.scheduled_end:
-            duration = int((request.scheduled_end - request.scheduled_start).total_seconds() / 60)
+            duration = int(
+                (request.scheduled_end - request.scheduled_start).total_seconds() / 60
+            )
         else:
             duration = 45
 
         session = InterviewSession(
-                role=request.role_title or "Candidate",
-                candidate_name=candidate.full_name,
-                intro=plan.intro,
-                questions_json=json.dumps([q.model_dump() for q in plan.questions]),
-                rubric_json=json.dumps([r.model_dump() for r in plan.rubric]),
-                closing=plan.closing,
-                duration_minutes=duration,
-                status="created",
-            )
+            role=request.role_title or "Candidate",
+            candidate_name=candidate.full_name,
+            intro=plan.intro,
+            questions_json=json.dumps([q.model_dump() for q in plan.questions]),
+            rubric_json=json.dumps([r.model_dump() for r in plan.rubric]),
+            closing=plan.closing,
+            duration_minutes=duration,
+            status="created",
+        )
 
         db.add(session)
         await db.flush()
