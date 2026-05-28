@@ -76,12 +76,13 @@ class TestBaseMetadata:
             "candidate_documents",
             "document_chunks",
             "interview_sessions",
+            "notifications",
         }
         actual = set(Base.metadata.tables.keys())
         assert expected.issubset(actual)
 
     def test_table_count(self):
-        assert len(Base.metadata.tables) == 50
+        assert len(Base.metadata.tables) == 51
 
 
 class TestUUIDPrimaryKeyMixin:
@@ -167,3 +168,8 @@ class TestIndexes:
         table = Base.metadata.tables["interviews"]
         index_names = {idx.name for idx in table.indexes}
         assert "ix_interviews_interviewer_start" in index_names
+
+    def test_notifications_references_users(self):
+        table = Base.metadata.tables["notifications"]
+        fk_targets = {fk.column.table.name for fk in table.foreign_keys}
+        assert "users" in fk_targets

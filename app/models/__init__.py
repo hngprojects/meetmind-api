@@ -52,6 +52,7 @@ from app.models.user import (
     UserTrial,
 )
 from app.models.workspace import Workspace, WorkspaceInvite, WorkspaceMember
+from app.models.notification import Notification
 
 __all__ = [
     "Base",
@@ -117,4 +118,6 @@ __all__ = [
     # Documents
     "DocumentChunk",
     "CandidateDocument",
+    # Notifications
+    "Notification",
 ]
