@@ -131,3 +131,14 @@ class NotificationService:
             .values(deleted_at=datetime.now(timezone.utc))
         )
         await db.commit()
+ 
+    @staticmethod
+    async def count_unread(db: AsyncSession, user_id) -> int:
+        result = await db.execute(
+            select(func.count())
+            .select_from(Notification)
+            .where(Notification.user_id == user_id)
+            .where(Notification.deleted_at.is_(None))
+            .where(Notification.is_read.is_(False))
+        )
+        return result.scalar()
