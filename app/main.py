@@ -42,9 +42,7 @@ def setup_otel() -> None:
     # Use OTLP exporter to send spans to the collector
     endpoint = settings.OTEL_EXPORTER_OTLP_ENDPOINT
     insecure = urlparse(endpoint).scheme != "https"
-    exporter = OTLPSpanExporter(
-        endpoint=endpoint, insecure=insecure
-    )
+    exporter = OTLPSpanExporter(endpoint=endpoint, insecure=insecure)
     provider.add_span_processor(BatchSpanProcessor(exporter))
 
     trace.set_tracer_provider(provider)
