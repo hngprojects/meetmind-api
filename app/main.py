@@ -7,6 +7,7 @@ errors to the standardized response envelope.
 
 import logging
 from contextlib import asynccontextmanager
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
@@ -39,8 +40,10 @@ def setup_otel() -> None:
     provider = TracerProvider(resource=resource)
 
     # Use OTLP exporter to send spans to the collector
+    endpoint = settings.OTEL_EXPORTER_OTLP_ENDPOINT
+    insecure = urlparse(endpoint).scheme != "https"
     exporter = OTLPSpanExporter(
-        endpoint=settings.OTEL_EXPORTER_OTLP_ENDPOINT, insecure=True
+        endpoint=endpoint, insecure=insecure
     )
     provider.add_span_processor(BatchSpanProcessor(exporter))
 
@@ -67,7 +70,8 @@ app.state.limiter = limiter
 
 # Instrument the application
 FastAPIInstrumentor.instrument_app(app)
-SQLAlchemyInstrumentor().instrument()
+sqlalchemy_engine = getattr(engine, "sync_engine", engine)
+SQLAlchemyInstrumentor().instrument(engine=sqlalchemy_engine)
 RedisInstrumentor().instrument()
 
 app.add_middleware(
