@@ -34,9 +34,9 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
-    op.add_column('candidates', sa.Column('current_role', sa.String(length=120), nullable=True))
-    op.add_column('candidates', sa.Column('years_of_experience', sa.Integer(), nullable=True))
-    op.add_column('candidates', sa.Column('skills', sa.Text(), nullable=True))
+    # op.add_column('candidates', sa.Column('current_role', sa.String(length=120), nullable=True))
+    # op.add_column('candidates', sa.Column('years_of_experience', sa.Integer(), nullable=True))
+    # op.add_column('candidates', sa.Column('skills', sa.Text(), nullable=True))
     op.add_column('interviews', sa.Column('session_id', sa.UUID(), nullable=True))
     op.create_foreign_key(None, 'interviews', 'interview_sessions', ['session_id'], ['id'])
     # ### end Alembic commands ###
