@@ -36,3 +36,17 @@ async def list_appointments(
         "appointments": appointments,
         "message": message
     })
+
+@router.get("/users", status_code=status.HTTP_200_OK)
+async def list_users(
+    user: VerifiedUser, db: AsyncSession = Depends(get_session),
+    role: Optional[str] = None, search: Optional[str] = None
+):
+    return success(await CalendarService.list_users(db, user, role, search))
+
+@router.get("/availability", status_code=status.HTTP_200_OK)
+async def get_availability(
+    user: VerifiedUser, target_date: date = Query(..., alias="date"),
+    interviewer_id: Optional[str] = None, db: AsyncSession = Depends(get_session)
+):
+    return success(await CalendarService.get_availability(db, user, target_date, interviewer_id))

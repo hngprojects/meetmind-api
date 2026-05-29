@@ -1,6 +1,10 @@
+import uuid
 from datetime import date, datetime, timedelta, timezone
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.avatar import get_avatar_color, get_avatar_initials
+from app.core.responses import APIError
 
 from app.models.interview import Candidate, Interview
 from app.models.user import User
@@ -31,6 +35,29 @@ def format_time_display(start: datetime, end: datetime) -> str:
 
     return f"{day_str} {time_str}"
 
+
+def compute_available_slots(booked_intervals: list[tuple[datetime, datetime]], target_date: date) -> list[dict]:
+    """Pure function to compute available 30-min slots from 08:00 to 18:00 UTC."""
+    if target_date < datetime.now(timezone.utc).date():
+        return []
+        
+    slots = []
+    start_of_day = datetime.combine(target_date, datetime.min.time()).replace(tzinfo=timezone.utc) + timedelta(hours=8)
+    
+    for i in range(20):
+        slot_start = start_of_day + timedelta(minutes=30 * i)
+        slot_end = slot_start + timedelta(minutes=30)
+        
+        is_blocked = any(b_start < slot_end and b_end > slot_start for b_start, b_end in booked_intervals)
+                
+        if not is_blocked:
+            slots.append({
+                "start_time": slot_start.strftime("%I:%M").lstrip("0"),
+                "end_time": slot_end.strftime("%I:%M").lstrip("0"),
+                "period_start": slot_start.strftime("%p"),
+                "period_end": slot_end.strftime("%p")
+            })
+    return slots
 
 class CalendarService:
     @staticmethod
@@ -97,3 +124,36 @@ class CalendarService:
             })
 
         return appointments
+    
+
+    @staticmethod
+    async def list_users(db: AsyncSession, user: User, role: str | None, search: str | None) -> list[dict]:
+        workspace_id = await db.scalar(select(WorkspaceMember.workspace_id).where(WorkspaceMember.user_id == user.id))
+        if not workspace_id: return []
+            
+        query = select(User, WorkspaceMember.role).join(WorkspaceMember).where(WorkspaceMember.workspace_id == workspace_id)
+        if role: query = query.where(WorkspaceMember.role == role)
+        if search: query = query.where(User.name.ilike(f"%{search}%"))
+            
+        rows = (await db.execute(query)).all()
+        return [{
+            "id": str(u.id), "name": u.name, "email": u.email, "role": m_role,
+            "avatar_initials": get_avatar_initials(u.name, u.email), "avatar_color": get_avatar_color(u.id)
+        } for u, m_role in rows]
+
+
+    @staticmethod
+    async def get_availability(db: AsyncSession, user: User, target_date: date, interviewer_id: str | None) -> list[dict]:
+        i_id = uuid.UUID(interviewer_id) if interviewer_id else user.id
+        query = (
+            select(Interview.scheduled_start, Interview.scheduled_end)
+            .where(Interview.interviewer_id == i_id)
+            .where(Interview.status != 'cancelled')
+            .where(func.date(Interview.scheduled_start) == target_date)
+        )
+        booked = (await db.execute(query)).all()
+        intervals = [(s.replace(tzinfo=timezone.utc) if s.tzinfo is None else s, 
+                      e.replace(tzinfo=timezone.utc) if e.tzinfo is None else e) for s, e in booked]
+        return compute_available_slots(intervals, target_date)
+
+    
