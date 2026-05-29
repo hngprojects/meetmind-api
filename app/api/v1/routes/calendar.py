@@ -1,3 +1,4 @@
+import logging
 from datetime import date
 from typing import Optional
 
@@ -9,6 +10,9 @@ from app.core.responses import success
 from app.db.session import get_session
 from app.schemas.calendar import RescheduleRequest
 from app.services.calendar import CalendarService
+from app.services.notification_service import NotificationService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -68,6 +72,20 @@ async def reschedule_appointment(
     apt = await CalendarService.reschedule_appointment(
         db, user, interview_id, payload.scheduled_start, payload.scheduled_end
     )
+
+    try:
+        desc = f"{apt.get('candidate_name', '')} - {apt.get('role_title', '')}"
+        await NotificationService.create(
+            db=db,
+            user_id=user.id,
+            type="meeting",
+            title="Interview Rescheduled",
+            description=desc.strip(" -"),
+            action_url=f"/interviews/{apt.get('id', interview_id)}",
+        )
+    except Exception:
+        logger.exception("Failed to create reschedule notification")
+
     return success(apt, message="Appointment rescheduled successfully")
 
 
@@ -76,4 +94,18 @@ async def cancel_appointment(
     interview_id: str, user: VerifiedUser, db: AsyncSession = Depends(get_session)
 ):
     apt = await CalendarService.cancel_appointment(db, user, interview_id)
+
+    try:
+        desc = f"{apt.get('candidate_name', '')} - {apt.get('role_title', '')}"
+        await NotificationService.create(
+            db=db,
+            user_id=user.id,
+            type="meeting",
+            title="Interview Cancelled",
+            description=desc.strip(" -"),
+            action_url=f"/interviews/{apt.get('id', interview_id)}",
+        )
+    except Exception:
+        logger.exception("Failed to create cancellation notification")
+
     return success(apt, message="Appointment cancelled successfully")
