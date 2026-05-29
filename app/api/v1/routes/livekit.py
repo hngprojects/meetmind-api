@@ -1,7 +1,7 @@
 """LiveKit API routes for token generation, config, and results."""
 
-import logging
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.session import get_session
-from app.models.interview import InterviewSession, Interview
+from app.models.interview import Interview, InterviewSession
 from app.services.notification_service import NotificationService
 
 router = APIRouter()
@@ -204,7 +204,7 @@ async def post_result(
     session.completed_at = datetime.now(timezone.utc)
 
     await db.commit()
-    
+
     try:
         interview_result = await db.execute(
             select(Interview).where(Interview.session_id == session_uuid)
@@ -220,5 +220,5 @@ async def post_result(
             )
     except Exception:
         logger.exception("Failed to create report notification")
-    
+
     return {"status": "success", "message": "Result saved successfully"}

@@ -13,8 +13,8 @@ from app.schemas.onboarding import (
     OnboardingPreferencesRequest,
     OnboardingRoleRequest,
 )
-from app.services.onboarding import OnboardingService
 from app.services.notification_service import NotificationService
+from app.services.onboarding import OnboardingService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -47,17 +47,21 @@ async def save_integrations(
     db: AsyncSession = Depends(get_session),
 ):
     await OnboardingService.save_integrations(db, user, payload)
-    
+
     try:
         if payload.integrations:
             await NotificationService.create(
-                db=db, user_id=user.id, type="integration",
+                db=db,
+                user_id=user.id,
+                type="integration",
                 title="Integration Connected",
-                description=f"{payload.integrations} has been connected to your workspace.",
+                description=(
+                    f"{payload.integrations} has been connected to your workspace."
+                ),
             )
     except Exception:
         logger.exception("Failed to create integration notification")
-        
+
     return success(message="Integrations saved")
 
 

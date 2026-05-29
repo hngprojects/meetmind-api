@@ -2,7 +2,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from sqlalchemy import select, func, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.responses import APIError
@@ -27,7 +27,6 @@ def time_display(dt: datetime, now: datetime) -> str:
 
 
 class NotificationService:
-
     @staticmethod
     async def create(
         db: AsyncSession,
@@ -131,7 +130,7 @@ class NotificationService:
             .values(deleted_at=datetime.now(timezone.utc))
         )
         await db.commit()
- 
+
     @staticmethod
     async def count_unread(db: AsyncSession, user_id) -> int:
         result = await db.execute(

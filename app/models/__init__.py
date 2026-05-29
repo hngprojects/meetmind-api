@@ -21,6 +21,7 @@ from app.models.interview import (
     InterviewTranscriptTurn,
 )
 from app.models.meeting import Meeting, MeetingComment, MeetingParticipant
+from app.models.notification import Notification
 from app.models.scorecard import (
     InterviewScorecard,
     ScorecardCategory,
@@ -52,7 +53,6 @@ from app.models.user import (
     UserTrial,
 )
 from app.models.workspace import Workspace, WorkspaceInvite, WorkspaceMember
-from app.models.notification import Notification
 
 __all__ = [
     "Base",

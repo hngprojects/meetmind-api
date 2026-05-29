@@ -23,14 +23,17 @@ async def list_notifications(
     filter: str | None = None,
 ):
     notifs, total = await NotificationService.list_for_user(
-        db=db, user_id=user.id, page=page, page_size=page_size, filter=filter,
+        db=db,
+        user_id=user.id,
+        page=page,
+        page_size=page_size,
+        filter=filter,
     )
 
     unread_count = await NotificationService.count_unread(db=db, user_id=user.id)
 
     items = [
-        NotificationResponse.model_validate(n).model_dump(mode="json")
-        for n in notifs
+        NotificationResponse.model_validate(n).model_dump(mode="json") for n in notifs
     ]
 
     return success(
@@ -55,7 +58,9 @@ async def mark_read(
     db: AsyncSession = Depends(get_session),
 ):
     notif = await NotificationService.mark_read(
-        db=db, notification_id=notification_id, user_id=user.id,
+        db=db,
+        notification_id=notification_id,
+        user_id=user.id,
     )
     data = NotificationResponse.model_validate(notif).model_dump(mode="json")
     return success(data, message="Notification marked as read")

@@ -1,9 +1,11 @@
 import uuid
+from datetime import datetime, timezone
 from typing import Optional
 
 from pydantic import BaseModel, computed_field
+
 from app.services.notification_service import time_display
-from datetime import datetime, timezone
+
 
 class NotificationResponse(BaseModel):
     model_config = {"from_attributes": True}
@@ -21,6 +23,7 @@ class NotificationResponse(BaseModel):
     @computed_field
     @property
     def time_display(self) -> str:
-        dt = self.created_at.replace(tzinfo=timezone.utc) if self.created_at.tzinfo is None else self.created_at
+        dt = self.created_at
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
         return time_display(dt, now=datetime.now(timezone.utc))
-

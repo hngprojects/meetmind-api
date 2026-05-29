@@ -52,4 +52,6 @@ api_router.include_router(zoom_sdk.router, prefix="/zoom", tags=["Zoom SDK"])
 api_router.include_router(livekit.router, prefix="/livekit", tags=["LiveKit"])
 api_router.include_router(sdk.router, prefix="/sdk", tags=["SDK"])
 api_router.include_router(sessions.router, prefix="/sessions", tags=["Sessions"])
-api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
+api_router.include_router(
+    notifications.router, prefix="/notifications", tags=["Notifications"]
+)

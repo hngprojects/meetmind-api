@@ -49,20 +49,22 @@ async def create_interview(
         APIError: 500 for any unexpected failure.
     """
     interview = await InterviewService.create_interview(payload, db, user)
-    
+
     try:
         description = f"{interview.candidate_name} - {interview.role_title}"
         if interview.scheduled_date:
             description += f" - {interview.scheduled_date}"
         await NotificationService.create(
-            db=db, user_id=user.id, type="meeting",
+            db=db,
+            user_id=user.id,
+            type="meeting",
             title="Interview Scheduled",
             description=description,
             action_url=f"/interviews/{interview.id}",
         )
     except Exception:
         logger.exception("Failed to create meeting notification")
-    
+
     return success(
         interview.model_dump(mode="json"),
         message="Interview session created successfully",
