@@ -1,5 +1,6 @@
 """Routes to trigger AI generation for interviews."""
 
+import logging
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, status
@@ -11,6 +12,9 @@ from app.db.session import get_session
 from app.schemas.chat import AskRequest, RespondRequest
 from app.services.ai_generation_service import AIGenerationService
 from app.services.interview import InterviewService
+from app.services.notification_service import NotificationService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -56,6 +60,7 @@ async def complete_interview(
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
 ):
+    interview = await AIGenerationService._get_interview_or_404(interview_id, user, db)
     await AIGenerationService.complete_interview(
         interview_id=interview_id,
         user=user,
@@ -65,6 +70,19 @@ async def complete_interview(
         AIGenerationService.generate_assessment,
         interview_id=interview_id,
     )
+
+    try:
+        await NotificationService.create(
+            db=db,
+            user_id=user.id,
+            type="report",
+            title="Interview Completed",
+            description=f"{interview.role_title or 'Interview'}",
+            action_url=f"/interviews/{interview_id}",
+        )
+    except Exception:
+        logger.exception("Failed to create completion notification")
+
     return success(
         {"status": "completed"},
         message="Interview completed, assessment generation started",
@@ -115,6 +133,22 @@ async def retry_interview_summary(
         AIGenerationService.generate_assessment,
         interview_id=interview_id,
     )
+
+    try:
+        interview = await AIGenerationService._get_interview_or_404(
+            interview_id, user, db
+        )
+        await NotificationService.create(
+            db=db,
+            user_id=user.id,
+            type="report",
+            title="Summary Regeneration Started",
+            description=f"{interview.role_title or 'Interview'}",
+            action_url=f"/interviews/{interview_id}",
+        )
+    except Exception:
+        logger.exception("Failed to create retry notification")
+
     return success(result, message="Summary retry started")
 
 
@@ -125,12 +159,25 @@ async def generate_interview_summary(
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
 ):
-    await AIGenerationService._get_interview_or_404(interview_id, user, db)
+    interview = await AIGenerationService._get_interview_or_404(interview_id, user, db)
 
     background_tasks.add_task(
         AIGenerationService.generate_assessment,
         interview_id=interview_id,
     )
+
+    try:
+        await NotificationService.create(
+            db=db,
+            user_id=user.id,
+            type="report",
+            title="Summary Generation Started",
+            description=f"{interview.role_title or 'Interview'}",
+            action_url=f"/interviews/{interview_id}",
+        )
+    except Exception:
+        logger.exception("Failed to create generation notification")
+
     return success(
         {"status": "generating"},
         message="Assessment generation started",

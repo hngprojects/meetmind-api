@@ -145,6 +145,22 @@ async def cancel_interview(
     interview_id: uuid.UUID, user: VerifiedUser, db: AsyncSession = Depends(get_session)
 ):
     interview = await InterviewService.cancel_interview(interview_id, db, user)
+
+    try:
+        desc = f"{interview.candidate_name} - {interview.role_title}"
+        if interview.scheduled_date:
+            desc += f" - {interview.scheduled_date}"
+        await NotificationService.create(
+            db=db,
+            user_id=user.id,
+            type="meeting",
+            title="Interview Cancelled",
+            description=desc,
+            action_url=f"/interviews/{interview.id}",
+        )
+    except Exception:
+        logger.exception("Failed to create cancellation notification")
+
     return success(
         interview.model_dump(mode="json"),
         message="Interview session cancelled successfully",
