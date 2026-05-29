@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class TranscriptTurnResponse(BaseModel):
@@ -15,6 +15,8 @@ class TranscriptTurnResponse(BaseModel):
     speaker_label: str
     timestamp: str
     content: str
+    text: str | None = None
+    speaker_type: str | None = None
     is_typing: bool
     is_active: bool
     sequence_no: int
@@ -28,3 +30,6 @@ class TranscriptResponse(BaseModel):
     interview_id: UUID
     total_turns: int
     turns: list[TranscriptTurnResponse]
+    is_live: bool = False
+    status: str = "completed"
+    messages: list[TranscriptTurnResponse] = Field(default_factory=list)

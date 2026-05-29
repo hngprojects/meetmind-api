@@ -36,6 +36,12 @@ dependencies = [
     "pyjwt[crypto]>=2.12.1",
     "openai>=2.38.0",
     "groq>=1.2.0",
+    "opentelemetry-api",
+    "opentelemetry-sdk",
+    "opentelemetry-instrumentation-fastapi",
+    "opentelemetry-instrumentation-sqlalchemy",
+    "opentelemetry-instrumentation-redis",
+    "opentelemetry-exporter-otlp",
 ]
 
 [dependency-groups]
