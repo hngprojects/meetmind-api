@@ -149,8 +149,8 @@ class TestTimeDisplay:
         assert time_display(dt, now=now) == "5 min ago"
 
     def test_hours_ago(self):
-        now = datetime.now(timezone.utc)
-        dt = now - timedelta(hours=3)
+        now = datetime(2025, 6, 15, 15, 0, 0, tzinfo=timezone.utc)  # 3pm
+        dt = datetime(2025, 6, 15, 12, 0, 0, tzinfo=timezone.utc)   # noon same day
         assert time_display(dt, now=now) == "3 hours ago"
 
     def test_yesterday(self):

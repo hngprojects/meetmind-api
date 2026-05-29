@@ -13,16 +13,16 @@ logger = logging.getLogger(__name__)
 
 def time_display(dt: datetime, now: datetime) -> str:
     delta = now - dt
-
     if delta < timedelta(seconds=60):
         return "Just now"
     if delta < timedelta(minutes=60):
         return f"{int(delta.total_seconds() // 60)} min ago"
     if delta < timedelta(hours=24):
+        if dt.date() == (now - timedelta(days=1)).date():
+            return "Yesterday"
         return f"{int(delta.total_seconds() // 3600)} hours ago"
     if dt.date() == (now - timedelta(days=1)).date():
         return "Yesterday"
-
     return dt.strftime("%a %b %d")
 
 

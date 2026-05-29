@@ -1,5 +1,7 @@
 """Onboarding step endpoints."""
 
+import logging
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,8 +14,10 @@ from app.schemas.onboarding import (
     OnboardingRoleRequest,
 )
 from app.services.onboarding import OnboardingService
+from app.services.notification_service import NotificationService
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.post("/role")
@@ -43,6 +47,17 @@ async def save_integrations(
     db: AsyncSession = Depends(get_session),
 ):
     await OnboardingService.save_integrations(db, user, payload)
+    
+    try:
+        if payload.integrations:
+            await NotificationService.create(
+                db=db, user_id=user.id, type="integration",
+                title="Integration Connected",
+                description=f"{payload.integrations} has been connected to your workspace.",
+            )
+    except Exception:
+        logger.exception("Failed to create integration notification")
+        
     return success(message="Integrations saved")
 
 
