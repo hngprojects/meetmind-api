@@ -19,6 +19,8 @@ from app.models.interview import (
     Interview,
     InterviewSession,
     InterviewSummary,
+    InterviewTranscript,
+    InterviewTranscriptTurn,
 )
 from app.models.scorecard import InterviewScorecard, ScorecardCategory, ScorecardScore
 from app.models.user import User
@@ -303,6 +305,13 @@ Keep all text suitable for a live audio call (concise and natural).
             custom_question=request.custom_question,
         )
 
+        if request.scheduled_start and request.scheduled_end:
+            duration_minutes = int(
+                (request.scheduled_end - request.scheduled_start).total_seconds() / 60
+            )
+        else:
+            duration_minutes = 45
+
         session = InterviewSession(
             role=request.role_title or "Candidate",
             candidate_name=candidate.full_name,
@@ -310,7 +319,7 @@ Keep all text suitable for a live audio call (concise and natural).
             questions_json=json.dumps([q.model_dump() for q in plan.questions]),
             rubric_json=json.dumps([r.model_dump() for r in plan.rubric]),
             closing=plan.closing,
-            duration_minutes=0,
+            duration_minutes=duration_minutes,
             status="created",
         )
 
@@ -714,6 +723,153 @@ Keep all text suitable for a live audio call (concise and natural).
             "status": interview.status,
             "confirmed_at": interview.updated_at,
         }
+
+    @staticmethod
+    def _duration_from_schedule_or_session(
+        interview: Interview, session: InterviewSession | None
+    ) -> int:
+        if interview.scheduled_start and interview.scheduled_end:
+            return int(
+                (interview.scheduled_end - interview.scheduled_start).total_seconds()
+                / 60
+            )
+        if session and session.duration_minutes:
+            return session.duration_minutes
+        return 45
+
+    @classmethod
+    async def get_agent_config(cls, interview_id: uuid.UUID, db: AsyncSession) -> dict:
+        """Return the full LiveKit agent context for an interview."""
+        interview = await db.get(Interview, interview_id)
+        if not interview:
+            raise APIError(
+                "Interview not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="interview_not_found",
+            )
+
+        candidate = (
+            await db.get(Candidate, interview.candidate_id)
+            if interview.candidate_id
+            else None
+        )
+        session = (
+            await db.get(InterviewSession, interview.session_id)
+            if interview.session_id
+            else None
+        )
+        summary_result = await db.execute(
+            select(InterviewSummary).where(
+                InterviewSummary.interview_id == interview.id
+            )
+        )
+        summary = summary_result.scalar_one_or_none()
+
+        if interview.status == "scheduled":
+            interview.status = "in_progress"
+        if interview.started_at is None:
+            interview.started_at = datetime.now(timezone.utc)
+
+        transcript_result = await db.execute(
+            select(InterviewTranscript).where(
+                InterviewTranscript.interview_id == interview.id
+            )
+        )
+        transcript = transcript_result.scalar_one_or_none()
+        if transcript is None:
+            db.add(InterviewTranscript(interview_id=interview.id, status="processing"))
+
+        await db.commit()
+
+        return {
+            "role": interview.role_title or (session.role if session else None),
+            "intro": session.intro if session else "",
+            "candidateName": (
+                candidate.full_name
+                if candidate
+                else (session.candidate_name if session else "Candidate")
+            ),
+            "durationMinutes": cls._duration_from_schedule_or_session(
+                interview, session
+            ),
+            "closing": session.closing if session else "",
+            "questions": (
+                json.loads(session.questions_json)
+                if session and session.questions_json
+                else []
+            ),
+            "rubric": (
+                json.loads(session.rubric_json)
+                if session and session.rubric_json
+                else []
+            ),
+            "jobDescription": summary.job_description if summary else None,
+            "keySkills": (
+                [s.strip() for s in summary.key_skills.split(",") if s.strip()]
+                if summary and summary.key_skills
+                else []
+            ),
+            "participationMode": interview.participation_mode or "standard",
+            "aiTone": interview.ai_tone,
+        }
+
+    @staticmethod
+    async def append_transcript_turn(
+        interview_id: uuid.UUID, payload: dict, db: AsyncSession
+    ) -> tuple[dict, int]:
+        """Persist a single LiveKit transcript turn idempotently."""
+        interview = await db.get(Interview, interview_id)
+        if not interview:
+            raise APIError(
+                "Interview not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="interview_not_found",
+            )
+
+        transcript_result = await db.execute(
+            select(InterviewTranscript).where(
+                InterviewTranscript.interview_id == interview.id
+            )
+        )
+        transcript = transcript_result.scalar_one_or_none()
+        if transcript is None:
+            transcript = InterviewTranscript(
+                interview_id=interview.id, status="processing"
+            )
+            db.add(transcript)
+            await db.flush()
+
+        existing_result = await db.execute(
+            select(InterviewTranscriptTurn).where(
+                InterviewTranscriptTurn.transcript_id == transcript.id,
+                InterviewTranscriptTurn.sequence_no == payload["sequence_no"],
+            )
+        )
+        existing = existing_result.scalar_one_or_none()
+        if existing:
+            return {
+                "id": str(existing.id),
+                "transcriptId": str(transcript.id),
+                "deduplicated": True,
+            }, status.HTTP_200_OK
+
+        turn = InterviewTranscriptTurn(
+            transcript_id=transcript.id,
+            speaker=payload["speaker"],
+            speaker_name=payload.get("speaker_name"),
+            content=payload["content"],
+            timestamp_sec=payload.get("timestamp_sec"),
+            sequence_no=payload["sequence_no"],
+            is_ai_question=payload.get("is_ai_question", False),
+        )
+        db.add(turn)
+        await db.commit()
+        await db.refresh(turn)
+        return {
+            "id": str(turn.id),
+            "transcriptId": str(transcript.id),
+            "deduplicated": False,
+        }, status.HTTP_201_CREATED
 
     @staticmethod
     async def stop_transcript(
