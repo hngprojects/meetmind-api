@@ -15,10 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.responses import APIError
 from app.db.session import get_session
-from app.models.interview import Interview, InterviewSession
-from app.services.notification_service import NotificationService
 from app.models.interview import Candidate, Interview, InterviewSession
 from app.services.interview import InterviewService
+from app.services.notification_service import NotificationService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -212,7 +211,7 @@ async def post_result(
 
     try:
         interview_result = await db.execute(
-            select(Interview).where(Interview.session_id == session_uuid)
+            select(Interview).where(Interview.session_id == session_id)
         )
         interview = interview_result.scalar_one_or_none()
         if interview:
