@@ -4,14 +4,18 @@ import json
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Request, status
+from fastapi.responses import JSONResponse
 from livekit import api
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.responses import APIError
 from app.db.session import get_session
-from app.models.interview import InterviewSession
+from app.models.interview import Candidate, Interview, InterviewSession
+from app.services.interview import InterviewService
 
 router = APIRouter()
 
@@ -55,41 +59,59 @@ DEFAULT_INTERVIEW_CONFIG = {
 }
 
 
-@router.post("/{session_id}/token")
+class TranscriptTurnRequest(BaseModel):
+    speaker: str = Field(..., min_length=1)
+    content: str = Field(..., min_length=1)
+    sequence_no: int = Field(..., ge=1)
+    speaker_name: str | None = None
+    timestamp_sec: int | None = None
+    is_ai_question: bool = False
+
+
+def _parse_uuid(value: str) -> uuid.UUID:
+    try:
+        return uuid.UUID(value)
+    except ValueError:
+        raise APIError(
+            "Invalid ID format. Must be a valid UUID.",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            code="invalid_id",
+        )
+
+
+@router.post("/{interview_id}/token")
 async def generate_token(
-    session_id: str, request: Request, db: AsyncSession = Depends(get_session)
+    interview_id: str, request: Request, db: AsyncSession = Depends(get_session)
 ):
-    """Generate a LiveKit access token for a participant to join a session."""
+    """Generate a LiveKit access token for a participant to join an interview."""
     body = await request.json()
 
-    is_test_room = session_id == "test-room"
+    is_test_room = interview_id == "test-room"
     candidate_name = "Candidate"
 
     if not is_test_room:
-        try:
-            session_uuid = uuid.UUID(session_id)
-        except ValueError:
-            raise HTTPException(
+        interview_uuid = _parse_uuid(interview_id)
+        interview = await db.get(Interview, interview_uuid)
+        if not interview:
+            raise APIError(
+                "Interview not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="interview_not_found",
+            )
+
+        if interview.status == "completed":
+            raise APIError(
+                "Interview is already completed",
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid session ID format. Must be a valid UUID.",
+                code="interview_already_completed",
             )
 
-        # Verify session status in the database
-        query = select(InterviewSession).where(InterviewSession.id == session_uuid)
-        result = await db.execute(query)
-        session = result.scalar_one_or_none()
-
-        if not session:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Session not found"
-            )
-        if session.status == "completed":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Session is already completed",
-            )
-
-        candidate_name = session.candidate_name or "Candidate"
+        candidate = (
+            await db.get(Candidate, interview.candidate_id)
+            if interview.candidate_id
+            else None
+        )
+        candidate_name = candidate.full_name if candidate else "Candidate"
     else:
         candidate_name = body.get("participant_name", "Test User")
 
@@ -97,9 +119,10 @@ async def generate_token(
     participant_identity = f"candidate_{uuid.uuid4().hex[:8]}"
 
     if not settings.LIVEKIT_API_KEY or not settings.LIVEKIT_API_SECRET:
-        raise HTTPException(
+        raise APIError(
+            "LiveKit credentials not configured",
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="LiveKit credentials are not configured",
+            code="liveKit_credentials_are_not_configured",
         )
 
     token = api.AccessToken(settings.LIVEKIT_API_KEY, settings.LIVEKIT_API_SECRET)
@@ -107,61 +130,40 @@ async def generate_token(
     token.with_grants(
         api.VideoGrants(
             room_join=True,
-            room=session_id,
+            room=interview_id,
         )
     )
 
     # Return connection details in the format expected by the frontend ViewController
     return {
         "serverUrl": settings.LIVEKIT_URL or "wss://your-project.livekit.cloud",
-        "roomName": session_id,
+        "roomName": interview_id,
         "participantName": participant_name,
         "participantToken": token.to_jwt(),
     }
 
 
-@router.get("/{session_id}/config")
-async def get_agent_config(session_id: str, db: AsyncSession = Depends(get_session)):
-    """The LiveKit agent calls this to get interview setup."""
-    is_test_room = session_id == "test-room"
-
-    if is_test_room:
+@router.get("/{interview_id}/config")
+async def get_agent_config(interview_id: str, db: AsyncSession = Depends(get_session)):
+    """The LiveKit agent calls this to get full interview setup."""
+    if interview_id == "test-room":
         return DEFAULT_INTERVIEW_CONFIG
 
-    try:
-        session_uuid = uuid.UUID(session_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid session ID format. Must be a valid UUID.",
-        )
+    config = await InterviewService.get_agent_config(_parse_uuid(interview_id), db)
+    return config
 
-    query = select(InterviewSession).where(InterviewSession.id == session_uuid)
-    result = await db.execute(query)
-    session = result.scalar_one_or_none()
 
-    if not session:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Session not found"
-        )
-
-    # Mark the session as in_progress on first fetch (when agent joins)
-    if session.status == "created":
-        session.status = "in_progress"
-        session.started_at = datetime.now(timezone.utc)
-        await db.commit()
-
-    return {
-        "role": session.role,
-        "intro": session.intro,
-        "candidateName": session.candidate_name,
-        "durationMinutes": session.duration_minutes,
-        "closing": session.closing,
-        "questions": (
-            json.loads(session.questions_json) if session.questions_json else []
-        ),
-        "rubric": (json.loads(session.rubric_json) if session.rubric_json else []),
-    }
+@router.post("/{interview_id}/transcript/turn")
+async def post_transcript_turn(
+    interview_id: str,
+    payload: TranscriptTurnRequest,
+    db: AsyncSession = Depends(get_session),
+):
+    """Persist a single transcript turn during a live LiveKit interview."""
+    data, status_code = await InterviewService.append_transcript_turn(
+        _parse_uuid(interview_id), payload.model_dump(), db
+    )
+    return JSONResponse(status_code=status_code, content=data)
 
 
 @router.post("/{session_id}/result")
@@ -177,21 +179,21 @@ async def post_result(
     if is_test_room:
         return {"status": "success", "message": "Test result received successfully"}
 
-    try:
-        session_uuid = uuid.UUID(session_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid session ID format. Must be a valid UUID.",
-        )
+    result_uuid = _parse_uuid(session_id)
 
-    query = select(InterviewSession).where(InterviewSession.id == session_uuid)
-    result = await db.execute(query)
-    session = result.scalar_one_or_none()
+    interview = await db.get(Interview, result_uuid)
+    if interview and interview.session_id:
+        session = await db.get(InterviewSession, interview.session_id)
+    else:
+        query = select(InterviewSession).where(InterviewSession.id == result_uuid)
+        result = await db.execute(query)
+        session = result.scalar_one_or_none()
 
     if not session:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Session not found"
+        raise APIError(
+            "Session not found",
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="session_not_found",
         )
 
     # Update session in the database
@@ -199,6 +201,8 @@ async def post_result(
     session.report_json = json.dumps(report) if report is not None else None
     session.status = "completed"
     session.completed_at = datetime.now(timezone.utc)
+    if interview:
+        interview.status = "completed"
 
     await db.commit()
     return {"status": "success", "message": "Result saved successfully"}
