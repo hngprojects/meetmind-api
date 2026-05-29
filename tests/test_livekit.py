@@ -12,6 +12,7 @@ from app.models.interview import (
     Interview,
     InterviewTranscript,
     InterviewTranscriptTurn,
+    InterviewSummary,
 )
 from app.models.user import User
 from app.services.auth import AuthService
@@ -323,3 +324,144 @@ async def test_duplicate_turn_sequence_is_ignored(
         )
     )
     assert len(turns.scalars().all()) == 1
+
+
+@pytest.mark.anyio
+async def test_result_sets_interview_completed(
+    client: AsyncClient, db_session: AsyncSession
+):
+    # setup: in_progress interview
+    _, _, interview = await create_scheduled_interview(client, db_session)
+    interview.status = "in_progress"
+    await db_session.commit()
+
+    payload = {"transcript": [], "report": None}
+    response = await client.post(
+        f"{LIVEKIT_URL}/{interview.id}/result", json=payload
+    )
+    assert response.status_code == 200
+    await db_session.refresh(interview)
+    assert interview.status == "completed"
+
+
+@pytest.mark.anyio
+async def test_result_writes_transcript_turns(
+    client: AsyncClient, db_session: AsyncSession
+):
+    # setup: interview with 1 turn already in DB (seq 1)
+    _, _, interview = await create_scheduled_interview(client, db_session)
+    interview.status = "in_progress"
+    transcript = InterviewTranscript(interview_id=interview.id, status="processing")
+    db_session.add(transcript)
+    await db_session.flush()
+
+    db_session.add(
+        InterviewTranscriptTurn(
+            transcript_id=transcript.id,
+            speaker="candidate",
+            content="Hi",
+            sequence_no=1,
+        )
+    )
+    await db_session.commit()
+
+    # result payload has 3 turns (seq 1, 2, 3)
+    payload = {
+        "transcript": [
+            {"speaker": "candidate", "content": "Hi", "sequence_no": 1},
+            {"speaker": "ai", "content": "Tell me about yourself", "sequence_no": 2},
+            {"speaker": "candidate", "content": "I am...", "sequence_no": 3},
+        ],
+        "report": None,
+    }
+    await client.post(f"{LIVEKIT_URL}/{interview.id}/result", json=payload)
+
+    turns = await db_session.execute(
+        select(InterviewTranscriptTurn).where(
+            InterviewTranscriptTurn.transcript_id == transcript.id
+        )
+    )
+    # only 2 new rows created (seq 1 skipped, seq 2 and 3 inserted)
+    assert len(turns.scalars().all()) == 3
+
+
+@pytest.mark.anyio
+async def test_result_writes_scorecard_scores(
+    client: AsyncClient, db_session: AsyncSession
+):
+    _, _, interview = await create_scheduled_interview(client, db_session)
+    interview.status = "in_progress"
+    await db_session.commit()
+
+    payload = {
+        "transcript": [],
+        "report": {
+            "criteria": [
+                {"name": "Communication", "score": 4, "justification": "Clear answers"},
+                {"name": "Technical depth", "score": 3, "justification": "Solid basics"},
+            ],
+            "overall": "yes",
+            "summary": "Strong candidate overall.",
+        },
+    }
+    await client.post(f"{LIVEKIT_URL}/{interview.id}/result", json=payload)
+
+    from app.models.scorecard import InterviewScorecard, ScorecardScore
+
+    scores = await db_session.execute(
+        select(ScorecardScore)
+        .join(InterviewScorecard)
+        .where(InterviewScorecard.interview_id == interview.id)
+    )
+    score_list = scores.scalars().all()
+    assert len(score_list) == 2
+    score_pcts = {s.score_pct for s in score_list}
+    assert 80 in score_pcts  # 4 * 20
+    assert 60 in score_pcts  # 3 * 20
+
+
+@pytest.mark.anyio
+async def test_result_writes_summary_assessment(
+    client: AsyncClient, db_session: AsyncSession
+):
+    _, _, interview = await create_scheduled_interview(client, db_session)
+    interview.status = "in_progress"
+    await db_session.commit()
+
+    payload = {
+        "transcript": [],
+        "report": {
+            "criteria": [],
+            "overall": "strong_yes",
+            "summary": "Excellent candidate who demonstrated clear thinking.",
+        },
+    }
+    await client.post(f"{LIVEKIT_URL}/{interview.id}/result", json=payload)
+
+    summary_result = await db_session.execute(
+        select(InterviewSummary).where(InterviewSummary.interview_id == interview.id)
+    )
+    summary = summary_result.scalar_one()
+
+    import json
+
+    assessment = json.loads(summary.ai_assessment)
+    assert (
+        assessment["overview"]
+        == "Excellent candidate who demonstrated clear thinking."
+    )
+    assert assessment["overall_recommendation"] == "strong_yes"
+    assert summary.status == "completed"
+
+
+@pytest.mark.anyio
+async def test_result_404_for_unknown_interview(
+    client: AsyncClient, db_session: AsyncSession
+):
+    response = await client.post(
+        f"{LIVEKIT_URL}/{uuid.uuid4()}/result",
+        json={"transcript": [], "report": None},
+    )
+    assert response.status_code == 404
+
+
