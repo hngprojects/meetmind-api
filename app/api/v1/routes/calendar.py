@@ -12,6 +12,7 @@ from app.services.calendar import CalendarService
 
 router = APIRouter()
 
+
 @router.get("/appointments", status_code=status.HTTP_200_OK)
 async def list_appointments(
     user: VerifiedUser,
@@ -32,32 +33,43 @@ async def list_appointments(
         else:
             message = "You don't have any upcoming interviews."
 
-    return success({
-        "filter": filter,
-        "appointments": appointments,
-        "message": message
-    })
+    return success({"filter": filter, "appointments": appointments, "message": message})
+
 
 @router.get("/users", status_code=status.HTTP_200_OK)
 async def list_users(
-    user: VerifiedUser, db: AsyncSession = Depends(get_session),
-    role: Optional[str] = None, search: Optional[str] = None
+    user: VerifiedUser,
+    db: AsyncSession = Depends(get_session),
+    role: Optional[str] = None,
+    search: Optional[str] = None,
 ):
     return success(await CalendarService.list_users(db, user, role, search))
 
+
 @router.get("/availability", status_code=status.HTTP_200_OK)
 async def get_availability(
-    user: VerifiedUser, target_date: date = Query(..., alias="date"),
-    interviewer_id: Optional[str] = None, db: AsyncSession = Depends(get_session)
+    user: VerifiedUser,
+    target_date: date = Query(..., alias="date"),
+    interviewer_id: Optional[str] = None,
+    db: AsyncSession = Depends(get_session),
 ):
-    return success(await CalendarService.get_availability(db, user, target_date, interviewer_id))
+    return success(
+        await CalendarService.get_availability(db, user, target_date, interviewer_id)
+    )
+
 
 @router.patch("/appointments/{interview_id}/reschedule", status_code=status.HTTP_200_OK)
 async def reschedule_appointment(
-    interview_id: str, payload: RescheduleRequest, user: VerifiedUser, db: AsyncSession = Depends(get_session)
+    interview_id: str,
+    payload: RescheduleRequest,
+    user: VerifiedUser,
+    db: AsyncSession = Depends(get_session),
 ):
-    apt = await CalendarService.reschedule_appointment(db, user, interview_id, payload.scheduled_start, payload.scheduled_end)
+    apt = await CalendarService.reschedule_appointment(
+        db, user, interview_id, payload.scheduled_start, payload.scheduled_end
+    )
     return success(apt, message="Appointment rescheduled successfully")
+
 
 @router.delete("/appointments/{interview_id}", status_code=status.HTTP_200_OK)
 async def cancel_appointment(

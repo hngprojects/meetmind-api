@@ -3,9 +3,16 @@ import uuid
 
 # Preset distinct hex colors
 COLORS = [
-    "#FF5733", "#33FF57", "#3357FF", "#F033FF",
-    "#FF33A8", "#33FFF0", "#FFC300", "#FF3333"
+    "#FF5733",
+    "#33FF57",
+    "#3357FF",
+    "#F033FF",
+    "#FF33A8",
+    "#33FFF0",
+    "#FFC300",
+    "#FF3333",
 ]
+
 
 def get_avatar_initials(name: str | None, email: str | None) -> str:
     """Compute initials from name or email."""
@@ -18,6 +25,7 @@ def get_avatar_initials(name: str | None, email: str | None) -> str:
         local_part = email.split("@")[0]
         return local_part[:2].upper()
     return "NA"
+
 
 def get_avatar_color(identifier: str | uuid.UUID) -> str:
     """Deterministic color assignment based on UUID."""

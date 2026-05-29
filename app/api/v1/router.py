@@ -6,6 +6,7 @@ from app.api.v1.routes import (
     ai_generation,
     ask_mind,
     auth,
+    calendar,
     candidates,
     dashboard,
     health,
@@ -22,7 +23,6 @@ from app.api.v1.routes import (
     waitlist,
     workspaces,
     zoom_sdk,
-	calendar
 )
 
 api_router = APIRouter()
