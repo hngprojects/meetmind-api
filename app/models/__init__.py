@@ -21,6 +21,7 @@ from app.models.interview import (
     InterviewTranscriptTurn,
 )
 from app.models.meeting import Meeting, MeetingComment, MeetingParticipant
+from app.models.notification import Notification
 from app.models.scorecard import (
     InterviewScorecard,
     ScorecardCategory,
@@ -117,4 +118,6 @@ __all__ = [
     # Documents
     "DocumentChunk",
     "CandidateDocument",
+    # Notifications
+    "Notification",
 ]
