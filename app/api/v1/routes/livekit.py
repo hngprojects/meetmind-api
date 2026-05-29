@@ -211,7 +211,7 @@ async def post_result(
 
     try:
         interview_result = await db.execute(
-            select(Interview).where(Interview.session_id == session_id)
+            select(Interview).where(Interview.session_id == result_uuid)
         )
         interview = interview_result.scalar_one_or_none()
         if interview:
