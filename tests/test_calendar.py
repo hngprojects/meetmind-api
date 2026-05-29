@@ -160,3 +160,99 @@ class TestCalendarCore:
         
         # Now it will consistently block exactly 1 slot (10:00 - 10:30), leaving 19.
         assert len(res.json()["data"]) == 19
+
+class TestCalendarRescheduleAndCancel:
+    # ── C6 BEHAVIORS (Reschedule) ──
+
+    @pytest.mark.anyio
+    async def test_reschedule_success(self, client: AsyncClient, db_session: AsyncSession):
+        u, t, w = await create_ws_user(db_session, "resh@c.com")
+        i = await seed_interview(db_session, u.id, w, offset_hrs=24)
+        
+        new_start = datetime.now(timezone.utc) + timedelta(days=2)
+        new_end = new_start + timedelta(minutes=30)
+        
+        res = await client.patch(
+            f"/api/v1/calendar/appointments/{i.id}/reschedule",
+            json={"scheduled_start": new_start.isoformat(), "scheduled_end": new_end.isoformat()},
+            headers=auth_headers(t)
+        )
+        assert res.status_code == 200 # Behavior 1
+        
+        # Behavior 2: Check rescheduled_at is in DB
+        await db_session.refresh(i)
+        assert i.rescheduled_at is not None
+
+    @pytest.mark.anyio
+    async def test_reschedule_conflict(self, client: AsyncClient, db_session: AsyncSession):
+        u, t, w = await create_ws_user(db_session, "resh2@c.com")
+        i_target = await seed_interview(db_session, u.id, w, offset_hrs=24)
+        i_blocker = await seed_interview(db_session, u.id, w, offset_hrs=48)
+        
+        # Try to move i_target exactly onto i_blocker
+        res = await client.patch(
+            f"/api/v1/calendar/appointments/{i_target.id}/reschedule",
+            json={"scheduled_start": i_blocker.scheduled_start.isoformat(), "scheduled_end": i_blocker.scheduled_end.isoformat()},
+            headers=auth_headers(t)
+        )
+        assert res.status_code == 409 # Behavior 3
+
+    @pytest.mark.anyio
+    async def test_reschedule_cancelled(self, client: AsyncClient, db_session: AsyncSession):
+        u, t, w = await create_ws_user(db_session, "resh3@c.com")
+        i = await seed_interview(db_session, u.id, w, offset_hrs=24, status="cancelled")
+        
+        new_start = datetime.now(timezone.utc) + timedelta(days=2)
+        res = await client.patch(
+            f"/api/v1/calendar/appointments/{i.id}/reschedule",
+            json={"scheduled_start": new_start.isoformat(), "scheduled_end": (new_start + timedelta(minutes=30)).isoformat()},
+            headers=auth_headers(t)
+        )
+        assert res.status_code == 409 # Behavior 4
+
+    @pytest.mark.anyio
+    async def test_reschedule_isolation_and_auth(self, client: AsyncClient, db_session: AsyncSession):
+        u_a, t_a, w_a = await create_ws_user(db_session, "resh_a@c.com")
+        u_b, t_b, w_b = await create_ws_user(db_session, "resh_b@c.com")
+        i = await seed_interview(db_session, u_a.id, w_a, offset_hrs=24)
+        
+        new_start = datetime.now(timezone.utc) + timedelta(days=2)
+        payload = {"scheduled_start": new_start.isoformat(), "scheduled_end": (new_start + timedelta(minutes=30)).isoformat()}
+        
+        assert (await client.patch(f"/api/v1/calendar/appointments/{uuid.uuid4()}/reschedule", json=payload, headers=auth_headers(t_a))).status_code == 404 # Behavior 5
+        assert (await client.patch(f"/api/v1/calendar/appointments/{i.id}/reschedule", json=payload, headers=auth_headers(t_b))).status_code == 404 # Behavior 6
+        assert (await client.patch(f"/api/v1/calendar/appointments/{i.id}/reschedule", json=payload)).status_code == 401 # Behavior 7
+
+    # ── C7 BEHAVIORS (Cancel) ──
+
+    @pytest.mark.anyio
+    async def test_cancel_success(self, client: AsyncClient, db_session: AsyncSession):
+        u, t, w = await create_ws_user(db_session, "canc@c.com")
+        i = await seed_interview(db_session, u.id, w, offset_hrs=24)
+        
+        res = await client.delete(f"/api/v1/calendar/appointments/{i.id}", headers=auth_headers(t))
+        assert res.status_code == 200 # Behavior 1
+        assert res.json()["data"]["status"] == "cancelled"
+        
+        # Behavior 2: Ensure it's a soft delete
+        await db_session.refresh(i)
+        assert i.status == "cancelled"
+        assert i.id is not None # Row still exists
+
+    @pytest.mark.anyio
+    async def test_cancel_already_cancelled(self, client: AsyncClient, db_session: AsyncSession):
+        u, t, w = await create_ws_user(db_session, "canc2@c.com")
+        i = await seed_interview(db_session, u.id, w, offset_hrs=24, status="cancelled")
+        
+        res = await client.delete(f"/api/v1/calendar/appointments/{i.id}", headers=auth_headers(t))
+        assert res.status_code == 409 # Behavior 3
+
+    @pytest.mark.anyio
+    async def test_cancel_isolation_and_auth(self, client: AsyncClient, db_session: AsyncSession):
+        u_a, t_a, w_a = await create_ws_user(db_session, "canc_a@c.com")
+        u_b, t_b, w_b = await create_ws_user(db_session, "canc_b@c.com")
+        i = await seed_interview(db_session, u_a.id, w_a, offset_hrs=24)
+        
+        assert (await client.delete(f"/api/v1/calendar/appointments/{uuid.uuid4()}", headers=auth_headers(t_a))).status_code == 404 # Behavior 4
+        assert (await client.delete(f"/api/v1/calendar/appointments/{i.id}", headers=auth_headers(t_b))).status_code == 404 # Behavior 5
+        assert (await client.delete(f"/api/v1/calendar/appointments/{i.id}")).status_code == 401 # Behavior 6
