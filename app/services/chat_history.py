@@ -130,9 +130,11 @@ class ChatHistoryService:
         db: AsyncSession,
         user: User,
     ) -> TranscriptResponse:
-        await ChatHistoryService._assert_interview_belongs_to_user(
+        interview = await ChatHistoryService._assert_interview_belongs_to_user(
             interview_id, db, user
         )
+        is_live = interview.status == "in_progress"
+        response_status = "transcribing" if is_live else "completed"
 
         transcript_result = await db.execute(
             select(InterviewTranscript).where(
@@ -146,6 +148,9 @@ class ChatHistoryService:
                 interview_id=interview_id,
                 total_turns=0,
                 turns=[],
+                is_live=is_live,
+                status=response_status,
+                messages=[],
             )
 
         turns_result = await db.execute(
@@ -170,6 +175,8 @@ class ChatHistoryService:
                         first_timestamp, turn.timestamp_sec or 0
                     ),
                     content=turn.content,
+                    text=turn.content,
+                    speaker_type=speaker,
                     is_typing=False,
                     is_active=False,
                     sequence_no=turn.sequence_no,
@@ -180,6 +187,9 @@ class ChatHistoryService:
             interview_id=interview_id,
             total_turns=len(transcript_turns),
             turns=transcript_turns,
+            is_live=is_live,
+            status=response_status,
+            messages=transcript_turns,
         )
 
     @staticmethod
