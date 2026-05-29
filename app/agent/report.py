@@ -30,9 +30,13 @@ async def generate_report(
     prompt = f"""You are evaluating a job interview transcript for the role of \
 {interview.role}.
 
-Score the CANDIDATE only. For each rubric criterion, give an integer 1-5 score
-and one sentence of justification grounded in the transcript. Then give an
-overall weighted recommendation: one of strong_yes, yes, no, strong_no.
+Score the CANDIDATE only. For each rubric criterion:
+1. Provide a "percentage" score (0-100) based on their answers.
+2. List the specific "questions" asked (by the interviewer) relating to this criterion.
+3. List 2-4 key "signals" (competencies/traits) detected from their answer.
+4. Provide one sentence of "justification" grounded in the transcript.
+
+Then give an overall weighted recommendation: one of strong_yes, yes, no, strong_no.
 
 Rubric:
 {rubric_block}
@@ -41,8 +45,19 @@ Transcript:
 {convo}
 
 Respond with ONLY JSON, no prose or markdown fences:
-{{"criteria": [{{"name": "...", "score": 0, "justification": "..."}}],
-  "overall": "...", "summary": "..."}}"""
+{{
+  "criteria": [
+    {{
+      "name": "...",
+      "percentage": 0,
+      "questions": ["...", "..."],
+      "signals": ["...", "..."],
+      "justification": "..."
+    }}
+  ],
+  "overall": "...",
+  "summary": "..."
+}}"""
 
     ctx = llm.ChatContext.empty()
     ctx.add_message(role="user", content=prompt)

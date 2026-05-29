@@ -87,6 +87,22 @@ async def ask_question(
     return success(result, message="Query answered")
 
 
+@router.get("/{interview_id}/chat", status_code=status.HTTP_200_OK)
+async def get_chat_history(
+    interview_id: uuid.UUID,
+    user: VerifiedUser,
+    db: AsyncSession = Depends(get_session),
+):
+    """Retrieve the full chat history for an interview session."""
+    from app.services.chat_history import ChatHistoryService
+
+    history = await ChatHistoryService.get_chat_history(interview_id, db, user)
+    return success(
+        history.model_dump(mode="json"),
+        message="Chat history retrieved successfully",
+    )
+
+
 @router.post("/{interview_id}/summary/retry", status_code=status.HTTP_200_OK)
 async def retry_interview_summary(
     interview_id: uuid.UUID,

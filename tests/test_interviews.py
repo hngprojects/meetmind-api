@@ -250,3 +250,196 @@ class TestCreateInterviewDuration:
         session = await db_session.get(InterviewSession, interview.session_id)
 
         assert session.duration_minutes == 45
+
+
+class TestMissingFrontendEndpoints:
+    @pytest.mark.anyio
+    async def test_scorecard_404_for_unknown_interview(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        user = await create_user(db_session)
+        token = await AuthService.create_access_token(user)
+        response = await client.get(
+            f"{INTERVIEWS_URL}/{uuid.uuid4()}/scorecard",
+            headers=auth_headers(token),
+        )
+        assert response.status_code == 404
+
+    @pytest.mark.anyio
+    async def test_scorecard_returns_sections(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        user = await create_user(db_session)
+        token = await AuthService.create_access_token(user)
+        create_res = await create_interview_via_route(client, db_session, token)
+        interview_id = uuid.UUID(create_res.json()["data"]["id"])
+
+        from app.models.interview import Interview
+        interview = await db_session.get(Interview, interview_id)
+        workspace_id = interview.workspace_id
+
+        # setup: interview with scorecard, 2 scored criteria
+        from app.models.scorecard import (
+            InterviewScorecard,
+            ScorecardCategory,
+            ScorecardQuestion,
+            ScorecardScore,
+            ScorecardSignal,
+        )
+
+        scorecard = InterviewScorecard(interview_id=interview_id)
+        db_session.add(scorecard)
+        await db_session.flush()
+
+        cat1 = ScorecardCategory(
+            name="Communication",
+            workspace_id=workspace_id,
+            sort_order=0,
+        )
+        cat2 = ScorecardCategory(
+            name="Technical Depth",
+            workspace_id=workspace_id,
+            sort_order=1,
+        )
+        db_session.add_all([cat1, cat2])
+        await db_session.flush()
+
+        score1 = ScorecardScore(
+            scorecard_id=scorecard.id,
+            category_id=cat1.id,
+            score_pct=80,
+            completed=True,
+        )
+        score2 = ScorecardScore(
+            scorecard_id=scorecard.id,
+            category_id=cat2.id,
+            score_pct=60,
+            completed=True,
+        )
+        db_session.add_all([score1, score2])
+        await db_session.flush()
+
+        db_session.add(
+            ScorecardQuestion(
+                score_id=score1.id,
+                content="Tell me about yourself.",
+                sort_order=0,
+            )
+        )
+        db_session.add(
+            ScorecardSignal(
+                score_id=score1.id,
+                label="Clear answers",
+                sort_order=0,
+            )
+        )
+        await db_session.commit()
+
+        response = await client.get(
+            f"{INTERVIEWS_URL}/{interview_id}/scorecard",
+            headers=auth_headers(token),
+        )
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert "sections" in data
+        assert len(data["sections"]) == 2
+        section = data["sections"][0]
+        assert section["title"] == "Communication"
+        assert section["score"] == 80
+        assert section["score_bar_percent"] == 80
+        assert section["questions_asked"] == ["Tell me about yourself."]
+        assert section["signals_detected"] == ["Clear answers"]
+
+    @pytest.mark.anyio
+    async def test_profile_returns_candidate_and_interview_data(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        user = await create_user(db_session)
+        token = await AuthService.create_access_token(user)
+        create_res = await create_interview_via_route(client, db_session, token)
+        interview_id = uuid.UUID(create_res.json()["data"]["id"])
+
+        from app.models.interview import Candidate, Interview
+        interview = await db_session.get(Interview, interview_id)
+        candidate = await db_session.get(Candidate, interview.candidate_id)
+
+        response = await client.get(
+            f"{INTERVIEWS_URL}/{interview_id}/profile",
+            headers=auth_headers(token),
+        )
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert "candidate" in data
+        assert "interview" in data
+        assert data["candidate"]["name"] == candidate.full_name
+        assert data["candidate"]["email"] == candidate.email
+        assert data["interview"]["platform"] == interview.platform
+        assert data["interview"]["questions_answered"] == (interview.questions_asked or 0)
+        assert data["interview"]["questions_total"] == (interview.questions_total or 0)
+
+    @pytest.mark.anyio
+    async def test_chat_get_returns_history(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        user = await create_user(db_session)
+        token = await AuthService.create_access_token(user)
+        create_res = await create_interview_via_route(client, db_session, token)
+        interview_id = uuid.UUID(create_res.json()["data"]["id"])
+
+        response = await client.get(
+            f"{INTERVIEWS_URL}/{interview_id}/chat",
+            headers=auth_headers(token),
+        )
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert "messages" in data
+        assert "total_messages" in data
+
+    @pytest.mark.anyio
+    async def test_rejoin_returns_reconnecting(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        user = await create_user(db_session)
+        token = await AuthService.create_access_token(user)
+        create_res = await create_interview_via_route(client, db_session, token)
+        interview_id = uuid.UUID(create_res.json()["data"]["id"])
+
+        from app.models.interview import Interview
+        interview = await db_session.get(Interview, interview_id)
+        interview.status = "in_progress"
+        await db_session.commit()
+
+        response = await client.post(
+            f"{INTERVIEWS_URL}/{interview_id}/session/rejoin",
+            headers=auth_headers(token),
+        )
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["session_status"] == "reconnecting"
+        assert data["success"] is True
+
+
+class TestDeadSessionsRoute:
+    @pytest.mark.anyio
+    async def test_sessions_route_is_gone(self, client: AsyncClient):
+        response = await client.get("/api/v1/sessions/")
+        assert response.status_code == 404  # route not registered
+
+    @pytest.mark.anyio
+    async def test_interview_creation_still_creates_session_row(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        from app.models.interview import Interview, InterviewSession
+        user = await create_user(db_session)
+        token = await AuthService.create_access_token(user)
+        response = await create_interview_via_route(client, db_session, token)
+        interview_id = response.json()["data"]["id"]
+        interview = await db_session.get(Interview, uuid.UUID(interview_id))
+        assert interview.session_id is not None
+        session = await db_session.get(InterviewSession, interview.session_id)
+        assert session is not None
+        assert session.questions_json is not None
+
+
+
+

@@ -22,7 +22,13 @@ from app.models.interview import (
     InterviewTranscript,
     InterviewTranscriptTurn,
 )
-from app.models.scorecard import InterviewScorecard, ScorecardCategory, ScorecardScore
+from app.models.scorecard import (
+    InterviewScorecard,
+    ScorecardCategory,
+    ScorecardQuestion,
+    ScorecardScore,
+    ScorecardSignal,
+)
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.interview import (
@@ -742,6 +748,11 @@ Keep all text suitable for a live audio call (concise and natural).
         """Return the full LiveKit agent context for an interview."""
         interview = await db.get(Interview, interview_id)
         if not interview:
+            res = await db.execute(
+                select(Interview).where(Interview.session_id == interview_id)
+            )
+            interview = res.scalar_one_or_none()
+        if not interview:
             raise APIError(
                 "Interview not found",
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -820,6 +831,11 @@ Keep all text suitable for a live audio call (concise and natural).
         """Persist a single LiveKit transcript turn idempotently."""
         interview = await db.get(Interview, interview_id)
         if not interview:
+            res = await db.execute(
+                select(Interview).where(Interview.session_id == interview_id)
+            )
+            interview = res.scalar_one_or_none()
+        if not interview:
             raise APIError(
                 "Interview not found",
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -870,6 +886,217 @@ Keep all text suitable for a live audio call (concise and natural).
             "transcriptId": str(transcript.id),
             "deduplicated": False,
         }, status.HTTP_201_CREATED
+
+    @staticmethod
+    async def process_interview_result(
+        interview_id: uuid.UUID,
+        transcript: list[dict] | None,
+        report: dict | None,
+        db: AsyncSession,
+    ) -> dict:
+        """Process post-interview results, persisting transcripts, scorecards
+        and summary.
+        """
+        # 1. Fetch Interview
+        interview = await db.get(Interview, interview_id)
+        if not interview:
+            res = await db.execute(
+                select(Interview).where(Interview.session_id == interview_id)
+            )
+            interview = res.scalar_one_or_none()
+        if not interview:
+            raise APIError(
+                "Interview not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="interview_not_found",
+            )
+
+        # 2. Get or create InterviewTranscript
+        transcript_result = await db.execute(
+            select(InterviewTranscript).where(
+                InterviewTranscript.interview_id == interview.id
+            )
+        )
+        transcript_obj = transcript_result.scalar_one_or_none()
+        if not transcript_obj:
+            transcript_obj = InterviewTranscript(
+                interview_id=interview.id, status="processing"
+            )
+            db.add(transcript_obj)
+            await db.flush()
+
+        # 3. Save transcript turns incrementally (preventing duplicate sequence_no)
+        for turn_data in transcript or []:
+            existing_turn_result = await db.execute(
+                select(InterviewTranscriptTurn).where(
+                    InterviewTranscriptTurn.transcript_id == transcript_obj.id,
+                    InterviewTranscriptTurn.sequence_no == turn_data["sequence_no"],
+                )
+            )
+            existing_turn = existing_turn_result.scalar_one_or_none()
+            if not existing_turn:
+                turn = InterviewTranscriptTurn(
+                    transcript_id=transcript_obj.id,
+                    speaker=turn_data["speaker"],
+                    speaker_name=turn_data.get("speaker_name"),
+                    content=turn_data.get("content") or turn_data.get("text") or "",
+                    timestamp_sec=turn_data.get("timestamp_sec"),
+                    sequence_no=turn_data["sequence_no"],
+                    is_ai_question=turn_data.get("is_ai_question", False),
+                )
+                db.add(turn)
+
+        # 4. Save scorecard report if present
+        # Normalize report: if it's a plain string, wrap it for backward compat
+        if report and not isinstance(report, dict):
+            report = {"summary": str(report), "criteria": [], "overall": None}
+
+        if report:
+            if report.get("criteria"):
+                sc_result = await db.execute(
+                    select(InterviewScorecard).where(
+                        InterviewScorecard.interview_id == interview.id
+                    )
+                )
+                scorecard = sc_result.scalar_one_or_none()
+                if not scorecard:
+                    scorecard = InterviewScorecard(interview_id=interview.id)
+                    db.add(scorecard)
+                    await db.flush()
+
+                for idx, criterion in enumerate(report.get("criteria", [])):
+                    category_name = criterion["name"]
+                    category = await _find_or_create_category(
+                        db, interview.workspace_id, category_name, idx
+                    )
+
+                    score_result = await db.execute(
+                        select(ScorecardScore).where(
+                            ScorecardScore.scorecard_id == scorecard.id,
+                            ScorecardScore.category_id == category.id,
+                        )
+                    )
+                    score = score_result.scalar_one_or_none()
+
+                    # Extract score_pct: support percentage (0-100) or
+                    # score (1-5) scaled by 20.
+                    score_pct = criterion.get("percentage")
+                    if score_pct is None and criterion.get("score") is not None:
+                        score_pct = criterion["score"] * 20
+
+                    if not score:
+                        score = ScorecardScore(
+                            scorecard_id=scorecard.id,
+                            category_id=category.id,
+                            score_pct=score_pct,
+                            completed=True,
+                        )
+                        db.add(score)
+                        await db.flush()
+                    else:
+                        score.score_pct = score_pct
+                        score.completed = True
+                        await db.flush()
+
+                    # Clear existing questions and signals for this score (idempotency)
+                    await db.execute(
+                        delete(ScorecardQuestion).where(
+                            ScorecardQuestion.score_id == score.id
+                        )
+                    )
+                    await db.execute(
+                        delete(ScorecardSignal).where(
+                            ScorecardSignal.score_id == score.id
+                        )
+                    )
+                    await db.flush()
+
+                    # Add scorecard questions
+                    for q_idx, q_content in enumerate(criterion.get("questions", [])):
+                        db.add(
+                            ScorecardQuestion(
+                                score_id=score.id,
+                                content=q_content,
+                                sort_order=q_idx,
+                            )
+                        )
+
+                    # Add scorecard signals (and justification as a signal)
+                    signals_to_add = list(criterion.get("signals", []))
+                    if criterion.get("justification"):
+                        signals_to_add.append(criterion["justification"])
+
+                    for s_idx, s_label in enumerate(signals_to_add):
+                        db.add(
+                            ScorecardSignal(
+                                score_id=score.id,
+                                label=s_label[
+                                    :80
+                                ],  # Truncate to avoid varchar overflow
+                                sort_order=s_idx,
+                            )
+                        )
+
+            # 5. Save summary and merge AI assessment
+            summary_result = await db.execute(
+                select(InterviewSummary).where(
+                    InterviewSummary.interview_id == interview.id
+                )
+            )
+            summary = summary_result.scalar_one_or_none()
+            if not summary:
+                summary = InterviewSummary(interview_id=interview.id)
+                db.add(summary)
+
+            assessment = {}
+            if summary.ai_assessment:
+                try:
+                    assessment = json.loads(summary.ai_assessment)
+                except Exception:
+                    assessment = {}
+
+            assessment["overview"] = report.get("summary")
+            assessment["overall_recommendation"] = report.get("overall")
+
+            summary.ai_assessment = json.dumps(assessment)
+            summary.status = "completed"
+            summary.generated_at = datetime.now(timezone.utc)
+
+        # 6. Update status of Interview & associated InterviewSession
+        interview.status = "completed"
+
+        if interview.session_id:
+            session = await db.get(InterviewSession, interview.session_id)
+            if session:
+                session.status = "completed"
+                session.completed_at = datetime.now(timezone.utc)
+                session.transcript_json = (
+                    json.dumps(transcript) if transcript is not None else None
+                )
+                session.report_json = json.dumps(report) if report is not None else None
+
+        await db.commit()
+
+        # Create report notification for the interviewer
+        try:
+            from app.services.notification_service import NotificationService
+
+            await NotificationService.create(
+                db=db,
+                user_id=interview.interviewer_id,
+                type="report",
+                title="Interview Summary Ready",
+                action_url=f"/interviews/{interview.id}",
+            )
+        except Exception:
+            # We don't want notification failure to break the overall result persistence
+            import logging
+
+            logging.getLogger("app.services.interview").exception(
+                "Failed to create report notification"
+            )
+
+        return {"status": "success", "message": "Result saved successfully"}
 
     @staticmethod
     async def stop_transcript(
@@ -1206,4 +1433,180 @@ Keep all text suitable for a live audio call (concise and natural).
             "connection_status": "connected"
             if interview.status == "in_progress"
             else "idle",
+        }
+
+    @staticmethod
+    async def get_scorecard(
+        interview_id: uuid.UUID,
+        db: AsyncSession,
+        user: User,
+    ) -> dict:
+        """Retrieve the evaluated scorecard with HSL scores, categories,
+        questions, and signals.
+        """
+        # 1. Fetch Interview and assert ownership
+        result = await db.execute(
+            select(Interview).where(
+                Interview.id == interview_id,
+                Interview.interviewer_id == user.id,
+            )
+        )
+        interview = result.scalar_one_or_none()
+        if not interview:
+            raise APIError(
+                "Interview not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="interview_not_found",
+            )
+
+        # 2. Fetch scorecard
+        sc_result = await db.execute(
+            select(InterviewScorecard).where(
+                InterviewScorecard.interview_id == interview.id
+            )
+        )
+        scorecard = sc_result.scalar_one_or_none()
+        if not scorecard:
+            return {
+                "interview_id": str(interview_id),
+                "sections": [],
+            }
+
+        # 3. Fetch scores ordered by Category sort_order
+        scores_result = await db.execute(
+            select(ScorecardScore)
+            .join(ScorecardCategory, ScorecardScore.category_id == ScorecardCategory.id)
+            .where(ScorecardScore.scorecard_id == scorecard.id)
+            .order_by(ScorecardCategory.sort_order)
+        )
+        scores = scores_result.scalars().all()
+
+        sections = []
+        for idx, score in enumerate(scores):
+            # Fetch Category
+            category = await db.get(ScorecardCategory, score.category_id)
+            category_name = category.name if category else "Unknown"
+
+            # Fetch Questions
+            questions_result = await db.execute(
+                select(ScorecardQuestion)
+                .where(ScorecardQuestion.score_id == score.id)
+                .order_by(ScorecardQuestion.sort_order)
+            )
+            questions = [q.content for q in questions_result.scalars().all()]
+
+            # Fetch Signals
+            signals_result = await db.execute(
+                select(ScorecardSignal)
+                .where(ScorecardSignal.score_id == score.id)
+                .order_by(ScorecardSignal.sort_order)
+            )
+            signals = [s.label for s in signals_result.scalars().all()]
+
+            sections.append(
+                {
+                    "title": category_name,
+                    "score": score.score_pct or 0,
+                    "score_bar_percent": score.score_pct or 0,
+                    "questions_asked": questions,
+                    "signals_detected": signals,
+                    "expanded": idx == 0,
+                }
+            )
+
+        return {
+            "interview_id": str(interview_id),
+            "sections": sections,
+        }
+
+    @staticmethod
+    async def get_profile(
+        interview_id: uuid.UUID,
+        db: AsyncSession,
+        user: User,
+    ) -> dict:
+        """Retrieve candidate profile info alongside scheduled interview metadata."""
+        # 1. Fetch Interview and assert ownership
+        result = await db.execute(
+            select(Interview).where(
+                Interview.id == interview_id,
+                Interview.interviewer_id == user.id,
+            )
+        )
+        interview = result.scalar_one_or_none()
+        if not interview:
+            raise APIError(
+                "Interview not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="interview_not_found",
+            )
+
+        # 2. Fetch candidate
+        candidate = None
+        if interview.candidate_id:
+            candidate = await db.get(Candidate, interview.candidate_id)
+
+        # 3. Format duration string from scheduled start/end or fall back
+        duration_str = "45min"
+        if interview.scheduled_start and interview.scheduled_end:
+            diff_seconds = (
+                interview.scheduled_end - interview.scheduled_start
+            ).total_seconds()
+            hours = int(diff_seconds // 3600)
+            minutes = int((diff_seconds % 3600) // 60)
+            if hours > 0:
+                duration_str = (
+                    f"{hours}hr {minutes}min" if minutes > 0 else f"{hours}hr"
+                )
+            else:
+                duration_str = f"{minutes}min"
+
+        return {
+            "candidate": {
+                "name": candidate.full_name if candidate else "Unknown",
+                "email": candidate.email if candidate else None,
+                "phone": candidate.phone if candidate else None,
+                "resume_url": candidate.resume_url if candidate else None,
+                "portfolio_url": candidate.portfolio_url if candidate else None,
+            },
+            "interview": {
+                "platform": interview.platform or "livekit",
+                "duration": duration_str,
+                "questions_answered": interview.questions_asked or 0,
+                "questions_total": interview.questions_total or 0,
+                "status": interview.status or "scheduled",
+            },
+        }
+
+    @staticmethod
+    async def rejoin_session(
+        interview_id: uuid.UUID,
+        db: AsyncSession,
+        user: User,
+    ) -> dict:
+        """Idempotently reset interview state to reconnect an active session."""
+        # 1. Fetch Interview and assert ownership
+        result = await db.execute(
+            select(Interview).where(
+                Interview.id == interview_id,
+                Interview.interviewer_id == user.id,
+            )
+        )
+        interview = result.scalar_one_or_none()
+        if not interview:
+            raise APIError(
+                "Interview not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="interview_not_found",
+            )
+
+        # Update status of Interview to in_progress
+        interview.status = "in_progress"
+        await db.commit()
+
+        return {
+            "success": True,
+            "session_status": "reconnecting",
+            "interview_id": str(interview_id),
+            "message": "Reconnecting to session...",
         }

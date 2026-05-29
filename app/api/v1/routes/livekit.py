@@ -1,9 +1,7 @@
 """LiveKit API routes for token generation, config, and results."""
 
-import json
 import logging
 import uuid
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import JSONResponse
@@ -15,9 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.responses import APIError
 from app.db.session import get_session
-from app.models.interview import Candidate, Interview, InterviewSession
+from app.models.interview import Candidate, Interview
 from app.services.interview import InterviewService
-from app.services.notification_service import NotificationService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -96,6 +93,11 @@ async def generate_token(
         interview_uuid = _parse_uuid(interview_id)
         interview = await db.get(Interview, interview_uuid)
         if not interview:
+            res = await db.execute(
+                select(Interview).where(Interview.session_id == interview_uuid)
+            )
+            interview = res.scalar_one_or_none()
+        if not interview:
             raise APIError(
                 "Interview not found",
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -169,60 +171,22 @@ async def post_transcript_turn(
     return JSONResponse(status_code=status_code, content=data)
 
 
-@router.post("/{session_id}/result")
+@router.post("/{interview_id}/result")
 async def post_result(
-    session_id: str, request: Request, db: AsyncSession = Depends(get_session)
+    interview_id: str, request: Request, db: AsyncSession = Depends(get_session)
 ):
     """The LiveKit agent posts the transcript and report here when done."""
     body = await request.json()
     transcript = body.get("transcript", [])
     report = body.get("report")
 
-    is_test_room = session_id == "test-room"
+    is_test_room = interview_id == "test-room"
     if is_test_room:
-        return {"status": "success", "message": "Test result received successfully"}
+        return {"status": "success", "message": "Result saved successfully"}
 
-    result_uuid = _parse_uuid(session_id)
+    interview_uuid = _parse_uuid(interview_id)
 
-    interview = await db.get(Interview, result_uuid)
-    if interview and interview.session_id:
-        session = await db.get(InterviewSession, interview.session_id)
-    else:
-        query = select(InterviewSession).where(InterviewSession.id == result_uuid)
-        result = await db.execute(query)
-        session = result.scalar_one_or_none()
-
-    if not session:
-        raise APIError(
-            "Session not found",
-            status_code=status.HTTP_404_NOT_FOUND,
-            code="session_not_found",
-        )
-
-    # Update session in the database
-    session.transcript_json = json.dumps(transcript) if transcript is not None else None
-    session.report_json = json.dumps(report) if report is not None else None
-    session.status = "completed"
-    session.completed_at = datetime.now(timezone.utc)
-    if interview:
-        interview.status = "completed"
-
-    await db.commit()
-
-    try:
-        interview_result = await db.execute(
-            select(Interview).where(Interview.session_id == result_uuid)
-        )
-        interview = interview_result.scalar_one_or_none()
-        if interview:
-            await NotificationService.create(
-                db=db,
-                user_id=interview.interviewer_id,
-                type="report",
-                title="Interview Summary Ready",
-                action_url=f"/interviews/{interview.id}",
-            )
-    except Exception:
-        logger.exception("Failed to create report notification")
-
-    return {"status": "success", "message": "Result saved successfully"}
+    res = await InterviewService.process_interview_result(
+        interview_uuid, transcript, report, db
+    )
+    return res
