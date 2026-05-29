@@ -24,7 +24,7 @@ class User(Base, UUIDPrimaryKey, TimestampMixin):
     onboarding_completed: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=True
     )
-    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=True)
 
 
 class UserTrial(Base, UUIDPrimaryKey, TimestampMixin):

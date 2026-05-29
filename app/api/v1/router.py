@@ -13,6 +13,7 @@ from app.api.v1.routes import (
     interviews,
     livekit,
     meetings,
+    notifications,
     onboarding,
     sdk,
     sessions,
@@ -51,3 +52,6 @@ api_router.include_router(zoom_sdk.router, prefix="/zoom", tags=["Zoom SDK"])
 api_router.include_router(livekit.router, prefix="/livekit", tags=["LiveKit"])
 api_router.include_router(sdk.router, prefix="/sdk", tags=["SDK"])
 api_router.include_router(sessions.router, prefix="/sessions", tags=["Sessions"])
+api_router.include_router(
+    notifications.router, prefix="/notifications", tags=["Notifications"]
+)

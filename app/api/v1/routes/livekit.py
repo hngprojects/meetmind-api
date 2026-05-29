@@ -1,6 +1,7 @@
 """LiveKit API routes for token generation, config, and results."""
 
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -16,8 +17,10 @@ from app.core.responses import APIError
 from app.db.session import get_session
 from app.models.interview import Candidate, Interview, InterviewSession
 from app.services.interview import InterviewService
+from app.services.notification_service import NotificationService
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 # Schema-compliant sandbox fallback for developer local testing
 DEFAULT_INTERVIEW_CONFIG = {
@@ -205,4 +208,21 @@ async def post_result(
         interview.status = "completed"
 
     await db.commit()
+
+    try:
+        interview_result = await db.execute(
+            select(Interview).where(Interview.session_id == result_uuid)
+        )
+        interview = interview_result.scalar_one_or_none()
+        if interview:
+            await NotificationService.create(
+                db=db,
+                user_id=interview.interviewer_id,
+                type="report",
+                title="Interview Summary Ready",
+                action_url=f"/interviews/{interview.id}",
+            )
+    except Exception:
+        logger.exception("Failed to create report notification")
+
     return {"status": "success", "message": "Result saved successfully"}
