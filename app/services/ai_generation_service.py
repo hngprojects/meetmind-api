@@ -26,6 +26,7 @@ from app.models.user import User
 from app.schemas.assessment import AssessmentOutput
 from app.schemas.interview import InterviewPlanOutput
 from app.services.interview_context_service import InterviewContextService
+from app.services.notification_service import NotificationService
 
 logger = logging.getLogger(__name__)
 
@@ -411,6 +412,21 @@ class AIGenerationService:
                 summary.status = "completed"
                 summary.generated_at = datetime.now(timezone.utc)
                 await db.commit()
+
+                try:
+                    await NotificationService.create(
+                        db=db,
+                        user_id=interview.interviewer_id,
+                        type="report",
+                        title="Interview Summary Ready",
+                        description=f"{candidate.full_name or 'Candidate'} - {interview.role_title or 'Interview'}",
+                        action_url=f"/interviews/{interview_id}",
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to create summary-ready notification for interview %s",
+                        interview_id,
+                    )
 
             except Exception:
                 logger.exception(
