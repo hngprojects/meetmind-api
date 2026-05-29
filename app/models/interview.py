@@ -51,6 +51,9 @@ class Interview(Base, UUIDPrimaryKey, TimestampMixin):
     role_title: Mapped[str | None] = mapped_column(String(120))
     scheduled_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     scheduled_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rescheduled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     duration_min: Mapped[int | None] = mapped_column(Integer)
     platform: Mapped[str | None] = mapped_column(String(30))
     status: Mapped[str | None] = mapped_column(String(20), default="draft")
