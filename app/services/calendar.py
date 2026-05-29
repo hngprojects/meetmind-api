@@ -156,4 +156,93 @@ class CalendarService:
                       e.replace(tzinfo=timezone.utc) if e.tzinfo is None else e) for s, e in booked]
         return compute_available_slots(intervals, target_date)
 
-    
+    @staticmethod
+    async def _check_conflict(db: AsyncSession, interviewer_id: uuid.UUID, start: datetime, end: datetime, exclude_interview_id: uuid.UUID | None = None) -> bool:
+        """Helper to detect overlapping bookings for an interviewer."""
+        query = select(Interview).where(
+            Interview.interviewer_id == interviewer_id,
+            Interview.status != 'cancelled',
+            Interview.scheduled_start < end,
+            Interview.scheduled_end > start
+        )
+        if exclude_interview_id:
+            query = query.where(Interview.id != exclude_interview_id)
+            
+        conflict = await db.scalar(query)
+        return bool(conflict)
+
+
+    @classmethod
+    async def reschedule_appointment(cls, db: AsyncSession, user: User, interview_id: str, new_start: datetime, new_end: datetime) -> dict:
+        workspace_id = await db.scalar(select(WorkspaceMember.workspace_id).where(WorkspaceMember.user_id == user.id))
+        
+        # Ensure UTC
+        if new_start.tzinfo is None: new_start = new_start.replace(tzinfo=timezone.utc)
+        if new_end.tzinfo is None: new_end = new_end.replace(tzinfo=timezone.utc)
+
+        # Fetch interview joined with candidate and interviewer for the return shape
+        query = select(Interview, Candidate, User).join(
+            Candidate, 
+            Interview.candidate_id == Candidate.id
+        ).join(User, Interview.interviewer_id == User.id).where(Interview.id == uuid.UUID(interview_id), Interview.workspace_id == workspace_id)
+        row = (await db.execute(query)).first()
+        
+        if not row:
+            raise APIError("Appointment not found", status_code=404)
+            
+        interview, candidate, interviewer = row
+
+        if interview.status == 'cancelled':
+            raise APIError("Cannot reschedule a cancelled interview", status_code=409)
+        
+        if interview.status == 'completed':
+            raise APIError("Cannot reschedule a cancelled interview", status_code=409)
+
+        # Conflict check (exclude self)
+        conflict = await cls._check_conflict(db, interview.interviewer_id, new_start, new_end, exclude_interview_id=interview.id)
+        if conflict:
+            raise APIError("Interviewer has a conflicting booking", status_code=409)
+
+        interview.scheduled_start = new_start
+        interview.scheduled_end = new_end
+        interview.rescheduled_at = func.now()
+        await db.commit()
+        await db.refresh(interview)
+
+        return {
+            "id": str(interview.id), "role_title": interview.role_title, "status": interview.status,
+            "scheduled_start": interview.scheduled_start, "scheduled_end": interview.scheduled_end,
+            "time_display": format_time_display(interview.scheduled_start, interview.scheduled_end),
+            "candidate_name": candidate.full_name, "candidate_email": candidate.email,
+            "interviewer_name": interviewer.name, "interviewer_email": interviewer.email,
+        }
+
+    @classmethod
+    async def cancel_appointment(cls, db: AsyncSession, user: User, interview_id: str) -> dict:
+        workspace_id = await db.scalar(select(WorkspaceMember.workspace_id).where(WorkspaceMember.user_id == user.id))
+        
+        query = select(Interview, Candidate, User).join(Candidate, Interview.candidate_id == Candidate.id).join(User, Interview.interviewer_id == User.id).where(Interview.id == uuid.UUID(interview_id), Interview.workspace_id == workspace_id)
+        row = (await db.execute(query)).first()
+        
+        if not row:
+            raise APIError("Appointment not found", status_code=404)
+            
+        interview, candidate, interviewer = row
+
+        if interview.status == 'cancelled':
+            raise APIError("Appointment is already cancelled", status_code=409)
+        
+        if interview.status == 'completed':
+            raise APIError("Cannot reschedule a cancelled interview", status_code=409)
+
+        interview.status = 'cancelled'
+        await db.commit()
+        await db.refresh(interview)
+
+        return {
+            "id": str(interview.id), "role_title": interview.role_title, "status": interview.status,
+            "scheduled_start": interview.scheduled_start, "scheduled_end": interview.scheduled_end,
+            "time_display": format_time_display(interview.scheduled_start, interview.scheduled_end),
+            "candidate_name": candidate.full_name, "candidate_email": candidate.email,
+            "interviewer_name": interviewer.name, "interviewer_email": interviewer.email,
+        }

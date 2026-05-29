@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import VerifiedUser
 from app.core.responses import success
 from app.db.session import get_session
+from app.schemas.calendar import RescheduleRequest
 from app.services.calendar import CalendarService
 
 router = APIRouter()
@@ -50,3 +51,17 @@ async def get_availability(
     interviewer_id: Optional[str] = None, db: AsyncSession = Depends(get_session)
 ):
     return success(await CalendarService.get_availability(db, user, target_date, interviewer_id))
+
+@router.patch("/appointments/{interview_id}/reschedule", status_code=status.HTTP_200_OK)
+async def reschedule_appointment(
+    interview_id: str, payload: RescheduleRequest, user: VerifiedUser, db: AsyncSession = Depends(get_session)
+):
+    apt = await CalendarService.reschedule_appointment(db, user, interview_id, payload.scheduled_start, payload.scheduled_end)
+    return success(apt, message="Appointment rescheduled successfully")
+
+@router.delete("/appointments/{interview_id}", status_code=status.HTTP_200_OK)
+async def cancel_appointment(
+    interview_id: str, user: VerifiedUser, db: AsyncSession = Depends(get_session)
+):
+    apt = await CalendarService.cancel_appointment(db, user, interview_id)
+    return success(apt, message="Appointment cancelled successfully")
