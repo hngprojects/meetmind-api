@@ -31,32 +31,14 @@ logger = logging.getLogger(__name__)
 
 
 def _now() -> datetime:
-    """Return the current UTC timestamp as a timezone-aware datetime.
-
-    Returns:
-        The current time in UTC.
-    """
     return datetime.now(timezone.utc)
 
 
 def _hash_token(raw: str) -> str:
-    """Compute a stable SHA-256 digest for a refresh-token string.
-
-    Args:
-        raw: The raw token string to hash.
-
-    Returns:
-        Hex-encoded SHA-256 digest suitable for database lookup.
-    """
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
 def _generate_jti() -> str:
-    """Return a cryptographically random JWT ID (``jti``) string.
-
-    Returns:
-        A URL-safe, base64-encoded random string of 16 bytes.
-    """
     return secrets.token_urlsafe(16)
 
 
@@ -69,41 +51,15 @@ class AuthService:
 
     @staticmethod
     async def hash_password(password: str) -> str:
-        """Hash a plaintext password using bcrypt.
-
-        Args:
-            password: The plaintext password supplied by the user.
-
-        Returns:
-            The bcrypt-hashed password as a UTF-8 string.
-        """
         salt = bcrypt.gensalt()
         return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
 
     @staticmethod
     async def verify_password(password: str, hashed: str) -> bool:
-        """Verify a plaintext password against a bcrypt hash.
-
-        Args:
-            password: The plaintext password being checked.
-            hashed: The previously stored bcrypt hash.
-
-        Returns:
-            ``True`` if the password matches the hash, otherwise ``False``.
-        """
         return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
 
     @staticmethod
     async def check_email_exists(email: str, db: AsyncSession) -> bool:
-        """Check whether a user is already registered with the given email.
-
-        Args:
-            email: Email address to look up.
-            db: Active async database session.
-
-        Returns:
-            ``True`` if a user row exists for ``email``, else ``False``.
-        """
         result = await db.execute(select(User).where(User.email == email))
         return result.scalar_one_or_none() is not None
 
