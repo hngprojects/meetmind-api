@@ -4,7 +4,7 @@ and scorecard endpoints."""
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,6 +30,7 @@ from app.schemas.interview import (
     UpdateCriteriaRequest,
 )
 from app.services.chat_history import ChatHistoryService
+from app.services.email_service import send_interview_link_email
 from app.services.interview import InterviewService
 from app.services.notification_service import NotificationService
 
@@ -345,3 +346,35 @@ async def rejoin_interview_session(
     """Idempotently signal reconnection to an active interview room."""
     result = await InterviewService.rejoin_session(interview_id, db, user)
     return success(result, message="Session rejoin successfully requested")
+
+
+@router.post("/{interview_id}/send-link", status_code=status.HTTP_200_OK)
+async def send_interview_link(
+    interview_id: uuid.UUID,
+    user: VerifiedUser,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_session),
+    email: str | None = None,
+):
+    """Send the interview session/LiveKit invitation link via email.
+    
+    If an optional `email` query param is provided, the invite will be sent to that address. 
+    Otherwise, it defaults to the verified user's registered email address.
+    """
+    interview = await InterviewService.get_interview(interview_id, db, user)
+    
+    recipient_email = email or user.email
+    recipient_name = user.name if not email else None
+    
+    await send_interview_link_email(
+        email=recipient_email,
+        name=recipient_name,
+        interview_id=interview.id,
+        role_title=interview.role_title or "Candidate Screening",
+        background_tasks=background_tasks,
+    )
+    
+    return success(
+        message=f"Interview link email sent successfully to {recipient_email}"
+    )
+
