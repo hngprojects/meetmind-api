@@ -77,3 +77,17 @@ class CandidateExtraction(BaseModel):
     skills: list[str]
     location: str | None
     portfolio_url: str | None
+
+
+class CandidateListItem(BaseModel):
+    id: str
+    name: str
+    email: str | None
+    role: str | None
+    status: str
+    score: int | None
+    action: str
+    created_at: str | None
+    updated_at: str | None
+    avatarUrl: str | None
+    notes: None = None

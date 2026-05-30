@@ -33,3 +33,19 @@ class RescheduleRequest(BaseModel):
         if "scheduled_start" in info.data and v <= info.data["scheduled_start"]:
             raise ValueError("scheduled_end must be after scheduled_start")
         return v
+
+
+class CalendarUserItem(BaseModel):
+    id: str
+    name: str | None
+    email: str | None
+    role: str | None
+    avatar_initials: str
+    avatar_color: str
+
+
+class AvailabilitySlot(BaseModel):
+    start_time: str
+    end_time: str
+    period_start: str
+    period_end: str

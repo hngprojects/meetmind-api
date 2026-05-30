@@ -11,10 +11,11 @@ from fastapi import BackgroundTasks, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.responses import APIError
 from app.models.email_verification import EmailVerificationToken
 from app.models.user import User
-from app.services.email_service import send_verification_email
+from app.services.email_service import send_verification_email, send_welcome_email
 from app.services.interview import _get_or_create_workspace
 
 TOKEN_EXPIRY_MINUTES = 30
@@ -113,7 +114,12 @@ class VerificationService:
         await db.commit()
         return raw_token
 
-    async def verify_email(self, db: AsyncSession, token: str) -> User:
+    async def verify_email(
+        self,
+        db: AsyncSession,
+        token: str,
+        background_tasks: BackgroundTasks | None = None,
+    ) -> User:
         """Redeem a verification token and mark the owning user as verified.
 
         Args:
@@ -168,6 +174,14 @@ class VerificationService:
 
         user.is_verified = True
         await _get_or_create_workspace(db, user)
+
+        action_url = f"{settings.FRONTEND_URL.rstrip('/')}/dashboard"
+        if background_tasks is not None:
+            await send_welcome_email(
+                user.email, user.name, action_url, background_tasks=background_tasks
+            )
+        else:
+            await send_welcome_email(user.email, user.name, action_url)
         await db.commit()
         return user
 

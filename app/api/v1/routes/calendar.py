@@ -6,9 +6,14 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import VerifiedUser
-from app.core.responses import success
+from app.core.responses import APIResponse, success
 from app.db.session import get_session
-from app.schemas.calendar import RescheduleRequest
+from app.schemas.calendar import (
+    AppointmentResponse,
+    AvailabilitySlot,
+    CalendarUserItem,
+    RescheduleRequest,
+)
 from app.services.calendar import CalendarService
 from app.services.notification_service import NotificationService
 
@@ -17,7 +22,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/appointments", status_code=status.HTTP_200_OK)
+@router.get(
+    "/appointments",
+    response_model=APIResponse[list[AppointmentResponse]],
+    status_code=status.HTTP_200_OK,
+)
 async def list_appointments(
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
@@ -40,7 +49,11 @@ async def list_appointments(
     return success({"filter": filter, "appointments": appointments, "message": message})
 
 
-@router.get("/users", status_code=status.HTTP_200_OK)
+@router.get(
+    "/users",
+    response_model=APIResponse[list[CalendarUserItem]],
+    status_code=status.HTTP_200_OK,
+)
 async def list_users(
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
@@ -50,7 +63,11 @@ async def list_users(
     return success(await CalendarService.list_users(db, user, role, search))
 
 
-@router.get("/availability", status_code=status.HTTP_200_OK)
+@router.get(
+    "/availability",
+    response_model=APIResponse[list[AvailabilitySlot]],
+    status_code=status.HTTP_200_OK,
+)
 async def get_availability(
     user: VerifiedUser,
     target_date: date = Query(..., alias="date"),
@@ -62,7 +79,11 @@ async def get_availability(
     )
 
 
-@router.patch("/appointments/{interview_id}/reschedule", status_code=status.HTTP_200_OK)
+@router.patch(
+    "/appointments/{interview_id}/reschedule",
+    response_model=APIResponse[AppointmentResponse],
+    status_code=status.HTTP_200_OK,
+)
 async def reschedule_appointment(
     interview_id: str,
     payload: RescheduleRequest,
@@ -89,7 +110,11 @@ async def reschedule_appointment(
     return success(apt, message="Appointment rescheduled successfully")
 
 
-@router.delete("/appointments/{interview_id}", status_code=status.HTTP_200_OK)
+@router.delete(
+    "/appointments/{interview_id}",
+    response_model=APIResponse[AppointmentResponse],
+    status_code=status.HTTP_200_OK,
+)
 async def cancel_appointment(
     interview_id: str, user: VerifiedUser, db: AsyncSession = Depends(get_session)
 ):

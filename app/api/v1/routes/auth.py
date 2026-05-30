@@ -113,6 +113,7 @@ async def verify_email(
     request: Request,
     payload: VerifyEmailRequest,
     db: AsyncSession = Depends(get_session),
+    background_tasks: BackgroundTasks = None,
 ):
     """Verify a user's email address using a single-use token.
 
@@ -125,7 +126,9 @@ async def verify_email(
         A standardized success envelope with the verified user's ``id``
         and ``email``.
     """
-    user = await verification_service.verify_email(db, payload.token)
+    user = await verification_service.verify_email(
+        db, payload.token, background_tasks=background_tasks
+    )
     return success(
         {
             "id": str(user.id),

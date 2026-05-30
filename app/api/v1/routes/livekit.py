@@ -70,7 +70,7 @@ class TranscriptTurnRequest(BaseModel):
 
 def _parse_uuid(value: str) -> uuid.UUID:
     try:
-        return uuid.UUID(value)
+        return uuid.UUID(value.strip())
     except ValueError:
         raise APIError(
             "Invalid ID format. Must be a valid UUID.",
@@ -84,7 +84,11 @@ async def generate_token(
     interview_id: str, request: Request, db: AsyncSession = Depends(get_session)
 ):
     """Generate a LiveKit access token for a participant to join an interview."""
-    body = await request.json()
+    interview_id = interview_id.strip()
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
 
     is_test_room = interview_id == "test-room"
     candidate_name = "Candidate"
@@ -151,6 +155,7 @@ async def generate_token(
 @router.get("/{interview_id}/config")
 async def get_agent_config(interview_id: str, db: AsyncSession = Depends(get_session)):
     """The LiveKit agent calls this to get full interview setup."""
+    interview_id = interview_id.strip()
     if interview_id == "test-room":
         return DEFAULT_INTERVIEW_CONFIG
 
@@ -165,6 +170,7 @@ async def post_transcript_turn(
     db: AsyncSession = Depends(get_session),
 ):
     """Persist a single transcript turn during a live LiveKit interview."""
+    interview_id = interview_id.strip()
     data, status_code = await InterviewService.append_transcript_turn(
         _parse_uuid(interview_id), payload.model_dump(), db
     )
@@ -176,7 +182,11 @@ async def post_result(
     interview_id: str, request: Request, db: AsyncSession = Depends(get_session)
 ):
     """The LiveKit agent posts the transcript and report here when done."""
-    body = await request.json()
+    interview_id = interview_id.strip()
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
     transcript = body.get("transcript", [])
     report = body.get("report")
 
