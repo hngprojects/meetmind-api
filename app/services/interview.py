@@ -32,10 +32,22 @@ from app.models.scorecard import (
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.interview import (
+    AIConfigUpdateResponse,
+    CandidateProfileDetail,
+    ContextUpdateResponse,
     CreateInterviewRequest,
+    CriteriaUpdateResponse,
+    InterviewConfirmResponse,
     InterviewPlanOutput,
+    InterviewProfileDetail,
+    InterviewProfileResponse,
     InterviewResponse,
+    InterviewScorecardResponse,
+    InterviewSummaryDetailResponse,
     InterviewSummaryResponse,
+    RejoinSessionResponse,
+    ScorecardSection,
+    TranscriptStopResponse,
     UpdateAIConfigRequest,
     UpdateContextRequest,
     UpdateCriteriaRequest,
@@ -43,18 +55,6 @@ from app.schemas.interview import (
 
 
 async def _get_workspace(db: AsyncSession, user: User) -> uuid.UUID | None:
-    """Return the user's first workspace, or None if they don't have one.
-
-    Read-only — no side effects. Use this in GET endpoints where creating a
-    workspace on a read request would violate HTTP idempotency rules.
-
-    Args:
-        db: Active async database session.
-        user: The authenticated user.
-
-    Returns:
-        The workspace UUID, or None if the user has no workspace.
-    """
     workspace_id = await db.execute(
         select(WorkspaceMember.workspace_id).where(WorkspaceMember.user_id == user.id)
     )
@@ -62,15 +62,6 @@ async def _get_workspace(db: AsyncSession, user: User) -> uuid.UUID | None:
 
 
 async def _get_or_create_workspace(db: AsyncSession, user: User) -> uuid.UUID:
-    """Return the user's first workspace, creating a default one if none exists.
-
-    Args:
-        db: Active async database session.
-        user: The authenticated user.
-
-    Returns:
-        The workspace UUID to scope the interview under.
-    """
     result = await db.execute(
         select(WorkspaceMember.workspace_id).where(WorkspaceMember.user_id == user.id)
     )
@@ -496,22 +487,7 @@ Keep all text suitable for a live audio call (concise and natural).
         request: UpdateCriteriaRequest,
         db: AsyncSession,
         user: User,
-    ) -> dict:
-        """Replace scorecard criteria for a draft interview.
-
-        Args:
-            interview_id: UUID of the interview to update.
-            request: Validated criteria payload.
-            db: Active async database session.
-            user: The authenticated user.
-
-        Returns:
-            A dict with the updated criteria list.
-
-        Raises:
-            APIError: 404 if the interview does not exist or belong to user.
-            APIError: 400 if the interview is not in draft status.
-        """
+    ) -> CriteriaUpdateResponse:
         result = await db.execute(
             select(Interview).where(
                 Interview.id == interview_id,
@@ -571,7 +547,7 @@ Keep all text suitable for a live audio call (concise and natural).
         await _persist_criteria(db, scorecard, workspace_id, request.criteria)
         await db.commit()
 
-        return {"criteria": request.criteria}
+        return CriteriaUpdateResponse(criteria=request.criteria)
 
     @staticmethod
     async def update_context(
@@ -579,7 +555,7 @@ Keep all text suitable for a live audio call (concise and natural).
         request: UpdateContextRequest,
         db: AsyncSession,
         user: User,
-    ) -> dict:
+    ) -> ContextUpdateResponse:
         result = await db.execute(
             select(Interview).where(
                 Interview.id == interview_id,
@@ -621,11 +597,11 @@ Keep all text suitable for a live audio call (concise and natural).
 
         await db.commit()
         await db.refresh(interview)
-        return {
-            "interview_id": str(interview.id),
-            "status": interview.status,
-            "updated_at": interview.updated_at,
-        }
+        return ContextUpdateResponse(
+            interview_id=interview.id,
+            status=interview.status,
+            updated_at=interview.updated_at,
+        )
 
     @staticmethod
     async def update_session_config(
@@ -633,7 +609,7 @@ Keep all text suitable for a live audio call (concise and natural).
         request: UpdateAIConfigRequest,
         db: AsyncSession,
         user: User,
-    ) -> dict:
+    ) -> AIConfigUpdateResponse:
         result = await db.execute(
             select(Interview).where(
                 Interview.id == interview_id,
@@ -666,12 +642,12 @@ Keep all text suitable for a live audio call (concise and natural).
 
         await db.commit()
         await db.refresh(interview)
-        return {
-            "interview_id": str(interview.id),
-            "status": interview.status,
-            "participation_mode": interview.participation_mode,
-            "updated_at": interview.updated_at,
-        }
+        return AIConfigUpdateResponse(
+            interview_id=interview.id,
+            status=interview.status,
+            participation_mode=interview.participation_mode,
+            updated_at=interview.updated_at,
+        )
 
     @staticmethod
     async def confirm_interview(
@@ -724,11 +700,11 @@ Keep all text suitable for a live audio call (concise and natural).
         interview.status = "scheduled"
         await db.commit()
         await db.refresh(interview)
-        return {
-            "interview_id": str(interview.id),
-            "status": interview.status,
-            "confirmed_at": interview.updated_at,
-        }
+        return InterviewConfirmResponse(
+            interview_id=interview.id,
+            status=interview.status,
+            confirmed_at=interview.updated_at,
+        )
 
     @staticmethod
     def _duration_from_schedule_or_session(
@@ -1103,7 +1079,7 @@ Keep all text suitable for a live audio call (concise and natural).
         interview_id: uuid.UUID,
         db: AsyncSession,
         user: User,
-    ) -> dict:
+    ) -> TranscriptStopResponse:
         result = await db.execute(
             select(Interview).where(
                 Interview.id == interview_id,
@@ -1144,10 +1120,10 @@ Keep all text suitable for a live audio call (concise and natural).
         await db.commit()
         await db.refresh(interview)
 
-        return {
-            "interview_id": str(interview.id),
-            "status": interview.status,
-        }
+        return TranscriptStopResponse(
+            interview_id=interview.id,
+            status=interview.status,
+        )
 
     @staticmethod
     async def list_interviews(
@@ -1197,25 +1173,6 @@ Keep all text suitable for a live audio call (concise and natural).
         db: AsyncSession,
         user: User,
     ) -> InterviewResponse:
-        """Cancel a scheduled or draft interview.
-
-        Transitions the interview status to ``cancelled``. Only the owning
-        interviewer may cancel an interview. Interviews that are already
-        ``cancelled`` or ``completed`` cannot be cancelled again.
-
-        Args:
-            interview_id: UUID of the interview to cancel.
-            db: Active async database session.
-            user: The authenticated user.
-
-        Returns:
-            A populated :class:`InterviewResponse` with status ``cancelled``.
-
-        Raises:
-            APIError: 404 if the interview does not exist or does not belong
-                to the requesting user.
-            APIError: 409 if the interview is already cancelled or completed.
-        """
         result = await db.execute(
             select(Interview).where(
                 Interview.id == interview_id,
@@ -1294,7 +1251,7 @@ Keep all text suitable for a live audio call (concise and natural).
         interview_id: uuid.UUID,
         db: AsyncSession,
         user: User,
-    ) -> dict:
+    ) -> InterviewSummaryDetailResponse:
         result = await db.execute(
             select(Interview).where(
                 Interview.id == interview_id,
@@ -1334,7 +1291,7 @@ Keep all text suitable for a live audio call (concise and natural).
             except (json.JSONDecodeError, ValueError):
                 assessment = {}
 
-        return {
+        result_dict = {
             "interview_id": str(interview_id),
             "status": summary.status,
             "observation": assessment.get("observation"),
@@ -1343,6 +1300,7 @@ Keep all text suitable for a live audio call (concise and natural).
             "custom_question": summary.custom_question,
             "key_skills": summary.key_skills.split(",") if summary.key_skills else [],
         }
+        return InterviewSummaryDetailResponse(**result_dict)
 
     @staticmethod
     async def retry_summary(
@@ -1440,7 +1398,7 @@ Keep all text suitable for a live audio call (concise and natural).
         interview_id: uuid.UUID,
         db: AsyncSession,
         user: User,
-    ) -> dict:
+    ) -> InterviewScorecardResponse:
         """Retrieve the evaluated scorecard with HSL scores, categories,
         questions, and signals.
         """
@@ -1514,10 +1472,10 @@ Keep all text suitable for a live audio call (concise and natural).
                 }
             )
 
-        return {
-            "interview_id": str(interview_id),
-            "sections": sections,
-        }
+        return InterviewScorecardResponse(
+            interview_id=interview_id,
+            sections=[ScorecardSection(**s) for s in sections],
+        )
 
     @staticmethod
     async def get_profile(
@@ -1561,7 +1519,7 @@ Keep all text suitable for a live audio call (concise and natural).
             else:
                 duration_str = f"{minutes}min"
 
-        return {
+        result = {
             "candidate": {
                 "name": candidate.full_name if candidate else "Unknown",
                 "email": candidate.email if candidate else None,
@@ -1578,12 +1536,17 @@ Keep all text suitable for a live audio call (concise and natural).
             },
         }
 
+        return InterviewProfileResponse(
+            candidate=CandidateProfileDetail(**result["candidate"]),
+            interview=InterviewProfileDetail(**result["interview"]),
+        )
+
     @staticmethod
     async def rejoin_session(
         interview_id: uuid.UUID,
         db: AsyncSession,
         user: User,
-    ) -> dict:
+    ) -> RejoinSessionResponse:
         """Idempotently reset interview state to reconnect an active session."""
         # 1. Fetch Interview and assert ownership
         result = await db.execute(
@@ -1604,9 +1567,9 @@ Keep all text suitable for a live audio call (concise and natural).
         interview.status = "in_progress"
         await db.commit()
 
-        return {
-            "success": True,
-            "session_status": "reconnecting",
-            "interview_id": str(interview_id),
-            "message": "Reconnecting to session...",
-        }
+        return RejoinSessionResponse(
+            success=True,
+            session_status="reconnecting",
+            interview_id=interview_id,
+            message="Reconnecting to session...",
+        )

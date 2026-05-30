@@ -8,9 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.interview import Candidate, Interview
 from app.schemas.dashboard import (
+    CompletedInterviewItem,
     DashboardLiveResponse,
     DashboardStatsResponse,
     LiveInterviewItem,
+    ScheduledInterviewItem,
 )
 
 
@@ -119,7 +121,7 @@ async def get_schedule(
     db: AsyncSession,
     start_date: date,
     end_date: date,
-) -> list:
+) -> list[ScheduledInterviewItem]:
     start_dt = datetime.combine(start_date, time.min)
     end_dt = datetime.combine(end_date, time.max)
 
@@ -140,16 +142,15 @@ async def get_schedule(
         .order_by(Interview.scheduled_start.asc())
     )
     rows = result.all()
+
     return [
-        {
-            "interview_id": str(row.id),
-            "candidate_name": row.full_name,
-            "role": row.role_title,
-            "start_time": row.scheduled_start.isoformat()
-            if row.scheduled_start
-            else None,
-            "end_time": row.scheduled_end.isoformat() if row.scheduled_end else None,
-        }
+        ScheduledInterviewItem(
+            interview_id=str(row.id),
+            candidate_name=row.full_name,
+            role=row.role_title,
+            start_time=row.scheduled_start.isoformat() if row.scheduled_start else None,
+            end_time=row.scheduled_end.isoformat() if row.scheduled_end else None,
+        )
         for row in rows
     ]
 
@@ -157,7 +158,7 @@ async def get_schedule(
 async def get_completed(
     workspace_id: uuid.UUID,
     db: AsyncSession,
-) -> list:
+) -> list[CompletedInterviewItem]:
     result = await db.execute(
         select(
             Interview.id,
@@ -174,13 +175,14 @@ async def get_completed(
         .order_by(Interview.updated_at.desc())
     )
     rows = result.all()
+
     return [
-        {
-            "interview_id": str(row.id),
-            "candidate_name": row.full_name,
-            "role": row.role_title,
-            "score": row.rating,
-            "completed_at": row.updated_at.isoformat() if row.updated_at else None,
-        }
+        CompletedInterviewItem(
+            interview_id=str(row.id),
+            candidate_name=row.full_name,
+            role=row.role_title,
+            score=row.rating,
+            completed_at=row.updated_at.isoformat() if row.updated_at else None,
+        )
         for row in rows
     ]
