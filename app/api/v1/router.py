@@ -47,7 +47,7 @@ api_router.include_router(
 api_router.include_router(support.router, prefix="/support", tags=["Support"])
 api_router.include_router(candidates.router, prefix="/candidates", tags=["Candidates"])
 api_router.include_router(waitlist.router, prefix="/waitlist", tags=["Waitlist"])
-api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
+api_router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
 api_router.include_router(zoom_sdk.router, prefix="/zoom", tags=["Zoom SDK"])
 api_router.include_router(livekit.router, prefix="/livekit", tags=["LiveKit"])
 api_router.include_router(sdk.router, prefix="/sdk", tags=["SDK"])

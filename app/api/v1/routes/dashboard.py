@@ -6,8 +6,14 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import VerifiedUser
-from app.core.responses import success
+from app.core.responses import APIResponse, success
 from app.db.session import get_session
+from app.schemas.dashboard import (
+    CompletedInterviewItem,
+    DashboardLiveInterviewItem,
+    DashboardOverviewResponse,
+    ScheduledInterviewItem,
+)
 from app.services.dashboard import (
     get_completed,
     get_live_counts,
@@ -40,7 +46,11 @@ _EMPTY_STATS = {
 }
 
 
-@router.get("/overview", status_code=status.HTTP_200_OK)
+@router.get(
+    "/overview",
+    response_model=APIResponse[DashboardOverviewResponse],
+    status_code=status.HTTP_200_OK,
+)
 async def get_dashboard_overview(
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
@@ -57,12 +67,19 @@ async def get_dashboard_overview(
         )
     counts = await get_live_counts(workspace_id, db)
     return success(
-        {"has_sessions": counts.total > 0, "stats": counts.model_dump()},
+        DashboardOverviewResponse(
+            has_sessions=counts.total > 0,
+            stats=counts,
+        ),
         message="Dashboard overview retrieved successfully",
     )
 
 
-@router.get("/live", status_code=status.HTTP_200_OK)
+@router.get(
+    "/live",
+    response_model=APIResponse[dict],  # mixed shape: counts + live_interviews list
+    status_code=status.HTTP_200_OK,
+)
 async def get_dashboard_live(
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
@@ -79,30 +96,29 @@ async def get_dashboard_live(
 
     counts = await get_live_counts(workspace_id, db)
     interviews = await get_live_interviews(workspace_id, db)
-
+    live_items = [
+        DashboardLiveInterviewItem(
+            id=str(item.interview_id),
+            interview_id=str(item.interview_id),
+            candidate_name=item.candidate_name,
+            role_title=item.role_title,
+            title=item.role_title,
+            scheduled_at=None,
+            status="live" if item.elapsed_seconds is not None else "upcoming",
+        )
+        for item in interviews.live_interviews
+    ]
     return success(
-        {
-            **counts.model_dump(),
-            "live_interviews": [
-                {
-                    "id": str(item.interview_id),
-                    "interview_id": str(item.interview_id),
-                    "candidate_name": item.candidate_name,
-                    "role_title": item.role_title,
-                    "title": item.role_title,
-                    "scheduled_at": None,
-                    "status": "live"
-                    if item.elapsed_seconds is not None
-                    else "upcoming",
-                }
-                for item in interviews.live_interviews
-            ],
-        },
+        {**counts.model_dump(), "live_interviews": live_items},
         message="Dashboard live counts retrieved successfully",
     )
 
 
-@router.get("/live-sessions", status_code=status.HTTP_200_OK)
+@router.get(
+    "/schedule",
+    response_model=APIResponse[list[ScheduledInterviewItem]],
+    status_code=status.HTTP_200_OK,
+)
 async def get_dashboard_live_sessions(
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
@@ -117,12 +133,16 @@ async def get_dashboard_live_sessions(
         return success([], message="Live sessions retrieved successfully")
     stats = await get_live_interviews(workspace_id, db)
     return success(
-        stats.model_dump(mode="json")["live_interviews"],
+        stats.live_interviews,
         message="Live sessions retrieved successfully",
     )
 
 
-@router.get("/schedule", status_code=status.HTTP_200_OK)
+@router.get(
+    "/schedule",
+    response_model=APIResponse[list[ScheduledInterviewItem]],
+    status_code=status.HTTP_200_OK,
+)
 async def get_dashboard_schedule(
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
@@ -148,7 +168,11 @@ async def get_dashboard_schedule(
     return success(data, message="Schedule retrieved successfully")
 
 
-@router.get("/completed", status_code=status.HTTP_200_OK)
+@router.get(
+    "/completed",
+    response_model=APIResponse[list[CompletedInterviewItem]],
+    status_code=status.HTTP_200_OK,
+)
 async def get_dashboard_completed(
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
@@ -164,7 +188,11 @@ async def get_dashboard_completed(
     return success(data, message="Completed sessions retrieved successfully")
 
 
-@router.get("/alerts", status_code=status.HTTP_200_OK)
+@router.get(
+    "/alerts",
+    response_model=APIResponse[list],
+    status_code=status.HTTP_200_OK,
+)
 async def get_dashboard_alerts(
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),

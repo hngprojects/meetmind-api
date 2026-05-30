@@ -230,3 +230,93 @@ class InterviewListItem(BaseModel):
     created_at: datetime | None
 
     model_config = {"from_attributes": True}
+
+
+class InterviewSummaryDetailResponse(BaseModel):
+    interview_id: UUID
+    status: str | None
+    observation: str | None
+    highlights: list[str]
+    red_flags: list[str]
+    custom_question: str | None
+    key_skills: list[str]
+
+
+class InterviewSessionStatusResponse(BaseModel):
+    interview_id: UUID
+    status: str | None
+    session_phase: str | None
+    elapsed: int | None
+    participants: int | None
+    platform: str | None
+    connection_status: str
+
+
+class ScorecardSection(BaseModel):
+    title: str
+    score: int
+    score_bar_percent: int
+    questions_asked: list[str]
+    signals_detected: list[str]
+    expanded: bool
+
+
+class InterviewScorecardResponse(BaseModel):
+    interview_id: UUID
+    sections: list[ScorecardSection]
+
+
+class CandidateProfileDetail(BaseModel):
+    name: str
+    email: str | None
+    phone: str | None
+    resume_url: str | None
+    portfolio_url: str | None
+
+
+class InterviewProfileDetail(BaseModel):
+    platform: str
+    duration: str
+    questions_answered: int
+    questions_total: int
+    status: str
+
+
+class InterviewProfileResponse(BaseModel):
+    candidate: CandidateProfileDetail
+    interview: InterviewProfileDetail
+
+
+class InterviewConfirmResponse(BaseModel):
+    interview_id: UUID
+    status: str
+    confirmed_at: datetime | None
+
+
+class TranscriptStopResponse(BaseModel):
+    interview_id: UUID
+    status: str
+
+
+class CriteriaUpdateResponse(BaseModel):
+    criteria: list[str]
+
+
+class ContextUpdateResponse(BaseModel):
+    interview_id: UUID
+    status: str
+    updated_at: datetime | None
+
+
+class AIConfigUpdateResponse(BaseModel):
+    interview_id: UUID
+    status: str
+    participation_mode: str | None
+    updated_at: datetime | None
+
+
+class RejoinSessionResponse(BaseModel):
+    success: bool
+    session_status: str
+    interview_id: UUID
+    message: str
