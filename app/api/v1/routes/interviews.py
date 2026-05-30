@@ -145,6 +145,22 @@ async def cancel_interview(
     interview_id: uuid.UUID, user: VerifiedUser, db: AsyncSession = Depends(get_session)
 ):
     interview = await InterviewService.cancel_interview(interview_id, db, user)
+
+    try:
+        desc = f"{interview.candidate_name} - {interview.role_title}"
+        if interview.scheduled_date:
+            desc += f" - {interview.scheduled_date}"
+        await NotificationService.create(
+            db=db,
+            user_id=user.id,
+            type="meeting",
+            title="Interview Cancelled",
+            description=desc,
+            action_url=f"/interviews/{interview.id}",
+        )
+    except Exception:
+        logger.exception("Failed to create cancellation notification")
+
     return success(
         interview.model_dump(mode="json"),
         message="Interview session cancelled successfully",
@@ -294,3 +310,36 @@ async def get_interview_session(
 ):
     session = await InterviewService.get_session_status(interview_id, db, user)
     return success(session, message="Session status retrieved")
+
+
+@router.get("/{interview_id}/scorecard", status_code=status.HTTP_200_OK)
+async def get_interview_scorecard(
+    interview_id: uuid.UUID,
+    user: VerifiedUser,
+    db: AsyncSession = Depends(get_session),
+):
+    """Retrieve scorecard evaluated details for an interview."""
+    scorecard = await InterviewService.get_scorecard(interview_id, db, user)
+    return success(scorecard, message="Scorecard retrieved successfully")
+
+
+@router.get("/{interview_id}/profile", status_code=status.HTTP_200_OK)
+async def get_interview_profile(
+    interview_id: uuid.UUID,
+    user: VerifiedUser,
+    db: AsyncSession = Depends(get_session),
+):
+    """Retrieve candidate profile scheduling and metadata details."""
+    profile = await InterviewService.get_profile(interview_id, db, user)
+    return success(profile, message="Profile retrieved successfully")
+
+
+@router.post("/{interview_id}/session/rejoin", status_code=status.HTTP_200_OK)
+async def rejoin_interview_session(
+    interview_id: uuid.UUID,
+    user: VerifiedUser,
+    db: AsyncSession = Depends(get_session),
+):
+    """Idempotently signal reconnection to an active interview room."""
+    result = await InterviewService.rejoin_session(interview_id, db, user)
+    return success(result, message="Session rejoin successfully requested")
