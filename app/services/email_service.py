@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from html import escape as escape_html
 from typing import Optional
 

@@ -242,7 +242,8 @@ Keep all text suitable for a live audio call (concise and natural).
 
         try:
             response = await cls._client().models.generate_content(
-                model="gemini-flash-lite-latest",  # Use Flash for low latency extraction
+                # Use Flash for low latency extraction
+                model="gemini-flash-lite-latest",
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
@@ -253,20 +254,33 @@ Keep all text suitable for a live audio call (concise and natural).
         except Exception as e:
             import logging
             logging.getLogger("app.services.interview").warning(
-                "Gemini API call failed or API key not valid. Falling back to default interview plan. Error: %s",
+                "Gemini API call failed or key invalid. "
+                "Falling back to default interview plan. Error: %s",
                 e,
             )
-            from app.schemas.interview import InterviewQuestionSchema, RubricCriterion
+            from app.schemas.interview import (
+                InterviewQuestionSchema,
+                RubricCriterion,
+            )
             return InterviewPlanOutput(
-                intro=f"Welcome to the interview for {role_title}. I will ask you a series of questions to assess your fit.",
+                intro=(
+                    f"Welcome to the interview for {role_title}. "
+                    "I will ask you a series of questions to assess your fit."
+                ),
                 questions=[
                     InterviewQuestionSchema(
-                        text="Walk me through a backend system you've built that you're proud of.",
+                        text=(
+                            "Walk me through a backend system you've built "
+                            "that you're proud of."
+                        ),
                         followUpHint="Probe scale, their contribution, and trade-offs.",
                         maxFollowUps=2,
                     ),
                     InterviewQuestionSchema(
-                        text="How do you handle database migrations in a production environment?",
+                        text=(
+                            "How do you handle database migrations in a "
+                            "production environment?"
+                        ),
                         followUpHint="Probe zero-downtime strategies and rollbacks.",
                         maxFollowUps=2,
                     ),
@@ -283,7 +297,10 @@ Keep all text suitable for a live audio call (concise and natural).
                         weight=2,
                     ),
                 ],
-                closing="Thanks for your time. A recruiter will follow up with next steps.",
+                closing=(
+                    "Thanks for your time. A recruiter will follow up "
+                    "with next steps."
+                ),
             )
 
     @classmethod
