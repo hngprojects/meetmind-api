@@ -177,10 +177,10 @@ async def send_interview_link_email(
     greeting = f"Hi {safe_name}," if safe_name else "Hi,"
 
     html = render_template(
-        "emails/interview_invite.html", 
-        interview_url=interview_url, 
+        "emails/interview_invite.html",
+        interview_url=interview_url,
         greeting=greeting,
-        role_title=role_title
+        role_title=role_title,
     )
 
     subject = f"Your MeetMind Interview Link: {role_title}"
@@ -189,4 +189,3 @@ async def send_interview_link_email(
         background_tasks.add_task(_send_email, email, subject, html)
     else:
         await _send_email(email, subject, html)
-

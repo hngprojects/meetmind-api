@@ -253,6 +253,7 @@ Keep all text suitable for a live audio call (concise and natural).
             return InterviewPlanOutput.model_validate_json(response.text)
         except Exception as e:
             import logging
+
             logging.getLogger("app.services.interview").warning(
                 "Gemini API call failed or key invalid. "
                 "Falling back to default interview plan. Error: %s",
@@ -262,6 +263,7 @@ Keep all text suitable for a live audio call (concise and natural).
                 InterviewQuestionSchema,
                 RubricCriterion,
             )
+
             return InterviewPlanOutput(
                 intro=(
                     f"Welcome to the interview for {role_title}. "
@@ -298,8 +300,7 @@ Keep all text suitable for a live audio call (concise and natural).
                     ),
                 ],
                 closing=(
-                    "Thanks for your time. A recruiter will follow up "
-                    "with next steps."
+                    "Thanks for your time. A recruiter will follow up with next steps."
                 ),
             )
 
