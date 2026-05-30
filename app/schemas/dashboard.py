@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import UUID4, BaseModel
 
 
@@ -38,3 +40,34 @@ class DashboardStatsResponse(BaseModel):
     """
 
     live_interviews: list[LiveInterviewItem]
+
+
+class CompletedInterviewItem(BaseModel):
+    interview_id: str
+    candidate_name: str | None
+    role: str | None
+    score: int | None
+    completed_at: str | None
+
+
+class ScheduledInterviewItem(BaseModel):
+    interview_id: str
+    candidate_name: str | None
+    role: str | None
+    start_time: str | None
+    end_time: str | None
+
+
+class DashboardLiveInterviewItem(BaseModel):
+    id: str
+    interview_id: str
+    candidate_name: str
+    role_title: str | None
+    title: str | None
+    scheduled_at: datetime | None
+    status: str
+
+
+class DashboardOverviewResponse(BaseModel):
+    has_sessions: bool
+    stats: DashboardLiveResponse

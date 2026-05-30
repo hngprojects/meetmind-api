@@ -9,11 +9,22 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import VerifiedUser
-from app.core.responses import paginated, success
+from app.core.responses import APIResponse, paginated, success
 from app.db.session import get_session
 from app.schemas.interview import (
+    AIConfigUpdateResponse,
+    ContextUpdateResponse,
     CreateInterviewRequest,
+    CriteriaUpdateResponse,
+    InterviewConfirmResponse,
     InterviewListItem,
+    InterviewProfileResponse,
+    InterviewResponse,
+    InterviewScorecardResponse,
+    InterviewSessionStatusResponse,
+    InterviewSummaryDetailResponse,
+    RejoinSessionResponse,
+    TranscriptStopResponse,
     UpdateAIConfigRequest,
     UpdateContextRequest,
     UpdateCriteriaRequest,
@@ -26,28 +37,16 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=APIResponse[InterviewResponse],
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_interview(
     payload: CreateInterviewRequest,
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
 ):
-    """Create a new interview session with context.
-
-    Creates a candidate record, an interview session in ``draft`` status,
-    and an interview summary holding the job description and scoring rubric.
-
-    Args:
-        payload: Validated interview creation payload.
-        user: The authenticated user — becomes the interviewer.
-        db: Async database session.
-
-    Returns:
-        A standardized success envelope with the created interview session.
-
-    Raises:
-        APIError: 500 for any unexpected failure.
-    """
     interview = await InterviewService.create_interview(payload, db, user)
 
     try:
@@ -72,7 +71,11 @@ async def create_interview(
     )
 
 
-@router.get("", status_code=status.HTTP_200_OK)
+@router.get(
+    "",
+    response_model=APIResponse[list[InterviewListItem]],
+    status_code=status.HTTP_200_OK,
+)
 async def list_interviews(
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
@@ -102,27 +105,16 @@ async def list_interviews(
     )
 
 
-@router.get("/{interview_id}", status_code=status.HTTP_200_OK)
+@router.get(
+    "/{interview_id}",
+    response_model=APIResponse[InterviewResponse],
+    status_code=status.HTTP_200_OK,
+)
 async def get_interview(
     interview_id: uuid.UUID,
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
 ):
-    """Retrieve an interview session by ID.
-
-    Only returns sessions where the authenticated user is the interviewer.
-
-    Args:
-        interview_id: UUID of the interview to retrieve.
-        user: The authenticated user.
-        db: Async database session.
-
-    Returns:
-        A standardized success envelope with the interview session data.
-
-    Raises:
-        APIError: 404 if the interview does not exist or belongs to another user.
-    """
     interview = await InterviewService.get_interview(interview_id, db, user)
     return success(
         interview.model_dump(mode="json"),
@@ -130,7 +122,11 @@ async def get_interview(
     )
 
 
-@router.post("/{interview_id}/confirm", status_code=status.HTTP_200_OK)
+@router.post(
+    "/{interview_id}/confirm",
+    response_model=APIResponse[InterviewConfirmResponse],
+    status_code=status.HTTP_200_OK,
+)
 async def confirm_interview(
     interview_id: uuid.UUID,
     user: VerifiedUser,
@@ -140,7 +136,11 @@ async def confirm_interview(
     return success(result, message="Interview confirmed successfully")
 
 
-@router.patch("/{interview_id}/cancel", status_code=status.HTTP_200_OK)
+@router.patch(
+    "/{interview_id}/cancel",
+    response_model=APIResponse[InterviewResponse],
+    status_code=status.HTTP_200_OK,
+)
 async def cancel_interview(
     interview_id: uuid.UUID, user: VerifiedUser, db: AsyncSession = Depends(get_session)
 ):
@@ -173,22 +173,6 @@ async def get_chat_history(
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
 ):
-    """Retrieve the full chat history for an interview session.
-
-    Returns all transcript turns in sequence order. Only returns history
-    for interviews where the authenticated user is the interviewer.
-
-    Args:
-        interview_id: UUID of the interview to fetch chat history for.
-        user: The authenticated user.
-        db: Async database session.
-
-    Returns:
-        A standardized success envelope with the chat history.
-
-    Raises:
-        APIError: 404 if the interview does not exist or belongs to another user.
-    """
     history = await ChatHistoryService.get_chat_history(interview_id, db, user)
     return success(
         history.model_dump(mode="json"),
@@ -224,7 +208,11 @@ async def export_transcript(
     )
 
 
-@router.post("/{interview_id}/transcript/stop", status_code=status.HTTP_200_OK)
+@router.post(
+    "/{interview_id}/transcript/stop",
+    response_model=APIResponse[TranscriptStopResponse],
+    status_code=status.HTTP_200_OK,
+)
 async def stop_transcript(
     interview_id: uuid.UUID,
     user: VerifiedUser,
@@ -237,38 +225,28 @@ async def stop_transcript(
     )
 
 
-@router.put("/{interview_id}/criteria", status_code=status.HTTP_200_OK)
+@router.put(
+    "/{interview_id}/criteria",
+    response_model=APIResponse[CriteriaUpdateResponse],
+    status_code=status.HTTP_200_OK,
+)
 async def update_criteria(
     interview_id: uuid.UUID,
     payload: UpdateCriteriaRequest,
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
 ):
-    """Update scorecard criteria for a draft interview.
-
-    Replaces all existing criteria with the provided list. Only allowed
-    while the interview is in ``draft`` status.
-
-    Args:
-        interview_id: UUID of the interview to update criteria for.
-        payload: Validated criteria payload (1–10 items).
-        user: The authenticated user.
-        db: Async database session.
-
-    Returns:
-        A standardized success envelope with the updated criteria list.
-
-    Raises:
-        APIError: 404 if the interview does not exist or belongs to another user.
-        APIError: 400 if the interview is not in draft status.
-    """
     result = await InterviewService.update_interview_criteria(
         interview_id, payload, db, user
     )
     return success(result, message="Criteria updated successfully")
 
 
-@router.put("/{interview_id}/context", status_code=status.HTTP_200_OK)
+@router.put(
+    "/{interview_id}/context",
+    response_model=APIResponse[ContextUpdateResponse],
+    status_code=status.HTTP_200_OK,
+)
 async def update_context(
     interview_id: uuid.UUID,
     payload: UpdateContextRequest,
@@ -279,7 +257,11 @@ async def update_context(
     return success(result, message="Context updated successfully")
 
 
-@router.put("/{interview_id}/session-config", status_code=status.HTTP_200_OK)
+@router.put(
+    "/{interview_id}/session-config",
+    response_model=APIResponse[AIConfigUpdateResponse],
+    status_code=status.HTTP_200_OK,
+)
 async def update_ai_config(
     interview_id: uuid.UUID,
     payload: UpdateAIConfigRequest,
@@ -292,7 +274,11 @@ async def update_ai_config(
     return success(result, message="AI config updated successfully")
 
 
-@router.get("/{interview_id}/summary", status_code=status.HTTP_200_OK)
+@router.get(
+    "/{interview_id}/summary",
+    response_model=APIResponse[InterviewSummaryDetailResponse],
+    status_code=status.HTTP_200_OK,
+)
 async def get_interview_summary(
     interview_id: uuid.UUID,
     user: VerifiedUser,
@@ -302,7 +288,11 @@ async def get_interview_summary(
     return success(summary, message="Summary retrieved successfully")
 
 
-@router.get("/{interview_id}/session", status_code=status.HTTP_200_OK)
+@router.get(
+    "/{interview_id}/session",
+    response_model=APIResponse[InterviewSessionStatusResponse],
+    status_code=status.HTTP_200_OK,
+)
 async def get_interview_session(
     interview_id: uuid.UUID,
     user: VerifiedUser,
@@ -312,7 +302,11 @@ async def get_interview_session(
     return success(session, message="Session status retrieved")
 
 
-@router.get("/{interview_id}/scorecard", status_code=status.HTTP_200_OK)
+@router.get(
+    "/{interview_id}/scorecard",
+    response_model=APIResponse[InterviewScorecardResponse],
+    status_code=status.HTTP_200_OK,
+)
 async def get_interview_scorecard(
     interview_id: uuid.UUID,
     user: VerifiedUser,
@@ -323,7 +317,11 @@ async def get_interview_scorecard(
     return success(scorecard, message="Scorecard retrieved successfully")
 
 
-@router.get("/{interview_id}/profile", status_code=status.HTTP_200_OK)
+@router.get(
+    "/{interview_id}/profile",
+    response_model=APIResponse[InterviewProfileResponse],
+    status_code=status.HTTP_200_OK,
+)
 async def get_interview_profile(
     interview_id: uuid.UUID,
     user: VerifiedUser,
@@ -334,7 +332,11 @@ async def get_interview_profile(
     return success(profile, message="Profile retrieved successfully")
 
 
-@router.post("/{interview_id}/session/rejoin", status_code=status.HTTP_200_OK)
+@router.post(
+    "/{interview_id}/session/rejoin",
+    response_model=APIResponse[RejoinSessionResponse],
+    status_code=status.HTTP_200_OK,
+)
 async def rejoin_interview_session(
     interview_id: uuid.UUID,
     user: VerifiedUser,
