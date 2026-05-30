@@ -200,4 +200,3 @@ async def post_result(
         interview_uuid, transcript, report, db
     )
     return res
-
