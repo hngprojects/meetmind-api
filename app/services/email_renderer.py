@@ -14,16 +14,16 @@ env = Environment(
 )
 
 
-def render_template(name: str, **context) -> str:
+def render_template(template_name: str, **context) -> str:
     """Render a template from the app/templates folder.
 
     Args:
-        name: Template path relative to app/templates
+        template_name: Template path relative to app/templates
         (e.g. "emails/reset_password.html").
         context: Variables passed to the template.
 
     Returns:
         Rendered HTML as a string.
     """
-    template = env.get_template(name)
+    template = env.get_template(template_name)
     return template.render(**context)
