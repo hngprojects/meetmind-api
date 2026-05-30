@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>Account Deletion Email</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+    <link rel="stylesheet" href="./style.css" />
+</head>
+
+<body>
+    <main class="page-wrapper">
+        <section class="email-card">
+            <div class="mobile-hero-image">
+                <div class="mobile-overlay-text">
+                    <h2>Welcome to Meet <span>Mind</span></h2>
+
+                    <p>Designing intelligence that knows how to speak</p>
+                </div>
+                <img src="./assets/images/bg-img.jpg" alt="Mobile Background Image" />
+            </div>
+
+            <div class="email-content">
+                <div class="logo-wrapper">
+                    <img src="./assets/icons/meetmind-logo.svg" alt="MeetMind Logo" />
+
+                    <span class="logo-text"> Meet<span>Mind</span> </span>
+                </div>
+
+                <!-- Desktop Delete Icon -->
+                <div class="status-icon delete-icon desktop-status-icon">
+                    <img src="./assets/icons/trash.svg" alt="Delete Icon" />
+                </div>
+
+                <!-- Mobile Delete Icon -->
+                <div class="status-icon delete-icon mobile-status-icon">
+                    <img src="./assets/icons/trash.svg" alt="Delete Icon" />
+                </div>
+
+                <div class="hero-text">
+                    <h1>Account deletion requested</h1>
+
+                    <p>
+                        We received a request to permanently delete your MeetMind account
+                        and all associated data.
+                    </p>
+                </div>
+
+                <!-- DELETE BODY -->
+                <div class="email-body delete-body">
+                    <h2>Hi {{name}}</h2>
+
+                    <p class="delete-description">
+                        Your account is scheduled for permanent deletion. Before we
+                        proceed, please confirm this was you. Once deleted, this action
+                        cannot be undone.
+                    </p>
+
+                    <div class="delete-actions">
+                        <a href="#" class="delete-button"> Yes, delete my account </a>
+
+                        <a href="#" class="keep-button"> No, keep my account </a>
+                    </div>
+
+                    <div class="warning-box delete-warning-box">
+                        <img src="./assets/icons/triangle-alert.svg" alt="Warning Icon" />
+
+                        <p>
+                            If you didn’t request this, someone may have access to your
+                            account. Change your password immediately and contact our
+                            support team.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+</body>
+
+</html>

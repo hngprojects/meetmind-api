@@ -56,13 +56,6 @@ async def send_password_reset_email(
     token: str,
     background_tasks: Optional[BackgroundTasks] = None,
 ) -> None:
-    """Send a password reset link to a registered user.
-
-    Args:
-        email: Recipient email address.
-        name: Recipient's display name, used in the greeting.
-        token: Raw reset token to embed in the link.
-    """
     reset_url = f"{settings.FRONTEND_URL.rstrip('/')}/reset-password?token={token}"
     safe_name = escape_html(name) if name else None
     greeting = f"Hi {safe_name}," if safe_name else "Hi,"
@@ -79,19 +72,55 @@ async def send_password_reset_email(
         await _send_email(email, "Reset your MeetMind password", html)
 
 
+async def send_welcome_email(
+    email: str,
+    name: str | None,
+    action_url: str | None = None,
+    background_tasks: Optional[BackgroundTasks] = None,
+) -> None:
+    dashboard_url = action_url or f"{settings.FRONTEND_URL.rstrip('/')}/dashboard"
+    display_name = name or "there"
+
+    html = render_template(
+        "emails/welcome.html", name=display_name, action_url=dashboard_url
+    )
+
+    if background_tasks:
+        background_tasks.add_task(_send_email, email, "Welcome to MeetMind", html)
+    else:
+        await _send_email(email, "Welcome to MeetMind", html)
+
+
+async def send_account_deletion_email(
+    email: str,
+    name: str | None,
+    confirm_url: str,
+    cancel_url: str,
+    background_tasks: Optional[BackgroundTasks] = None,
+) -> None:
+    display_name = name or "there"
+
+    html = render_template(
+        "emails/account_deletion.html",
+        name=display_name,
+        confirm_url=confirm_url,
+        cancel_url=cancel_url,
+    )
+
+    if background_tasks:
+        background_tasks.add_task(
+            _send_email, email, "Account deletion requested", html
+        )
+    else:
+        await _send_email(email, "Account deletion requested", html)
+
+
 async def send_verification_email(
     email: str,
     name: str | None,
     token: str,
     background_tasks: Optional[BackgroundTasks] = None,
 ) -> None:
-    """Send an email verification link to a newly registered user.
-
-    Args:
-        email: Recipient email address.
-        name: Recipient's display name, used in the greeting.
-        token: Raw verification token to embed in the link.
-    """
     verify_url = f"{settings.FRONTEND_URL.rstrip('/')}/verify-email?token={token}"
     safe_name = escape_html(name) if name else None
     greeting = f"Hi {safe_name}," if safe_name else "Hi,"
@@ -111,12 +140,6 @@ async def send_verification_email(
 async def send_password_reset_security_alert(
     email: str, name: str | None, background_tasks: Optional[BackgroundTasks] = None
 ) -> None:
-    """Notify the user that all active sessions were revoked.
-
-    Args:
-        email: Recipient email address.
-        name: Recipient display name.
-    """
     safe_name = escape_html(name) if name else None
     greeting = f"Hi {safe_name}," if safe_name else "Hi,"
 

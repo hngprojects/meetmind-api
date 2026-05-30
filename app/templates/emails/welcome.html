@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>Welcome Email</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+    <link rel="stylesheet" href="./style.css" />
+</head>
+
+<body>
+    <main class="page-wrapper">
+        <section class="email-card">
+            <div class="mobile-hero-image">
+                <div class="mobile-overlay-text">
+                    <h2>Welcome to Meet <span>Mind</span></h2>
+
+                    <p>Designing intelligence that knows how to speak</p>
+                </div>
+                <img src="./assets/images/bg-img.jpg" alt="Mobile Background Image" />
+            </div>
+
+            <div class="email-content">
+                <div class="logo-wrapper">
+                    <img src="./assets/icons/meetmind-logo.svg" alt="MeetMind Logo" />
+
+                    <span class="logo-text"> Meet<span>Mind</span> </span>
+                </div>
+
+                <div class="status-icon">
+                    <img src="./assets/icons/checkmark.svg" alt="Success Icon" />
+                </div>
+
+                <div class="hero-text">
+                    <h1>Welcome to Meet<span>Mind</span>, {{name}}!</h1>
+
+                    <p>
+                        Your account is ready. You’re joining a community of smart hiring
+                        teams.
+                    </p>
+                </div>
+
+                <!-- EMAIL BODY -->
+                <div class="email-body">
+                    <h2>Hi {{name}}</h2>
+
+                    <p class="intro-text">
+                        Thanks for signing up. Your MeetMind account is live and ready to
+                        go. You can now set up your first interview, invite your team, and
+                        let MeetMind handle the heavy lifting.
+                    </p>
+
+                    <h3>Here’s what you can do right away</h3>
+
+                    <div class="feature-list">
+                        <div class="feature-item">
+                            <div class="feature-icon">
+                                <img src="./assets/icons/book.svg" alt="Calendar Icon" />
+                            </div>
+
+                            <div class="feature-text">
+                                <h4>Create your first interview</h4>
+
+                                <p>
+                                    Set up a role, add questions, and share a link with
+                                    candidates in minutes.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="feature-item">
+                            <div class="feature-icon">
+                                <img src="./assets/icons/users.svg" alt="Users Icon" />
+                            </div>
+
+                            <div class="feature-text">
+                                <h4>Invite your team</h4>
+
+                                <p>
+                                    Collaborate on candidate reviews with your hiring managers
+                                    in one place.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="feature-item">
+                            <div class="feature-icon">
+                                <img src="./assets/icons/checkmark.svg" alt="Checkmark Icon" />
+                            </div>
+
+                            <div class="feature-text">
+                                <h4>MeetMind AI-powered scoring</h4>
+
+                                <p>
+                                    Get instant candidate summaries and scores so you focus on
+                                    the best fits.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- CTA SECTION -->
+                    <div class="cta-wrapper">
+                        <a href="#" class="cta-button"> Get Started </a>
+                    </div>
+
+                    <!-- NEED HELP SECTION -->
+                    <div class="support-box">
+                        <img src="./assets/icons/warning.svg" alt="" />
+                        <p>
+                            Need help getting started? Visit our help center or reply to
+                            this email — our team is happy to assist
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+</body>
+
+</html>

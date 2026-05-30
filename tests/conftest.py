@@ -113,10 +113,19 @@ def disable_rate_limiter():
 # Prevent real Resend API calls in every test
 @pytest.fixture(autouse=True)
 def mock_send_verification_email():
-    async def _noop(email, name, token):
+    async def _noop_verification(email, name, token, background_tasks=None):
         pass
 
-    with patch("app.services.verification_service.send_verification_email", _noop):
+    async def _noop_welcome(email, name, action_url=None, background_tasks=None):
+        pass
+
+    with (
+        patch(
+            "app.services.verification_service.send_verification_email",
+            _noop_verification,
+        ),
+        patch("app.services.verification_service.send_welcome_email", _noop_welcome),
+    ):
         yield
 
 
