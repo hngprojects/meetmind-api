@@ -14,11 +14,11 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 
 from app.api.deps import DBSession, VerifiedUser
-from app.core.responses import APIError, success
+from app.core.responses import APIError, APIResponse, success
 from app.models.document import CandidateDocument, DocumentStatus
 from app.models.interview import Candidate, Interview
 from app.models.workspace import WorkspaceMember
-from app.schemas.candidate import CandidateSearchResult
+from app.schemas.candidate import CandidateListItem, CandidateSearchResult
 from app.services.candidate import CandidateService
 from app.services.document_service import DocumentService
 from app.services.interview import _get_workspace
@@ -28,7 +28,10 @@ router = APIRouter()
 MAX_FILE_SIZE = 10 * 1024 * 1024
 
 
-@router.get("/search")
+@router.get(
+    "/search",
+    response_model=APIResponse[list[CandidateSearchResult]],
+)
 async def search_candidates(
     db: DBSession,
     current_user: VerifiedUser,
@@ -132,7 +135,10 @@ async def export_candidates(
     )
 
 
-@router.get("")
+@router.get(
+    "",
+    response_model=APIResponse[list[CandidateListItem]],
+)
 async def list_candidates(
     db: DBSession,
     current_user: VerifiedUser,
@@ -185,7 +191,10 @@ async def list_candidates(
     )
 
 
-@router.get("/{candidate_id}")
+@router.get(
+    "/{candidate_id}",
+    response_model=APIResponse[CandidateListItem],
+)
 async def get_candidate(
     candidate_id: UUID,
     db: DBSession,
@@ -238,25 +247,25 @@ async def get_candidate(
     }
 
     return success(
-        {
-            "id": str(candidate.id),
-            "name": candidate.full_name,
-            "email": candidate.email,
-            "role": latest_interview.role_title if latest_interview else None,
-            "status": interview_status_map.get(latest_interview.status, "ongoing")
+        CandidateListItem(
+            id=str(candidate.id),
+            name=candidate.full_name,
+            email=candidate.email,
+            role=latest_interview.role_title if latest_interview else None,
+            status=interview_status_map.get(latest_interview.status, "ongoing")
             if latest_interview
             else "ongoing",
-            "score": latest_interview.rating if latest_interview else None,
-            "action": "none",
-            "created_at": candidate.created_at.isoformat()
+            score=latest_interview.rating if latest_interview else None,
+            action="none",
+            created_at=candidate.created_at.isoformat()
             if candidate.created_at
             else None,
-            "updated_at": candidate.updated_at.isoformat()
+            updated_at=candidate.updated_at.isoformat()
             if candidate.updated_at
             else None,
-            "avatarUrl": candidate.avatar_initials,
-            "notes": None,
-        },
+            avatarUrl=candidate.avatar_initials,
+            notes=None,
+        ),
         message="Candidate profile retrieved",
     )
 
