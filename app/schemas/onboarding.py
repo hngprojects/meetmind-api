@@ -25,7 +25,7 @@ class OnboardingPreferencesRequest(BaseModel):
 
 
 class OnboardingIntegrationsRequest(BaseModel):
-    integrations: Literal["google", "zoom"] | None
+    integrations: Literal["google", "zoom", "livekit"] | None
 
 
 class OnboardingSubmissionResponse(BaseModel):
