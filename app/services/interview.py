@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 
 from fastapi import status
-from google import genai
-from google.genai import types
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
+from app.core.llm import generate_structured_output
 from app.core.responses import APIError
+from app.core.utils import get_user_workspace, safe_notify
 from app.models.interview import (
     Candidate,
     Interview,
@@ -54,23 +54,11 @@ from app.schemas.interview import (
 )
 
 
-async def _get_workspace(db: AsyncSession, user: User) -> uuid.UUID | None:
-    workspace_id = await db.execute(
-        select(WorkspaceMember.workspace_id).where(WorkspaceMember.user_id == user.id)
-    )
-    return workspace_id.scalar_one_or_none()
-
-
 async def _get_or_create_workspace(db: AsyncSession, user: User) -> uuid.UUID:
-    result = await db.execute(
-        select(WorkspaceMember.workspace_id).where(WorkspaceMember.user_id == user.id)
-    )
-    workspace_id = result.scalar_one_or_none()
-
+    workspace_id = await get_user_workspace(db, user.id)
     if workspace_id:
         return workspace_id
 
-    # No workspace yet — create a default one for this user.
     workspace = Workspace(
         name=f"{user.name or user.email}'s Workspace",
         created_by=user.id,
@@ -92,7 +80,6 @@ async def _get_or_create_workspace(db: AsyncSession, user: User) -> uuid.UUID:
 async def _find_or_create_category(
     db: AsyncSession, workspace_id: uuid.UUID, name: str, sort_order: int
 ) -> ScorecardCategory:
-    """Find an existing ScorecardCategory by name in the workspace, or create one."""
     result = await db.execute(
         select(ScorecardCategory).where(
             ScorecardCategory.workspace_id == workspace_id,
@@ -199,14 +186,6 @@ class InterviewService:
     """Encapsulate interview session creation and retrieval."""
 
     @classmethod
-    def _client(cls):
-        if not getattr(cls, "_client_instance", None):
-            cls._client_instance = genai.Client(
-                api_key=settings.GEMINI_API_KEY or "dummy_key"
-            ).aio
-        return cls._client_instance
-
-    @classmethod
     async def generate_interview_plan(
         cls,
         role_title: str,
@@ -214,11 +193,7 @@ class InterviewService:
         skills_to_assess: list[str],
         custom_question: str | None = None,
     ) -> InterviewPlanOutput:
-        """
-        AI Shaping: Generates a structured interview plan (intro, questions, rubric)
-        from raw inputs. Used during Interview Creation (T-Minus 0).
-        """
-        prompt = f"""
+        system_instruction = f"""
 You are an expert Technical Recruiter. Your task is to design a high-quality 
 structured interview plan for the role of '{role_title}'.
 
@@ -241,19 +216,16 @@ Keep all text suitable for a live audio call (concise and natural).
 """
 
         try:
-            response = await cls._client().models.generate_content(
-                # Use Flash for low latency extraction
-                model="gemini-flash-lite-latest",
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=InterviewPlanOutput,
-                ),
+            result = await generate_structured_output(
+                system_instruction=system_instruction,
+                user_content="Generate the complete interview plan \
+                    based on the provided context.",
+                output_schema=InterviewPlanOutput,
+                temperature=0.7,
+                max_tokens=2000,
             )
-            return InterviewPlanOutput.model_validate_json(response.text)
+            return InterviewPlanOutput.model_validate(result)
         except Exception as e:
-            import logging
-
             logging.getLogger("app.services.interview").warning(
                 "Gemini API call failed or key invalid. "
                 "Falling back to default interview plan. Error: %s",
@@ -929,10 +901,6 @@ Keep all text suitable for a live audio call (concise and natural).
         report: dict | None,
         db: AsyncSession,
     ) -> dict:
-        """Process post-interview results, persisting transcripts, scorecards
-        and summary.
-        """
-        # 1. Fetch Interview
         interview = await db.get(Interview, interview_id)
         if not interview:
             res = await db.execute(
@@ -946,7 +914,6 @@ Keep all text suitable for a live audio call (concise and natural).
                 code="interview_not_found",
             )
 
-        # 2. Get or create InterviewTranscript
         transcript_result = await db.execute(
             select(InterviewTranscript).where(
                 InterviewTranscript.interview_id == interview.id
@@ -981,8 +948,6 @@ Keep all text suitable for a live audio call (concise and natural).
                 )
                 db.add(turn)
 
-        # 4. Save scorecard report if present
-        # Normalize report: if it's a plain string, wrap it for backward compat
         if report and not isinstance(report, dict):
             report = {"summary": str(report), "criteria": [], "overall": None}
 
@@ -1056,7 +1021,6 @@ Keep all text suitable for a live audio call (concise and natural).
                             )
                         )
 
-                    # Add scorecard signals (and justification as a signal)
                     signals_to_add = list(criterion.get("signals", []))
                     if criterion.get("justification"):
                         signals_to_add.append(criterion["justification"])
@@ -1112,24 +1076,14 @@ Keep all text suitable for a live audio call (concise and natural).
 
         await db.commit()
 
-        # Create report notification for the interviewer
-        try:
-            from app.services.notification_service import NotificationService
-
-            await NotificationService.create(
-                db=db,
-                user_id=interview.interviewer_id,
-                type="report",
-                title="Interview Summary Ready",
-                action_url=f"/interviews/{interview.id}",
-            )
-        except Exception:
-            # We don't want notification failure to break the overall result persistence
-            import logging
-
-            logging.getLogger("app.services.interview").exception(
-                "Failed to create report notification"
-            )
+        await safe_notify(
+            db,
+            user_id=interview.interviewer_id,
+            type="report",
+            title="Interview Summary Ready",
+            action_url=f"/interviews/{interview.id}",
+            label="report notification",
+        )
 
         return {"status": "success", "message": "Result saved successfully"}
 
