@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import VerifiedUser
 from app.core.responses import APIResponse, paginated, success
+from app.core.utils import safe_notify
 from app.db.session import get_session
 from app.schemas.interview import (
     AIConfigUpdateResponse,
@@ -32,7 +33,6 @@ from app.schemas.interview import (
 from app.services.chat_history import ChatHistoryService
 from app.services.email_service import send_interview_link_email
 from app.services.interview import InterviewService
-from app.services.notification_service import NotificationService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -50,20 +50,18 @@ async def create_interview(
 ):
     interview = await InterviewService.create_interview(payload, db, user)
 
-    try:
-        description = f"{interview.candidate_name} - {interview.role_title}"
-        if interview.scheduled_date:
-            description += f" - {interview.scheduled_date}"
-        await NotificationService.create(
-            db=db,
-            user_id=user.id,
-            type="meeting",
-            title="Interview Scheduled",
-            description=description,
-            action_url=f"/interviews/{interview.id}",
-        )
-    except Exception:
-        logger.exception("Failed to create meeting notification")
+    description = f"{interview.candidate_name} - {interview.role_title}"
+    if interview.scheduled_date:
+        description += f" - {interview.scheduled_date}"
+    await safe_notify(
+        db,
+        user_id=user.id,
+        type="meeting",
+        title="Interview Scheduled",
+        description=description,
+        action_url=f"/interviews/{interview.id}",
+        label="meeting notification",
+    )
 
     return success(
         interview.model_dump(mode="json"),
@@ -82,11 +80,11 @@ async def list_interviews(
     db: AsyncSession = Depends(get_session),
     page: int = 1,
     page_size: int = 20,
-    status: str | None = Query(default=None),
+    status_filter: str | None = Query(default=None),
     search: str | None = Query(default=None),
 ):
     rows, total = await InterviewService.list_interviews(
-        db, user, page, page_size, status, search
+        db, user, page, page_size, status_filter, search
     )
     items = [
         InterviewListItem(
@@ -147,20 +145,18 @@ async def cancel_interview(
 ):
     interview = await InterviewService.cancel_interview(interview_id, db, user)
 
-    try:
-        desc = f"{interview.candidate_name} - {interview.role_title}"
-        if interview.scheduled_date:
-            desc += f" - {interview.scheduled_date}"
-        await NotificationService.create(
-            db=db,
-            user_id=user.id,
-            type="meeting",
-            title="Interview Cancelled",
-            description=desc,
-            action_url=f"/interviews/{interview.id}",
-        )
-    except Exception:
-        logger.exception("Failed to create cancellation notification")
+    desc = f"{interview.candidate_name} - {interview.role_title}"
+    if interview.scheduled_date:
+        desc += f" - {interview.scheduled_date}"
+    await safe_notify(
+        db,
+        user_id=user.id,
+        type="meeting",
+        title="Interview Cancelled",
+        description=desc,
+        action_url=f"/interviews/{interview.id}",
+        label="cancellation notification",
+    )
 
     return success(
         interview.model_dump(mode="json"),
