@@ -21,15 +21,6 @@ _SCOPES = "openid email profile"
 
 
 def build_authorization_url(state: str) -> str:
-    """Return the Google OAuth consent screen URL to redirect the user to.
-
-    Args:
-        state: A random per-request token embedded in the URL and mirrored
-            back by Google. Verified in the callback to prevent CSRF.
-
-    Returns:
-        A fully-formed, URL-encoded URL string with all required OAuth parameters.
-    """
     params = {
         "client_id": settings.GOOGLE_CLIENT_ID,
         "redirect_uri": settings.GOOGLE_REDIRECT_URI,
@@ -85,18 +76,6 @@ async def exchange_code(code: str) -> dict:
 
 
 async def get_google_user(access_token: str) -> dict:
-    """Fetch the authenticated user's profile from Google.
-
-    Args:
-        access_token: A valid Google OAuth access token.
-
-    Returns:
-        The user info dict from Google (``id``, ``email``, ``name``, etc.).
-
-    Raises:
-        APIError: 401 if the token is invalid or expired.
-        APIError: 401 if Google returns incomplete identity data.
-    """
     async with httpx.AsyncClient() as client:
         response = await client.get(
             _GOOGLE_USERINFO_URL,
@@ -123,23 +102,6 @@ async def get_google_user(access_token: str) -> dict:
 
 
 async def find_or_create_user(google_user: dict, db: AsyncSession) -> User:
-    """Resolve a Google profile to a local user, creating one if needed.
-
-    Flow:
-    1. If ``sso_providers`` already links this Google ID → return that user.
-    2. If ``users.email`` matches but no SSO link exists → raise 409 (conflict).
-    3. Otherwise → create a new verified user and SSO provider row.
-
-    Args:
-        google_user: Validated user info dict from :func:`get_google_user`.
-        db: Active async database session.
-
-    Returns:
-        The resolved or newly created :class:`User`.
-
-    Raises:
-        APIError: 409 if the email belongs to an existing password-based account.
-    """
     google_id: str = google_user["id"]
     email: str = google_user["email"]
 

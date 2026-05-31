@@ -6,11 +6,12 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import inspect
 
+from app.core.utils import format_time_display, compute_available_slots
 from app.models.interview import Interview, Candidate
 from app.models.user import User
 from app.models.workspace import WorkspaceMember, Workspace
 from app.services.auth import AuthService
-from app.services.calendar import format_time_display, compute_available_slots
+
 
 def auth_headers(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}

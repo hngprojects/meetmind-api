@@ -8,6 +8,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from app.core.utils import INTERVIEW_STATUS_MAP
 from app.models.interview import Candidate, Interview
 
 
@@ -163,14 +164,10 @@ class CandidateService:
                 )
             )
 
-        # Status filter — map FE status to interview status
-        status_map = {
-            "ongoing": "in_progress",
-            "completed": "completed",
-            "needs_review": "needs_attention",
-        }
-        if status and status in status_map:
-            base_query = base_query.where(latest_interview.status == status_map[status])
+        if status and status in INTERVIEW_STATUS_MAP:
+            base_query = base_query.where(
+                latest_interview.status == INTERVIEW_STATUS_MAP[status]
+            )
 
         # Sorting
         sort_column_map = {

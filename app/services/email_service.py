@@ -163,15 +163,6 @@ async def send_interview_link_email(
     role_title: str,
     background_tasks: Optional[BackgroundTasks] = None,
 ) -> None:
-    """Send an interview session invite/link email containing the LiveKit URL.
-
-    Args:
-        email: Recipient email address.
-        name: Recipient display name.
-        interview_id: UUID or string ID of the interview/session.
-        role_title: The job position name.
-        background_tasks: Optional FastAPI BackgroundTasks for fire-and-forget sending.
-    """
     interview_url = f"{settings.FRONTEND_URL.rstrip('/')}/interview/{interview_id}"
     safe_name = escape_html(name) if name else None
     greeting = f"Hi {safe_name}," if safe_name else "Hi,"
