@@ -99,8 +99,8 @@ async def reschedule_appointment(
         user_id=user.id,
         type="meeting",
         title="Interview Rescheduled",
-        description=f"{apt.get('candidate_name', '')} - {apt.get('role_title', '')}".
-            strip(" -"),
+        description=f" \
+        {apt.get('candidate_name', '')} - {apt.get('role_title', '')}".strip(" -"),
         action_url=f"/interviews/{apt.get('id', interview_id)}",
         label="reschedule notification",
     )
@@ -123,8 +123,8 @@ async def cancel_appointment(
         user_id=user.id,
         type="meeting",
         title="Interview Cancelled",
-        description=f"{apt.get('candidate_name', '')} - {apt.get('role_title', '')}".
-            strip(" -"),
+        description=f" \
+        {apt.get('candidate_name', '')} - {apt.get('role_title', '')}".strip(" -"),
         action_url=f"/interviews/{apt.get('id', interview_id)}",
         label="cancellation notification",
     )
