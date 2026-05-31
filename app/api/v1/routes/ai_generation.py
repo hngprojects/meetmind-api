@@ -8,11 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import VerifiedUser
 from app.core.responses import success
+from app.core.utils import safe_notify
 from app.db.session import get_session
 from app.schemas.chat import AskRequest, RespondRequest
 from app.services.ai_generation_service import AIGenerationService
 from app.services.interview import InterviewService
-from app.services.notification_service import NotificationService
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ async def complete_interview(
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
 ):
-    interview = await AIGenerationService._get_interview_or_404(interview_id, user, db)
+    interview = await AIGenerationService.get_interview_for_user(interview_id, user, db)
     await AIGenerationService.complete_interview(
         interview_id=interview_id,
         user=user,
@@ -71,17 +71,15 @@ async def complete_interview(
         interview_id=interview_id,
     )
 
-    try:
-        await NotificationService.create(
-            db=db,
-            user_id=user.id,
-            type="report",
-            title="Interview Completed",
-            description=f"{interview.role_title or 'Interview'}",
-            action_url=f"/interviews/{interview_id}",
-        )
-    except Exception:
-        logger.exception("Failed to create completion notification")
+    await safe_notify(
+        db,
+        user_id=user.id,
+        type="report",
+        title="Interview Completed",
+        description=interview.role_title or "Interview",
+        action_url=f"/interviews/{interview_id}",
+        label="completion notification",
+    )
 
     return success(
         {"status": "completed"},
@@ -134,20 +132,16 @@ async def retry_interview_summary(
         interview_id=interview_id,
     )
 
-    try:
-        interview = await AIGenerationService._get_interview_or_404(
-            interview_id, user, db
-        )
-        await NotificationService.create(
-            db=db,
-            user_id=user.id,
-            type="report",
-            title="Summary Regeneration Started",
-            description=f"{interview.role_title or 'Interview'}",
-            action_url=f"/interviews/{interview_id}",
-        )
-    except Exception:
-        logger.exception("Failed to create retry notification")
+    interview = await AIGenerationService.get_interview_for_user(interview_id, user, db)
+    await safe_notify(
+        db,
+        user_id=user.id,
+        type="report",
+        title="Summary Regeneration Started",
+        description=interview.role_title or "Interview",
+        action_url=f"/interviews/{interview_id}",
+        label="retry notification",
+    )
 
     return success(result, message="Summary retry started")
 
@@ -159,24 +153,22 @@ async def generate_interview_summary(
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
 ):
-    interview = await AIGenerationService._get_interview_or_404(interview_id, user, db)
+    interview = await AIGenerationService.get_interview_for_user(interview_id, user, db)
 
     background_tasks.add_task(
         AIGenerationService.generate_assessment,
         interview_id=interview_id,
     )
 
-    try:
-        await NotificationService.create(
-            db=db,
-            user_id=user.id,
-            type="report",
-            title="Summary Generation Started",
-            description=f"{interview.role_title or 'Interview'}",
-            action_url=f"/interviews/{interview_id}",
-        )
-    except Exception:
-        logger.exception("Failed to create generation notification")
+    await safe_notify(
+        db,
+        user_id=user.id,
+        type="report",
+        title="Summary Generation Started",
+        description=interview.role_title or "Interview",
+        action_url=f"/interviews/{interview_id}",
+        label="generation notification",
+    )
 
     return success(
         {"status": "generating"},
