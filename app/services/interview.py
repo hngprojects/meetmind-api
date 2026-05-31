@@ -133,55 +133,6 @@ async def _fetch_criteria(db: AsyncSession, interview_id: uuid.UUID) -> list[str
     return list(result.scalars().all())
 
 
-def _derive_interview_meta(interview: Interview) -> dict:
-    session_phase_map = {
-        "draft": "connecting",
-        "scheduled": "connecting",
-        "in_progress": "live_transcript",
-        "completed": "summary_ready",
-        "cancelled": "none",
-        "needs_attention": "listening",
-    }
-    list_status_map = {
-        "in_progress": "live",
-        "scheduled": "upcoming",
-    }
-
-    elapsed = None
-    if interview.status == "in_progress" and interview.scheduled_start:
-        now = datetime.now(timezone.utc)
-        start = interview.scheduled_start
-        if start.tzinfo is None:
-            start = start.replace(tzinfo=timezone.utc)
-        elapsed = int((now - start).total_seconds())
-
-    question_progress = None
-    if interview.questions_asked is not None and interview.questions_total is not None:
-        question_progress = f"{interview.questions_asked}/{interview.questions_total}"
-
-    return {
-        "session_phase": session_phase_map.get(interview.status, "none"),
-        "list_status": list_status_map.get(interview.status, "none"),
-        "elapsed": elapsed,
-        "question_progress": question_progress,
-        "scheduled_date": interview.scheduled_start.date().isoformat()
-        if interview.scheduled_start
-        else None,
-        "scheduled_time": interview.scheduled_start.time().strftime("%H:%M")
-        if interview.scheduled_start
-        else None,
-    }
-
-
-def _parse_assessment(summary: InterviewSummary | None) -> dict:
-    if not summary or not summary.ai_assessment:
-        return {"observation": None, "highlights": [], "red_flags": []}
-    try:
-        return json.loads(summary.ai_assessment)
-    except (json.JSONDecodeError, ValueError):
-        return {"observation": None, "highlights": [], "red_flags": []}
-
-
 class InterviewService:
     """Encapsulate interview session creation and retrieval."""
 
@@ -437,6 +388,60 @@ Keep all text suitable for a live audio call (concise and natural).
         )
 
     @staticmethod
+    def _derive_interview_meta(interview: Interview) -> dict:
+        session_phase_map = {
+            "draft": "connecting",
+            "scheduled": "connecting",
+            "in_progress": "live_transcript",
+            "completed": "summary_ready",
+            "cancelled": "none",
+            "needs_attention": "listening",
+        }
+        list_status_map = {
+            "in_progress": "live",
+            "scheduled": "upcoming",
+        }
+
+        elapsed = None
+        if interview.status == "in_progress" and interview.scheduled_start:
+            now = datetime.now(timezone.utc)
+            start = interview.scheduled_start
+            if start.tzinfo is None:
+                start = start.replace(tzinfo=timezone.utc)
+            elapsed = int((now - start).total_seconds())
+
+        question_progress = None
+        if (
+            interview.questions_asked is not None
+            and interview.questions_total is not None
+        ):
+            question_progress = (
+                f"{interview.questions_asked}/{interview.questions_total}"
+            )
+
+        return {
+            "session_phase": session_phase_map.get(interview.status, "none"),
+            "list_status": list_status_map.get(interview.status, "none"),
+            "elapsed": elapsed,
+            "question_progress": question_progress,
+            "scheduled_date": interview.scheduled_start.date().isoformat()
+            if interview.scheduled_start
+            else None,
+            "scheduled_time": interview.scheduled_start.time().strftime("%H:%M")
+            if interview.scheduled_start
+            else None,
+        }
+
+    @staticmethod
+    def _parse_assessment(summary: InterviewSummary | None) -> dict:
+        if not summary or not summary.ai_assessment:
+            return {"observation": None, "highlights": [], "red_flags": []}
+        try:
+            return json.loads(summary.ai_assessment)
+        except (json.JSONDecodeError, ValueError):
+            return {"observation": None, "highlights": [], "red_flags": []}
+
+    @staticmethod
     async def get_interview(
         interview_id: uuid.UUID,
         db: AsyncSession,
@@ -468,8 +473,8 @@ Keep all text suitable for a live audio call (concise and natural).
         )
         summary = summary_result.scalar_one_or_none()
 
-        meta = _derive_interview_meta(interview)
-        assessment = _parse_assessment(summary)
+        meta = InterviewService._derive_interview_meta(interview)
+        assessment = InterviewService._parse_assessment(summary)
 
         return InterviewResponse(
             id=interview.id,

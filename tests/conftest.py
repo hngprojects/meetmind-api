@@ -211,3 +211,9 @@ def mock_ai_planner():
             closing="Goodbye.",
         )
         yield mock
+
+@pytest.fixture(autouse=True, scope="session")
+def disable_otel():
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+    trace.set_tracer_provider(TracerProvider())
