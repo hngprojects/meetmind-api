@@ -7,24 +7,23 @@ from app.core.config import settings
 from app.core.decorators import retry_with_backoff
 
 MODEL = settings.GEMINI_MODEL
-_client = None
 
 
-def _get_client():
-    global _client
-    if _client is None:
-        api_key = settings.GEMINI_API_KEY
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY is not configured.")
-        _client = genai.Client(api_key=api_key).aio
-    return _client
+def _make_client():
+    api_key = settings.GEMINI_API_KEY
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY is not configured.")
+    return genai.Client(api_key=api_key).aio
+
+
+_client = _make_client()
 
 
 @retry_with_backoff()
 async def generate_text(
     system_instruction: str, user_content: str, temperature: float, max_tokens: int
 ) -> str:
-    response = await _get_client().models.generate_content(
+    response = await _client().models.generate_content(
         model=MODEL,
         contents=user_content,
         config=types.GenerateContentConfig(
@@ -40,7 +39,7 @@ async def generate_text(
 async def generate_structured_output(
     system_instruction, user_content, output_schema, temperature, max_tokens
 ) -> dict:
-    response = await _get_client().models.generate_content(
+    response = await _client().models.generate_content(
         model=MODEL,
         contents=user_content,
         config=types.GenerateContentConfig(
