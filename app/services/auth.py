@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import secrets
 import uuid
@@ -17,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.exceptions import UserAlreadyExistsException
 from app.core.responses import APIError
+from app.core.utils import hash_token, utcnow
 from app.models.user import ActiveSession, PasswordResetToken, RefreshToken, User
 from app.schemas.auth import SignupRequest
 from app.services.email_service import send_password_reset_security_alert
@@ -28,14 +28,6 @@ _DUMMY_HASH: str = bcrypt.hashpw(b"__dummy__", bcrypt.gensalt()).decode()
 
 RESET_TOKEN_EXPIRY_MINUTES = 60
 logger = logging.getLogger(__name__)
-
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _hash_token(raw: str) -> str:
-    return hashlib.sha256(raw.encode()).hexdigest()
 
 
 def _generate_jti() -> str:
@@ -65,19 +57,6 @@ class AuthService:
 
     @staticmethod
     async def create_user(request: SignupRequest, db: AsyncSession) -> User:
-        """Create a new user row, after asserting the email is unused.
-
-        Args:
-            request: Validated signup payload.
-            db: Active async database session.
-
-        Returns:
-            The newly created :class:`User`, flushed but not committed.
-
-        Raises:
-            UserAlreadyExistsException: If ``request.email`` is already
-                registered to another account.
-        """
         if await AuthService.check_email_exists(request.email, db):
             raise UserAlreadyExistsException(email=request.email)
 
@@ -87,7 +66,7 @@ class AuthService:
             email=request.email,
             password_hash=hashed_password,
         )
-        if settings.MOCK_EMAILS:
+        if settings.AUTO_VERIFY_USERS:
             user.is_verified = True
         db.add(user)
         await db.flush()
@@ -97,15 +76,7 @@ class AuthService:
 
     @staticmethod
     async def create_access_token(user: User) -> str:
-        """Issue a signed JWT access token for the given user.
-
-        Args:
-            user: The user the token should be issued for.
-
-        Returns:
-            The encoded JWT as a compact serialization string.
-        """
-        now = _now()
+        now = utcnow()
         expire = now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         payload = {
             "sub": str(user.id),
@@ -122,17 +93,6 @@ class AuthService:
 
     @staticmethod
     async def decode_access_token(token: str) -> dict:
-        """Decode and validate a previously issued access token.
-
-        Args:
-            token: The encoded JWT string.
-
-        Returns:
-            The decoded JWT claims as a dictionary.
-
-        Raises:
-            jwt.exceptions.InvalidTokenError: If the token signature are invalid.
-        """
         return jwt.decode(
             token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM]
         )
@@ -144,23 +104,9 @@ class AuthService:
         ip_address: str | None = None,
         device_hint: str | None = None,
     ) -> tuple[str, datetime]:
-        """Generate, persist, and return a new refresh token.
-
-        Only the SHA-256 hash is stored in the database. Also creates an
-        ``ActiveSession`` row to track the session for revocation and auditing.
-
-        Args:
-            db: Active async database session.
-            user_id: Identifier of the user the token is issued for.
-            ip_address: Client IP address for session auditing.
-            device_hint: Optional client hint (e.g. user-agent prefix).
-
-        Returns:
-            A tuple of ``(raw_token, expires_at)``.
-        """
         raw = secrets.token_urlsafe(48)
-        token_hash = _hash_token(raw)
-        now = _now()
+        token_hash = hash_token(raw)
+        now = utcnow()
         expires_at = now + timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
 
         db.add(
@@ -184,22 +130,6 @@ class AuthService:
 
     @staticmethod
     async def login(email: str, password: str, db: AsyncSession) -> User:
-        """Authenticate a user by email and password.
-
-        Always runs bcrypt regardless of whether the email exists, preventing
-        timing-based account enumeration.
-
-        Args:
-            email: The user's email address.
-            password: The plaintext password to verify.
-            db: Active async database session.
-
-        Returns:
-            The authenticated :class:`User`.
-
-        Raises:
-            APIError: 401 if the email is not found or the password is wrong.
-        """
         result = await db.execute(select(User).where(User.email == email))
         user = result.scalar_one_or_none()
 
@@ -221,30 +151,18 @@ class AuthService:
 
     @staticmethod
     async def create_password_reset_token(db: AsyncSession, user: User) -> str:
-        """Generate, persist, and return a new password reset token.
-
-        Invalidates all previously unused reset tokens for the user before
-        creating a new one (criterion 9 of AUTH-FPW-05-BE).
-
-        Args:
-            db: Active async database session.
-            user: The user requesting a password reset.
-
-        Returns:
-            The raw (un-hashed) reset token string to embed in the email link.
-        """
         result = await db.execute(
             select(PasswordResetToken).where(
                 PasswordResetToken.user_id == user.id,
                 PasswordResetToken.used_at.is_(None),
             )
         )
-        now = _now()
+        now = utcnow()
         for old in result.scalars().all():
             old.used_at = now
 
         raw = secrets.token_urlsafe(48)
-        token_hash = _hash_token(raw)
+        token_hash = hash_token(raw)
         expires_at = now + timedelta(minutes=RESET_TOKEN_EXPIRY_MINUTES)
 
         rt = PasswordResetToken(
@@ -263,24 +181,7 @@ class AuthService:
         db: AsyncSession,
         background_tasks=None,
     ) -> None:
-        """Validate a password reset token and update the user's password.
-
-        Token validation (exists, not used, not expired) and the password +
-        token update are performed in a single commit so the account is never
-        left in a partially updated state (criterion 10).
-
-        All token validation failures raise the same generic error to prevent
-        leaking which specific check failed (criterion 9).
-
-        Args:
-            raw_token: The raw reset token from the client.
-            new_password: The new plaintext password (pre-validated by schema).
-            db: Active async database session.
-
-        Raises:
-            APIError: 400 for any token validation failure (invalid, expired, used).
-        """
-        token_hash = _hash_token(raw_token)
+        token_hash = hash_token(raw_token)
         result = await db.execute(
             select(PasswordResetToken).where(
                 PasswordResetToken.token_hash == token_hash
@@ -303,7 +204,7 @@ class AuthService:
         expires_at = rt.expires_at
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=timezone.utc)
-        if expires_at < _now():
+        if expires_at < utcnow():
             raise _invalid
 
         result = await db.execute(select(User).where(User.id == rt.user_id))
@@ -313,7 +214,7 @@ class AuthService:
 
         # Write both changes in one commit — if the commit fails, both roll back
         user.password_hash = await AuthService.hash_password(new_password)
-        rt.used_at = _now()
+        rt.used_at = utcnow()
 
         # after a successful password reset, revoke every active session
         await db.execute(
@@ -363,27 +264,7 @@ class AuthService:
         db: AsyncSession,
         ip_address: str | None = None,
     ) -> dict:
-        """Rotate a refresh token and issue a new access token.
-
-        The old refresh token is revoked and a new one is issued in a single
-        commit (rotation). The associated ``ActiveSession`` is updated with
-        the new token hash and ``last_seen_at``.
-
-        Args:
-            raw_token: The raw refresh token string from the client.
-            db: Active async database session.
-            ip_address: Client IP, used to update the session record.
-
-        Returns:
-            A dict with ``access_token``, ``refresh_token``,
-            ``access_expires_at``, ``refresh_expires_at``, and ``user``.
-
-        Raises:
-            APIError: 401 for any token validation failure (not found, revoked,
-                expired, or orphaned user) — single generic error prevents
-                enumeration of which check failed.
-        """
-        token_hash = _hash_token(raw_token)
+        token_hash = hash_token(raw_token)
         result = await db.execute(
             select(RefreshToken).where(RefreshToken.token_hash == token_hash)
         )
@@ -399,7 +280,7 @@ class AuthService:
         if expires_at and expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=timezone.utc)
 
-        if not rt or rt.revoked or not expires_at or expires_at < _now():
+        if not rt or rt.revoked or not expires_at or expires_at < utcnow():
             raise _unauthorized
 
         result = await db.execute(select(User).where(User.id == rt.user_id))
@@ -409,8 +290,8 @@ class AuthService:
 
         # Rotate: new refresh token replaces the old one
         new_raw = secrets.token_urlsafe(48)
-        new_hash = _hash_token(new_raw)
-        now = _now()
+        new_hash = hash_token(new_raw)
+        now = utcnow()
         new_expires_at = now + timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
 
         db.add(
@@ -456,16 +337,7 @@ class AuthService:
 
     @staticmethod
     async def logout(raw_token: str, db: AsyncSession) -> None:
-        """Revoke a refresh token and remove the active session.
-
-        Args:
-            raw_token: The raw refresh token string from the client.
-            db: Active async database session.
-
-        Raises:
-            APIError: 401 if the token is not found.
-        """
-        token_hash = _hash_token(raw_token)
+        token_hash = hash_token(raw_token)
         result = await db.execute(
             select(RefreshToken).where(RefreshToken.token_hash == token_hash)
         )
@@ -491,14 +363,6 @@ class AuthService:
 
     @staticmethod
     async def blacklist_access_token_raw(token: str) -> None:
-        """Blacklist an access token by its raw JWT string.
-
-        Decodes the ``jti`` and ``exp`` claims and stores the ``jti`` in
-        Redis with a TTL equal to the remaining token lifetime.
-
-        Args:
-            token: The raw JWT access token string.
-        """
         from app.core.redis import blacklist_token
 
         try:
@@ -512,7 +376,7 @@ class AuthService:
             exp = payload.get("exp")
             if not jti or not exp:
                 return
-            remaining = int(exp) - int(_now().timestamp())
+            remaining = int(exp) - int(utcnow().timestamp())
             await blacklist_token(jti, remaining)
         except Exception:
             logger.debug("Could not blacklist access token on logout")

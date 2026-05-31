@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import inspect
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -13,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.responses import APIError
+from app.core.utils import hash_token, utcnow
 from app.models.email_verification import EmailVerificationToken
 from app.models.user import User
 from app.services.email_service import send_verification_email, send_welcome_email
@@ -21,34 +21,8 @@ from app.services.interview import _get_or_create_workspace
 TOKEN_EXPIRY_MINUTES = 30
 
 
-def _hash_token(token: str) -> str:
-    """Return a stable SHA-256 hex digest for a verification token.
-
-    Args:
-        token: Raw token string as issued to the user.
-
-    Returns:
-        Hex-encoded SHA-256 digest suitable for database lookup.
-    """
-    return hashlib.sha256(token.encode()).hexdigest()
-
-
 def _generate_token() -> str:
-    """Generate a new cryptographically random URL-safe token.
-
-    Returns:
-        A 32-byte URL-safe token string.
-    """
     return secrets.token_urlsafe(32)
-
-
-def _now() -> datetime:
-    """Return the current UTC timestamp as a timezone-aware datetime.
-
-    Returns:
-        The current time in UTC.
-    """
-    return datetime.now(timezone.utc)
 
 
 class VerificationService:
@@ -65,22 +39,6 @@ class VerificationService:
         user: User,
         background_tasks: BackgroundTasks | None = None,
     ) -> str:
-        """Issue, persist, and email a verification token to the user.
-
-        Any previously unused tokens for the same user are invalidated before
-        the new one is created, ensuring only one active token exists at a time.
-
-        Args:
-            db: Active async database session.
-            user: The user to issue the token for.
-
-        Returns:
-            The raw (un-hashed) token string.
-
-        Raises:
-            Exception: If the email delivery service fails. Callers should
-                surface this as a safe 500.
-        """
         # Invalidate all outstanding unused tokens for this user (criterion 8).
         result = await db.execute(
             select(EmailVerificationToken).where(
@@ -88,12 +46,12 @@ class VerificationService:
                 EmailVerificationToken.used_at.is_(None),
             )
         )
-        now = _now()
+        now = utcnow()
         for old in result.scalars().all():
             old.used_at = now
 
         raw_token = _generate_token()
-        token_hash = _hash_token(raw_token)
+        token_hash = hash_token(raw_token)
         expires_at = now + timedelta(minutes=TOKEN_EXPIRY_MINUTES)
 
         token = EmailVerificationToken(
@@ -120,20 +78,7 @@ class VerificationService:
         token: str,
         background_tasks: BackgroundTasks | None = None,
     ) -> User:
-        """Redeem a verification token and mark the owning user as verified.
-
-        Args:
-            db: Active async database session.
-            token: Raw verification token submitted by the client.
-
-        Returns:
-            The :class:`User` that has just been marked verified.
-
-        Raises:
-            APIError: If the token is unknown, already redeemed, expired, or
-                its owning user no longer exists.
-        """
-        token_hash = _hash_token(token)
+        token_hash = hash_token(token)
         result = await db.execute(
             select(EmailVerificationToken).where(
                 EmailVerificationToken.token_hash == token_hash
@@ -153,7 +98,7 @@ class VerificationService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 code="token_already_used",
             )
-        if _make_aware(record.expires_at) < _now():
+        if _make_aware(record.expires_at) < utcnow():
             raise APIError(
                 "Verification link has expired. Request a new one.",
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -161,7 +106,7 @@ class VerificationService:
                 details={"next_step": "resend_verification"},
             )
 
-        record.used_at = _now()
+        record.used_at = utcnow()
 
         result = await db.execute(select(User).where(User.id == record.user_id))
         user = result.scalar_one_or_none()
@@ -191,16 +136,6 @@ class VerificationService:
         email: str,
         background_tasks: BackgroundTasks | None = None,
     ) -> None:
-        """Issue a fresh verification token for an unverified user.
-
-        Args:
-            db: Active async database session.
-            email: Email address of the account requesting a new token.
-
-        Raises:
-            APIError: If no user has the supplied email or the user is
-                already verified.
-        """
         result = await db.execute(select(User).where(User.email == email))
         user = result.scalar_one_or_none()
 
