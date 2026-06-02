@@ -7,10 +7,18 @@ from fastapi import APIRouter, BackgroundTasks, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import VerifiedUser
-from app.core.responses import success
+from app.core.responses import APIResponse, success
 from app.core.utils import safe_notify
 from app.db.session import get_session
-from app.schemas.chat import AskRequest, RespondRequest
+from app.schemas.ai_generation import (
+    ChatAnswerData,
+    CompleteInterviewData,
+    GeneratedQuestionResponse,
+    RecordedResponseData,
+    SummaryGeneratingData,
+    SummaryRetryData,
+)
+from app.schemas.chat import AskRequest, ChatHistoryResponse, RespondRequest
 from app.services.ai_generation_service import AIGenerationService
 from app.services.interview import InterviewService
 
@@ -19,7 +27,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/{interview_id}/generate-question")
+@router.post(
+    "/{interview_id}/generate-question",
+    response_model=APIResponse[GeneratedQuestionResponse],
+)
 async def generate_question(
     interview_id: uuid.UUID,
     user: VerifiedUser,
@@ -37,7 +48,9 @@ async def generate_question(
     )
 
 
-@router.post("/{interview_id}/respond")
+@router.post(
+    "/{interview_id}/respond", response_model=APIResponse[RecordedResponseData]
+)
 async def respond_to_question(
     interview_id: uuid.UUID,
     payload: RespondRequest,
@@ -53,7 +66,9 @@ async def respond_to_question(
     return success({"response": next_question}, message="Response recorded")
 
 
-@router.post("/{interview_id}/complete")
+@router.post(
+    "/{interview_id}/complete", response_model=APIResponse[CompleteInterviewData]
+)
 async def complete_interview(
     interview_id: uuid.UUID,
     background_tasks: BackgroundTasks,
@@ -87,7 +102,7 @@ async def complete_interview(
     )
 
 
-@router.post("/{interview_id}/chat")
+@router.post("/{interview_id}/chat", response_model=APIResponse[ChatAnswerData])
 async def ask_question(
     interview_id: uuid.UUID,
     payload: AskRequest,
@@ -103,7 +118,7 @@ async def ask_question(
     return success(result, message="Query answered")
 
 
-@router.get("/{interview_id}/chat", status_code=status.HTTP_200_OK)
+@router.get("/{interview_id}/chat", response_model=APIResponse[ChatHistoryResponse])
 async def get_chat_history(
     interview_id: uuid.UUID,
     user: VerifiedUser,
@@ -119,7 +134,9 @@ async def get_chat_history(
     )
 
 
-@router.post("/{interview_id}/summary/retry", status_code=status.HTTP_200_OK)
+@router.post(
+    "/{interview_id}/summary/retry", response_model=APIResponse[SummaryRetryData]
+)
 async def retry_interview_summary(
     interview_id: uuid.UUID,
     user: VerifiedUser,
@@ -146,7 +163,11 @@ async def retry_interview_summary(
     return success(result, message="Summary retry started")
 
 
-@router.post("/{interview_id}/summary/generate", status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/{interview_id}/summary/generate",
+    status_code=202,
+    response_model=APIResponse[SummaryGeneratingData],
+)
 async def generate_interview_summary(
     interview_id: uuid.UUID,
     background_tasks: BackgroundTasks,

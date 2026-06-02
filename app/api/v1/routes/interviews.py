@@ -13,6 +13,7 @@ from app.api.deps import VerifiedUser
 from app.core.responses import APIResponse, paginated, success
 from app.core.utils import safe_notify
 from app.db.session import get_session
+from app.schemas.chat import ChatHistoryResponse
 from app.schemas.interview import (
     AIConfigUpdateResponse,
     ContextUpdateResponse,
@@ -31,6 +32,7 @@ from app.schemas.interview import (
     UpdateContextRequest,
     UpdateCriteriaRequest,
 )
+from app.schemas.transcript import TranscriptResponse
 from app.services.chat_history import ChatHistoryService
 from app.services.email_service import send_interview_link_email
 from app.services.interview import InterviewService
@@ -165,7 +167,9 @@ async def cancel_interview(
     )
 
 
-@router.get("/{interview_id}/chat/history", status_code=status.HTTP_200_OK)
+@router.get(
+    "/{interview_id}/chat/history", response_model=APIResponse[ChatHistoryResponse]
+)
 async def get_chat_history(
     interview_id: uuid.UUID,
     user: VerifiedUser,
@@ -178,7 +182,9 @@ async def get_chat_history(
     )
 
 
-@router.get("/{interview_id}/transcript", status_code=status.HTTP_200_OK)
+@router.get(
+    "/{interview_id}/transcript", response_model=APIResponse[TranscriptResponse]
+)
 async def get_transcript(
     interview_id: uuid.UUID,
     user: VerifiedUser,
@@ -345,7 +351,7 @@ async def rejoin_interview_session(
     return success(result, message="Session rejoin successfully requested")
 
 
-@router.post("/{interview_id}/send-link", status_code=status.HTTP_200_OK)
+@router.post("/{interview_id}/send-link", response_model=APIResponse[None])
 async def send_interview_link(
     interview_id: uuid.UUID,
     user: VerifiedUser,

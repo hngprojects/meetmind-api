@@ -6,13 +6,14 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import VerifiedUser
-from app.core.responses import success
+from app.core.responses import APIResponse, success
 from app.core.utils import safe_notify
 from app.db.session import get_session
 from app.schemas.onboarding import (
     OnboardingIntegrationsRequest,
     OnboardingPreferencesRequest,
     OnboardingRoleRequest,
+    OnboardingSubmissionResponse,
 )
 from app.services.onboarding import OnboardingService
 
@@ -20,7 +21,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-@router.post("/role")
+@router.post("/role", response_model=APIResponse[None])
 async def set_role(
     payload: OnboardingRoleRequest,
     user: VerifiedUser,
@@ -30,7 +31,7 @@ async def set_role(
     return success(message="Role saved")
 
 
-@router.post("/preferences")
+@router.post("/preferences", response_model=APIResponse[None])
 async def set_preferences(
     payload: OnboardingPreferencesRequest,
     user: VerifiedUser,
@@ -40,7 +41,7 @@ async def set_preferences(
     return success(message="Preferences saved")
 
 
-@router.post("/integrations")
+@router.post("/integrations", response_model=APIResponse[None])
 async def save_integrations(
     payload: OnboardingIntegrationsRequest,
     user: VerifiedUser,
@@ -61,7 +62,7 @@ async def save_integrations(
     return success(message="Integrations saved")
 
 
-@router.post("/submission")
+@router.post("/submission", response_model=APIResponse[OnboardingSubmissionResponse])
 async def submission(user: VerifiedUser, db: AsyncSession = Depends(get_session)):
     await OnboardingService.complete_submission(db, user)
     return success(

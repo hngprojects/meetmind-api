@@ -5,16 +5,16 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import VerifiedUser
-from app.core.responses import success
+from app.core.responses import APIResponse, success
 from app.db.session import get_session
-from app.schemas.notification import NotificationResponse
+from app.schemas.notification import NotificationListData, NotificationResponse
 from app.services.notification_service import NotificationService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-@router.get("")
+@router.get("", response_model=APIResponse[NotificationListData])
 async def list_notifications(
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
@@ -42,7 +42,7 @@ async def list_notifications(
     )
 
 
-@router.patch("/mark-all-read")
+@router.patch("/mark-all-read", response_model=APIResponse[None])
 async def mark_all_read(
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
@@ -51,7 +51,9 @@ async def mark_all_read(
     return success(message="All notifications marked as read")
 
 
-@router.patch("/{notification_id}/read")
+@router.patch(
+    "/{notification_id}/read", response_model=APIResponse[NotificationResponse]
+)
 async def mark_read(
     notification_id: uuid.UUID,
     user: VerifiedUser,
@@ -66,7 +68,7 @@ async def mark_read(
     return success(data, message="Notification marked as read")
 
 
-@router.delete("")
+@router.delete("", response_model=APIResponse[None])
 async def clear_notifications(
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),

@@ -27,3 +27,8 @@ class NotificationResponse(BaseModel):
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return time_display(dt, now=datetime.now(timezone.utc))
+
+
+class NotificationListData(BaseModel):
+    notifications: list[NotificationResponse]
+    unread_count: int

@@ -20,16 +20,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.exceptions import UserAlreadyExistsException
 from app.core.limiter import limiter
-from app.core.responses import APIError, success
+from app.core.responses import APIError, APIResponse, success
 from app.db.session import get_session
 from app.models.user import User
 from app.schemas.auth import (
+    CheckEmailResponse,
     ForgotPasswordRequest,
     LoginRequest,
+    LoginResponseData,
     LogoutRequest,
+    NextStepResponse,
+    RefreshResponseData,
     RefreshTokenRequest,
     ResetPasswordRequest,
     SignupRequest,
+    SignupResponseData,
+    VerifyEmailResponseData,
 )
 from app.schemas.verification import ResendVerificationRequest, VerifyEmailRequest
 from app.services import google_oauth
@@ -42,7 +48,11 @@ logger = logging.getLogger(__name__)
 verification_service = VerificationService()
 
 
-@router.post("/signup", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/signup",
+    status_code=status.HTTP_201_CREATED,
+    response_model=APIResponse[SignupResponseData],
+)
 @limiter.limit("5/minute")
 async def signup(
     request: Request,
@@ -107,7 +117,7 @@ async def signup(
     )
 
 
-@router.post("/verify-email")
+@router.post("/verify-email", response_model=APIResponse[VerifyEmailResponseData])
 @limiter.limit("10/minute")
 async def verify_email(
     request: Request,
@@ -115,17 +125,6 @@ async def verify_email(
     db: AsyncSession = Depends(get_session),
     background_tasks: BackgroundTasks = None,
 ):
-    """Verify a user's email address using a single-use token.
-
-    Args:
-        request: Incoming request (used by the rate limiter).
-        payload: Body containing the raw verification ``token``.
-        db: Async database session injected by FastAPI.
-
-    Returns:
-        A standardized success envelope with the verified user's ``id``
-        and ``email``.
-    """
     user = await verification_service.verify_email(
         db, payload.token, background_tasks=background_tasks
     )
@@ -139,7 +138,7 @@ async def verify_email(
     )
 
 
-@router.post("/resend-verification")
+@router.post("/resend-verification", response_model=APIResponse[None])
 @limiter.limit("3/minute")
 async def resend_verification(
     request: Request,
@@ -147,16 +146,6 @@ async def resend_verification(
     db: AsyncSession = Depends(get_session),
     background_tasks: BackgroundTasks = None,
 ):
-    """Reissue a verification email for an unverified account.
-
-    Args:
-        request: Incoming request (used by the rate limiter).
-        payload: Body containing the user's ``email``.
-        db: Async database session injected by FastAPI.
-
-    Returns:
-        A standardized success envelope acknowledging the resend.
-    """
     await verification_service.resend_verification(
         db, payload.email, background_tasks=background_tasks
     )
@@ -184,7 +173,7 @@ async def _process_password_reset(email: str) -> None:
             logger.exception("Failed to process password reset for %s", email)
 
 
-@router.post("/reset-password")
+@router.post("/reset-password", response_model=APIResponse[NextStepResponse])
 @limiter.limit("5/minute")
 async def reset_password(
     request: Request,
@@ -192,25 +181,6 @@ async def reset_password(
     db: AsyncSession = Depends(get_session),
     background_tasks: BackgroundTasks = None,
 ):
-    """Validate a reset token and update the user's password.
-
-    Token validation (exists, not expired, not already used) and the password
-    write are committed together so no partial update is ever persisted.
-    All token failure modes return the same generic 400 to avoid revealing
-    which specific check failed.
-
-    Args:
-        request: Incoming request (used by the rate limiter).
-        payload: Body containing the raw ``token`` and the new ``password``.
-        db: Async database session injected by FastAPI.
-
-    Returns:
-        A standardized success envelope with ``next_step: "login"``.
-
-    Raises:
-        APIError: 400 if the token is invalid, expired, or already used.
-        APIError: 500 for any unexpected DB or network failure.
-    """
     try:
         await AuthService.reset_password(
             payload.token, payload.password, db, background_tasks=background_tasks
@@ -230,27 +200,13 @@ async def reset_password(
     return success({"next_step": "login"}, message=msg)
 
 
-@router.post("/forgot-password")
+@router.post("/forgot-password", response_model=APIResponse[CheckEmailResponse])
 @limiter.limit("5/minute")
 async def forgot_password(
     request: Request,
     payload: ForgotPasswordRequest,
     background_tasks: BackgroundTasks,
 ):
-    """Accept a password reset request and queue delivery for registered addresses.
-
-    Always returns 200 with an identical response regardless of whether the
-    email is registered, preventing account enumeration via response body,
-    status code, or timing difference.
-
-    Args:
-        request: Incoming request (used by the rate limiter).
-        payload: Body containing the ``email`` to reset.
-        background_tasks: FastAPI background task queue.
-
-    Returns:
-        A standardized success envelope with ``next_step: "check_email"``.
-    """
     background_tasks.add_task(_process_password_reset, payload.email)
     return success(
         {"next_step": "check_email"},
@@ -258,7 +214,7 @@ async def forgot_password(
     )
 
 
-@router.post("/login")
+@router.post("/login", response_model=APIResponse[LoginResponseData])
 @limiter.limit("10/minute")
 async def login(
     request: Request,
@@ -266,20 +222,6 @@ async def login(
     response: Response,
     db: AsyncSession = Depends(get_session),
 ):
-    """Authenticate with email and password, issue auth tokens.
-
-    Args:
-        request: Incoming request (used by the rate limiter).
-        payload: Validated login payload (email, password).
-        response: FastAPI response object used to set auth cookies.
-        db: Async database session injected by FastAPI.
-
-    Returns:
-        A standardized success envelope with the user and freshly issued tokens.
-
-    Raises:
-        APIError: ``invalid_credentials`` if the email or password is wrong.
-    """
     user = await AuthService.login(payload.email, payload.password, db)
 
     try:
@@ -332,7 +274,7 @@ async def login(
     )
 
 
-@router.post("/refresh")
+@router.post("/refresh", response_model=APIResponse[RefreshResponseData])
 @limiter.limit("30/minute")
 async def refresh(
     request: Request,
@@ -340,20 +282,6 @@ async def refresh(
     response: Response,
     db: AsyncSession = Depends(get_session),
 ):
-    """Exchange a valid refresh token for a new access token.
-
-    Args:
-        request: Incoming request (used by the rate limiter).
-        payload: Body containing the raw ``refresh_token``.
-        response: FastAPI response object used to update the access token cookie.
-        db: Async database session injected by FastAPI.
-
-    Returns:
-        A standardized success envelope with the new ``access_token``.
-
-    Raises:
-        APIError: ``invalid_refresh_token`` / ``token_revoked`` / ``token_expired``.
-    """
     ip = request.client.host if request.client else None
     result = await AuthService.refresh_access_token(
         payload.refresh_token, db, ip_address=ip
@@ -388,30 +316,12 @@ async def refresh(
     )
 
 
-@router.post("/logout")
+@router.post("/logout", response_model=APIResponse[None])
 async def logout(
     payload: LogoutRequest,
     response: Response,
     db: AsyncSession = Depends(get_session),
 ):
-    """Revoke a refresh token, blacklist the access token, and clear cookies.
-
-    The access token's ``jti`` is added to the Redis blacklist so it is
-    rejected by the :class:`JWTBlacklistMiddleware` for the remainder of
-    its TTL, closing the window where a stolen access token could still be
-    used after logout.
-
-    Args:
-        payload: Body containing the ``access_token`` and ``refresh_token``.
-        response: FastAPI response object used to clear auth cookies.
-        db: Async database session injected by FastAPI.
-
-    Returns:
-        A standardized success envelope acknowledging the logout.
-
-    Raises:
-        APIError: ``invalid_refresh_token`` if the refresh token is not found.
-    """
     await AuthService.logout(payload.refresh_token, db)
 
     # Blacklist the access token so it cannot be reused
