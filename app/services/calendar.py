@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.avatar import get_avatar_color, get_avatar_initials
-from app.core.responses import APIError
+from app.core.responses import APIError, status
 from app.core.utils import compute_available_slots, format_time_display
 from app.models.interview import Candidate, Interview
 from app.models.user import User
@@ -22,6 +22,12 @@ class CalendarService:
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> list[dict]:
+        if start_date and end_date and start_date > end_date:
+            raise APIError(
+                "start_date must be before end_date",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="invalid_date_range",
+            )
 
         # 1. Scope to workspace
         workspace_id = await db.scalar(
@@ -123,6 +129,13 @@ class CalendarService:
     async def get_availability(
         db: AsyncSession, user: User, target_date: date, interviewer_id: str | None
     ) -> list[dict]:
+        if target_date < datetime.now(timezone.utc).date():
+            raise APIError(
+                "Cannot check availability for a past date",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="invalid_date",
+            )
+
         i_id = uuid.UUID(interviewer_id) if interviewer_id else user.id
         query = (
             select(Interview.scheduled_start, Interview.scheduled_end)
@@ -166,7 +179,7 @@ class CalendarService:
         cls,
         db: AsyncSession,
         user: User,
-        interview_id: str,
+        interview_id: uuid.UUID,
         new_start: datetime,
         new_end: datetime,
     ) -> dict:
@@ -182,13 +195,26 @@ class CalendarService:
         if new_end.tzinfo is None:
             new_end = new_end.replace(tzinfo=timezone.utc)
 
+        if new_start >= new_end:
+            raise APIError(
+                "Start time must be before end time",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="invalid_time_range",
+            )
+        if new_end <= datetime.now(timezone.utc):
+            raise APIError(
+                "Scheduled time must be in the future",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="invalid_time_range",
+            )
+
         # Fetch interview joined with candidate and interviewer for the return shape
         query = (
             select(Interview, Candidate, User)
             .join(Candidate, Interview.candidate_id == Candidate.id)
             .join(User, Interview.interviewer_id == User.id)
             .where(
-                Interview.id == uuid.UUID(interview_id),
+                Interview.id == interview_id,
                 Interview.workspace_id == workspace_id,
             )
         )
@@ -239,7 +265,7 @@ class CalendarService:
 
     @classmethod
     async def cancel_appointment(
-        cls, db: AsyncSession, user: User, interview_id: str
+        cls, db: AsyncSession, user: User, interview_id: uuid.UUID
     ) -> dict:
         workspace_id = await db.scalar(
             select(WorkspaceMember.workspace_id).where(
@@ -252,7 +278,7 @@ class CalendarService:
             .join(Candidate, Interview.candidate_id == Candidate.id)
             .join(User, Interview.interviewer_id == User.id)
             .where(
-                Interview.id == uuid.UUID(interview_id),
+                Interview.id == interview_id,
                 Interview.workspace_id == workspace_id,
             )
         )

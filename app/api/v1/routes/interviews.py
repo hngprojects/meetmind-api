@@ -6,6 +6,7 @@ import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
 from fastapi.responses import StreamingResponse
+from pydantic import EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import VerifiedUser
@@ -78,8 +79,8 @@ async def create_interview(
 async def list_interviews(
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
-    page: int = 1,
-    page_size: int = 20,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
     status_filter: str | None = Query(default=None),
     search: str | None = Query(default=None),
 ):
@@ -350,14 +351,8 @@ async def send_interview_link(
     user: VerifiedUser,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_session),
-    email: str | None = None,
+    email: EmailStr | None = None,
 ):
-    """Send the interview session/LiveKit invitation link via email.
-
-    If an optional `email` query param is provided, the invite will be sent to
-    that address. Otherwise, it defaults to the verified user's registered
-    email address.
-    """
     interview = await InterviewService.get_interview(interview_id, db, user)
 
     recipient_email = email or user.email

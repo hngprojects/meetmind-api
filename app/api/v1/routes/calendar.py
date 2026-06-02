@@ -1,4 +1,5 @@
 import logging
+import uuid
 from datetime import date
 from typing import Optional
 
@@ -85,7 +86,7 @@ async def get_availability(
     status_code=status.HTTP_200_OK,
 )
 async def reschedule_appointment(
-    interview_id: str,
+    interview_id: uuid.UUID,
     payload: RescheduleRequest,
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
@@ -114,7 +115,7 @@ async def reschedule_appointment(
     status_code=status.HTTP_200_OK,
 )
 async def cancel_appointment(
-    interview_id: str, user: VerifiedUser, db: AsyncSession = Depends(get_session)
+    interview_id: uuid.UUID, user: VerifiedUser, db: AsyncSession = Depends(get_session)
 ):
     apt = await CalendarService.cancel_appointment(db, user, interview_id)
 

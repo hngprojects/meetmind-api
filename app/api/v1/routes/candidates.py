@@ -83,7 +83,9 @@ async def search_candidates(
 async def export_candidates(
     db: DBSession,
     current_user: VerifiedUser,
-    q: str | None = Query(default=None, description="Optional search filter"),
+    q: str | None = Query(
+        default=None, min_length=1, description="Optional search filter"
+    ),
 ):
 
     workspace_id = await get_user_workspace(db, current_user.id)
@@ -261,7 +263,12 @@ async def upload_candidate_document(
             code="file_too_large",
         )
 
-    raw_text = await DocumentService.extract_text(file.filename, content)
+    try:
+        raw_text = await DocumentService.extract_text(file.filename, content)
+    except ValueError as e:
+        raise APIError(
+            str(e), status_code=status.HTTP_400_BAD_REQUEST, code="invalid_file"
+        )
 
     extracted_data = await DocumentService.extract_candidate_info(raw_text)
 
