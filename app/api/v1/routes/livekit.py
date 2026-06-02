@@ -6,7 +6,6 @@ import uuid
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import JSONResponse
 from livekit import api
-from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +13,12 @@ from app.core.config import settings
 from app.core.responses import APIError
 from app.db.session import get_session
 from app.models.interview import Candidate, Interview
+from app.schemas.livekit import (
+    InterviewResultResponse,
+    LiveKitTokenResponse,
+    TranscriptTurnRequest,
+    TranscriptTurnResponse,
+)
 from app.services.interview import InterviewService
 
 router = APIRouter()
@@ -59,15 +64,6 @@ DEFAULT_INTERVIEW_CONFIG = {
 }
 
 
-class TranscriptTurnRequest(BaseModel):
-    speaker: str = Field(..., min_length=1)
-    content: str = Field(..., min_length=1)
-    sequence_no: int = Field(..., ge=1)
-    speaker_name: str | None = None
-    timestamp_sec: int | None = None
-    is_ai_question: bool = False
-
-
 def _parse_uuid(value: str) -> uuid.UUID:
     try:
         return uuid.UUID(value.strip())
@@ -79,7 +75,7 @@ def _parse_uuid(value: str) -> uuid.UUID:
         )
 
 
-@router.post("/{interview_id}/token")
+@router.post("/{interview_id}/token", response_model=LiveKitTokenResponse)
 async def generate_token(
     interview_id: str, request: Request, db: AsyncSession = Depends(get_session)
 ):
@@ -152,7 +148,7 @@ async def generate_token(
     }
 
 
-@router.get("/{interview_id}/config")
+@router.get("/{interview_id}/config", response_model=dict)
 async def get_agent_config(interview_id: str, db: AsyncSession = Depends(get_session)):
     """The LiveKit agent calls this to get full interview setup."""
     interview_id = interview_id.strip()
@@ -163,7 +159,7 @@ async def get_agent_config(interview_id: str, db: AsyncSession = Depends(get_ses
     return config
 
 
-@router.post("/{interview_id}/transcript/turn")
+@router.post("/{interview_id}/transcript/turn", response_model=TranscriptTurnResponse)
 async def post_transcript_turn(
     interview_id: str,
     payload: TranscriptTurnRequest,
@@ -177,7 +173,7 @@ async def post_transcript_turn(
     return JSONResponse(status_code=status_code, content=data)
 
 
-@router.post("/{interview_id}/result")
+@router.post("/{interview_id}/result", response_model=InterviewResultResponse)
 async def post_result(
     interview_id: str, request: Request, db: AsyncSession = Depends(get_session)
 ):
