@@ -1,0 +1,16 @@
+<div style="font-family:sans-serif;max-width:480px;margin:0 auto">
+    <h2 style="color:#1a1a1a">Your Screening Call is Ready</h2>
+    <p>{{ greeting }}</p>
+    <p>A screening call for the <strong>{{ role_title }}</strong> role has been scheduled.</p>
+    <p>When it is time, click the button below to join the automated AI-conducted voice interview room:</p>
+    <div style="margin:24px 0">
+        <a href="{{ interview_url }}"
+           style="display:inline-block;padding:12px 24px;background:#6366f1;
+                  color:#fff;border-radius:6px;text-decoration:none;font-weight:600">
+            Join Interview Room
+        </a>
+    </div>
+    <p style="color:#666;font-size:13px">
+        Note: Please ensure you are in a quiet environment with a working microphone and a stable internet connection before joining.
+    </p>
+</div>
