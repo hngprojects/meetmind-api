@@ -6,24 +6,23 @@ from app.core.config import settings
 from app.core.decorators import retry_with_backoff
 
 MODEL = settings.OPENROUTER_MODEL
-_client = None
 
 
-def _get_client():
-    global _client
-    if _client is None:
-        api_key = settings.OPENROUTER_API_KEY
-        if not api_key:
-            raise ValueError("OPENROUTER_API_KEY is not configured.")
-        _client = AsyncOpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
-    return _client
+def _make_client():
+    api_key = settings.OPENROUTER_API_KEY
+    if not api_key:
+        raise ValueError("OPENROUTER_API_KEY is not configured.")
+    return AsyncOpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
+
+
+_client = _make_client()
 
 
 @retry_with_backoff()
 async def generate_text(
     system_instruction: str, user_content: str, temperature: float, max_tokens: int
 ) -> str:
-    response = await _get_client().chat.completions.create(
+    response = await _client().chat.completions.create(
         model=MODEL,
         messages=[
             {"role": "system", "content": system_instruction},
@@ -39,7 +38,7 @@ async def generate_text(
 async def generate_structured_output(
     system_instruction, user_content, output_schema, temperature, max_tokens
 ) -> dict:
-    response = await _get_client().chat.completions.create(
+    response = await _client().chat.completions.create(
         model=MODEL,
         messages=[
             {"role": "system", "content": system_instruction},

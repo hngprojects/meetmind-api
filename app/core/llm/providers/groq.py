@@ -7,24 +7,23 @@ from app.core.config import settings
 from app.core.decorators import retry_with_backoff
 
 MODEL = settings.GROQ_MODEL
-_client = None
 
 
-def _get_client():
-    global _client
-    if _client is None:
-        api_key = settings.GROQ_API_KEY
-        if not api_key:
-            raise ValueError("GROQ_API_KEY is not configured.")
-        _client = AsyncGroq(api_key=api_key)
-    return _client
+def _make_client():
+    api_key = settings.GROQ_API_KEY
+    if not api_key:
+        raise ValueError("GROQ_API_KEY is not configured.")
+    return AsyncGroq(api_key=api_key)
+
+
+_client = _make_client()
 
 
 @retry_with_backoff()
 async def generate_text(
     system_instruction: str, user_content: str, temperature: float, max_tokens: int
 ) -> str:
-    response = await _get_client().chat.completions.create(
+    response = await _client().chat.completions.create(
         model=MODEL,
         messages=[
             {"role": "system", "content": system_instruction},
@@ -44,7 +43,7 @@ async def generate_structured_output(
     temperature: float,
     max_tokens: int,
 ) -> dict:
-    response = await _get_client().chat.completions.create(
+    response = await _client().chat.completions.create(
         model=MODEL,
         messages=[
             {"role": "system", "content": system_instruction},

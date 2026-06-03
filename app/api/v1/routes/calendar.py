@@ -1,4 +1,5 @@
 import logging
+import uuid
 from datetime import date
 from typing import Optional
 
@@ -7,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import VerifiedUser
 from app.core.responses import APIResponse, success
+from app.core.utils import safe_notify
 from app.db.session import get_session
 from app.schemas.calendar import (
     AppointmentResponse,
@@ -15,7 +17,6 @@ from app.schemas.calendar import (
     RescheduleRequest,
 )
 from app.services.calendar import CalendarService
-from app.services.notification_service import NotificationService
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +86,7 @@ async def get_availability(
     status_code=status.HTTP_200_OK,
 )
 async def reschedule_appointment(
-    interview_id: str,
+    interview_id: uuid.UUID,
     payload: RescheduleRequest,
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
@@ -94,18 +95,16 @@ async def reschedule_appointment(
         db, user, interview_id, payload.scheduled_start, payload.scheduled_end
     )
 
-    try:
-        desc = f"{apt.get('candidate_name', '')} - {apt.get('role_title', '')}"
-        await NotificationService.create(
-            db=db,
-            user_id=user.id,
-            type="meeting",
-            title="Interview Rescheduled",
-            description=desc.strip(" -"),
-            action_url=f"/interviews/{apt.get('id', interview_id)}",
-        )
-    except Exception:
-        logger.exception("Failed to create reschedule notification")
+    await safe_notify(
+        db,
+        user_id=user.id,
+        type="meeting",
+        title="Interview Rescheduled",
+        description=f" \
+        {apt.get('candidate_name', '')} - {apt.get('role_title', '')}".strip(" -"),
+        action_url=f"/interviews/{apt.get('id', interview_id)}",
+        label="reschedule notification",
+    )
 
     return success(apt, message="Appointment rescheduled successfully")
 
@@ -116,21 +115,19 @@ async def reschedule_appointment(
     status_code=status.HTTP_200_OK,
 )
 async def cancel_appointment(
-    interview_id: str, user: VerifiedUser, db: AsyncSession = Depends(get_session)
+    interview_id: uuid.UUID, user: VerifiedUser, db: AsyncSession = Depends(get_session)
 ):
     apt = await CalendarService.cancel_appointment(db, user, interview_id)
 
-    try:
-        desc = f"{apt.get('candidate_name', '')} - {apt.get('role_title', '')}"
-        await NotificationService.create(
-            db=db,
-            user_id=user.id,
-            type="meeting",
-            title="Interview Cancelled",
-            description=desc.strip(" -"),
-            action_url=f"/interviews/{apt.get('id', interview_id)}",
-        )
-    except Exception:
-        logger.exception("Failed to create cancellation notification")
+    await safe_notify(
+        db,
+        user_id=user.id,
+        type="meeting",
+        title="Interview Cancelled",
+        description=f" \
+        {apt.get('candidate_name', '')} - {apt.get('role_title', '')}".strip(" -"),
+        action_url=f"/interviews/{apt.get('id', interview_id)}",
+        label="cancellation notification",
+    )
 
     return success(apt, message="Appointment cancelled successfully")

@@ -1,5 +1,4 @@
 import logging
-import uuid
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, Query, status
@@ -7,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import VerifiedUser
 from app.core.responses import APIResponse, success
+from app.core.utils import get_user_workspace
 from app.db.session import get_session
 from app.schemas.dashboard import (
     CompletedInterviewItem,
@@ -23,18 +23,6 @@ from app.services.dashboard import (
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-
-async def _resolve_workspace(user: VerifiedUser, db: AsyncSession) -> uuid.UUID | None:
-    """Resolve the workspace the current user belongs to, or None if not found."""
-    from sqlalchemy import select
-
-    from app.models.workspace import WorkspaceMember
-
-    result = await db.execute(
-        select(WorkspaceMember.workspace_id).where(WorkspaceMember.user_id == user.id)
-    )
-    return result.scalar_one_or_none()
 
 
 _EMPTY_STATS = {
@@ -59,7 +47,7 @@ async def get_dashboard_overview(
 
     Powers the summary cards and empty-state detection on the dashboard.
     """
-    workspace_id = await _resolve_workspace(user, db)
+    workspace_id = await get_user_workspace(db, user.id)
     if workspace_id is None:
         return success(
             {"has_sessions": False, "stats": _EMPTY_STATS},
@@ -87,7 +75,7 @@ async def get_dashboard_live(
     """Return a count breakdown of all interviews in the workspace by status,
     alongside a list of live and upcoming interviews for the sidebar.
     """
-    workspace_id = await _resolve_workspace(user, db)
+    workspace_id = await get_user_workspace(db, user.id)
     if workspace_id is None:
         return success(
             {**_EMPTY_STATS, "live_interviews": []},
@@ -119,30 +107,6 @@ async def get_dashboard_live(
     response_model=APIResponse[list[ScheduledInterviewItem]],
     status_code=status.HTTP_200_OK,
 )
-async def get_dashboard_live_sessions(
-    user: VerifiedUser,
-    db: AsyncSession = Depends(get_session),
-):
-    """Return all currently in-progress interviews for the Live Now panel.
-
-    Each item includes candidate name, role title, elapsed time in seconds,
-    and question progress.
-    """
-    workspace_id = await _resolve_workspace(user, db)
-    if workspace_id is None:
-        return success([], message="Live sessions retrieved successfully")
-    stats = await get_live_interviews(workspace_id, db)
-    return success(
-        stats.live_interviews,
-        message="Live sessions retrieved successfully",
-    )
-
-
-@router.get(
-    "/schedule",
-    response_model=APIResponse[list[ScheduledInterviewItem]],
-    status_code=status.HTTP_200_OK,
-)
 async def get_dashboard_schedule(
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
@@ -161,7 +125,7 @@ async def get_dashboard_schedule(
 
     start_date = start_date or today
     end_date = end_date or (today + timedelta(days=30))
-    workspace_id = await _resolve_workspace(user, db)
+    workspace_id = await get_user_workspace(db, user.id)
     if workspace_id is None:
         return success([], message="Schedule retrieved successfully")
     data = await get_schedule(workspace_id, db, start_date, end_date)
@@ -181,25 +145,8 @@ async def get_dashboard_completed(
 
     Powers the completed sessions panel on the dashboard.
     """
-    workspace_id = await _resolve_workspace(user, db)
+    workspace_id = await get_user_workspace(db, user.id)
     if workspace_id is None:
         return success([], message="Completed sessions retrieved successfully")
     data = await get_completed(workspace_id, db)
     return success(data, message="Completed sessions retrieved successfully")
-
-
-@router.get(
-    "/alerts",
-    response_model=APIResponse[list],
-    status_code=status.HTTP_200_OK,
-)
-async def get_dashboard_alerts(
-    user: VerifiedUser,
-    db: AsyncSession = Depends(get_session),
-):
-    """Return items requiring immediate attention.
-
-    Stubbed for MVP — returns empty list. Will surface agent join failures,
-    connectivity issues, and candidate no-shows in a later milestone.
-    """
-    return success([], message="Alerts retrieved successfully")

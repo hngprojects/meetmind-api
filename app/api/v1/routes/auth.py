@@ -20,16 +20,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.exceptions import UserAlreadyExistsException
 from app.core.limiter import limiter
-from app.core.responses import APIError, success
+from app.core.responses import APIError, APIResponse, success
 from app.db.session import get_session
 from app.models.user import User
 from app.schemas.auth import (
+    CheckEmailResponse,
     ForgotPasswordRequest,
     LoginRequest,
+    LoginResponseData,
     LogoutRequest,
+    NextStepResponse,
+    RefreshResponseData,
     RefreshTokenRequest,
     ResetPasswordRequest,
     SignupRequest,
+    SignupResponseData,
+    VerifyEmailResponseData,
 )
 from app.schemas.verification import ResendVerificationRequest, VerifyEmailRequest
 from app.services import google_oauth
@@ -42,7 +48,11 @@ logger = logging.getLogger(__name__)
 verification_service = VerificationService()
 
 
-@router.post("/signup", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/signup",
+    status_code=status.HTTP_201_CREATED,
+    response_model=APIResponse[SignupResponseData],
+)
 @limiter.limit("5/minute")
 async def signup(
     request: Request,
@@ -107,7 +117,7 @@ async def signup(
     )
 
 
-@router.post("/verify-email")
+@router.post("/verify-email", response_model=APIResponse[VerifyEmailResponseData])
 @limiter.limit("10/minute")
 async def verify_email(
     request: Request,
@@ -139,7 +149,7 @@ async def verify_email(
     )
 
 
-@router.post("/resend-verification")
+@router.post("/resend-verification", response_model=APIResponse[None])
 @limiter.limit("3/minute")
 async def resend_verification(
     request: Request,
@@ -184,7 +194,7 @@ async def _process_password_reset(email: str) -> None:
             logger.exception("Failed to process password reset for %s", email)
 
 
-@router.post("/reset-password")
+@router.post("/reset-password", response_model=APIResponse[NextStepResponse])
 @limiter.limit("5/minute")
 async def reset_password(
     request: Request,
@@ -230,7 +240,7 @@ async def reset_password(
     return success({"next_step": "login"}, message=msg)
 
 
-@router.post("/forgot-password")
+@router.post("/forgot-password", response_model=APIResponse[CheckEmailResponse])
 @limiter.limit("5/minute")
 async def forgot_password(
     request: Request,
@@ -258,7 +268,7 @@ async def forgot_password(
     )
 
 
-@router.post("/login")
+@router.post("/login", response_model=APIResponse[LoginResponseData])
 @limiter.limit("10/minute")
 async def login(
     request: Request,
@@ -266,7 +276,8 @@ async def login(
     response: Response,
     db: AsyncSession = Depends(get_session),
 ):
-    """Authenticate with email and password, issue auth tokens.
+    """
+    Authenticate with email and password, issue auth tokens.
 
     Args:
         request: Incoming request (used by the rate limiter).
@@ -332,7 +343,7 @@ async def login(
     )
 
 
-@router.post("/refresh")
+@router.post("/refresh", response_model=APIResponse[RefreshResponseData])
 @limiter.limit("30/minute")
 async def refresh(
     request: Request,
@@ -388,7 +399,7 @@ async def refresh(
     )
 
 
-@router.post("/logout")
+@router.post("/logout", response_model=APIResponse[None])
 async def logout(
     payload: LogoutRequest,
     response: Response,

@@ -33,6 +33,7 @@ def test_completed_interview_item():
         role="Backend Engineer",
         score=85,
         completed_at="2026-05-30T10:00:00",
+        status="completed", 
     )
     assert item.score == 85
 
