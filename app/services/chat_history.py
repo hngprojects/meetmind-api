@@ -65,6 +65,18 @@ class ChatHistoryService:
 
         Scopes the lookup to the requesting user's own interviews — matching
         the same guard used in InterviewService.get_interview.
+
+        Args:
+            interview_id: UUID of the interview to fetch history for.
+            db: Active async database session.
+            user: The authenticated user.
+
+        Returns:
+            A populated :class:`ChatHistoryResponse`.
+
+        Raises:
+            APIError: 404 if the interview does not exist or does not belong
+                to the requesting user. Same message in both cases — no leakage.
         """
         # 1. Verify interview exists and belongs to the requesting user.
         await ChatHistoryService._assert_interview_belongs_to_user(
