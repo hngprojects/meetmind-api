@@ -46,12 +46,11 @@ class AIGenerationService:
     """Generate interview questions, assessments, and answer queries."""
 
     @staticmethod
-    async def _get_interview_or_404(
+    async def get_interview_for_user(
         interview_id: uuid.UUID,
         user: User,
         db: AsyncSession,
     ) -> Interview:
-        """Fetch interview with auth check. Raises 404 if not found or not owner."""
         interview = (
             await db.execute(
                 select(Interview).where(
@@ -264,7 +263,7 @@ class AIGenerationService:
         user: User,
     ) -> str:
         """Generate the next interview question using context and conversation history."""
-        interview = await cls._get_interview_or_404(interview_id, user, db)
+        interview = await cls.get_interview_for_user(interview_id, user, db)
 
         candidate = (
             await db.execute(
@@ -448,7 +447,7 @@ class AIGenerationService:
         db: AsyncSession,
     ) -> str:
         """Answer a natural language query about an interview session."""
-        await cls._get_interview_or_404(interview_id, user, db)
+        await cls.get_interview_for_user(interview_id, user, db)
 
         summary = (
             await db.execute(
@@ -509,7 +508,7 @@ class AIGenerationService:
         db: AsyncSession,
     ) -> str:
         """Save a candidate response turn and generate the next question."""
-        await cls._get_interview_or_404(interview_id, user, db)
+        await cls.get_interview_for_user(interview_id, user, db)
 
         transcript = await cls._get_or_create_transcript(interview_id, db)
         seq = await cls._next_sequence(transcript.id, db)
@@ -537,7 +536,7 @@ class AIGenerationService:
         db: AsyncSession,
     ) -> None:
         """Mark an interview as completed."""
-        interview = await cls._get_interview_or_404(interview_id, user, db)
+        interview = await cls.get_interview_for_user(interview_id, user, db)
         interview.status = "completed"
         await db.commit()
 
@@ -551,7 +550,7 @@ class AIGenerationService:
     ) -> dict:
         """Answer a recruiter chat message statelessly (no DB save)."""
 
-        await cls._get_interview_or_404(interview_id, user, db)
+        await cls.get_interview_for_user(interview_id, user, db)
 
         transcript = await cls._get_or_create_transcript(interview_id, db)
         real_next_seq = await cls._next_sequence(transcript.id, db)

@@ -1,75 +1,15 @@
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.avatar import get_avatar_color, get_avatar_initials
-from app.core.responses import APIError
+from app.core.responses import APIError, status
+from app.core.utils import compute_available_slots, format_time_display
 from app.models.interview import Candidate, Interview
 from app.models.user import User
 from app.models.workspace import WorkspaceMember
-
-
-def format_time_display(start: datetime, end: datetime) -> str:
-    """Computes 'Today 10:00AM - 10:30AM' or 'Mon Jun 13 10:00AM...'"""
-    # Ensure datetimes are timezone aware (UTC)
-    if start.tzinfo is None:
-        start = start.replace(tzinfo=timezone.utc)
-    if end.tzinfo is None:
-        end = end.replace(tzinfo=timezone.utc)
-
-    now_utc = datetime.now(timezone.utc)
-    today = now_utc.date()
-    start_date = start.date()
-
-    # Format time (e.g., 10:00AM)
-    time_str = (
-        f"{start.strftime('%I:%M%p').lstrip('0')} - "
-        f"{end.strftime('%I:%M%p').lstrip('0')}"
-    )
-
-    if start_date == today:
-        day_str = "Today"
-    elif start_date == today + timedelta(days=1):
-        day_str = "Tomorrow"
-    else:
-        day_str = start.strftime("%a %b %d")
-
-    return f"{day_str} {time_str}"
-
-
-def compute_available_slots(
-    booked_intervals: list[tuple[datetime, datetime]], target_date: date
-) -> list[dict]:
-    """Pure function to compute available 30-min slots from 08:00 to 18:00 UTC."""
-    if target_date < datetime.now(timezone.utc).date():
-        return []
-
-    slots = []
-    start_of_day = datetime.combine(target_date, datetime.min.time()).replace(
-        tzinfo=timezone.utc
-    ) + timedelta(hours=8)
-
-    for i in range(20):
-        slot_start = start_of_day + timedelta(minutes=30 * i)
-        slot_end = slot_start + timedelta(minutes=30)
-
-        is_blocked = any(
-            b_start < slot_end and b_end > slot_start
-            for b_start, b_end in booked_intervals
-        )
-
-        if not is_blocked:
-            slots.append(
-                {
-                    "start_time": slot_start.strftime("%I:%M").lstrip("0"),
-                    "end_time": slot_end.strftime("%I:%M").lstrip("0"),
-                    "period_start": slot_start.strftime("%p"),
-                    "period_end": slot_end.strftime("%p"),
-                }
-            )
-    return slots
 
 
 class CalendarService:
@@ -82,6 +22,12 @@ class CalendarService:
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> list[dict]:
+        if start_date and end_date and start_date > end_date:
+            raise APIError(
+                "start_date must be before end_date",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="invalid_date_range",
+            )
 
         # 1. Scope to workspace
         workspace_id = await db.scalar(
@@ -183,6 +129,13 @@ class CalendarService:
     async def get_availability(
         db: AsyncSession, user: User, target_date: date, interviewer_id: str | None
     ) -> list[dict]:
+        if target_date < datetime.now(timezone.utc).date():
+            raise APIError(
+                "Cannot check availability for a past date",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="invalid_date",
+            )
+
         i_id = uuid.UUID(interviewer_id) if interviewer_id else user.id
         query = (
             select(Interview.scheduled_start, Interview.scheduled_end)
@@ -226,7 +179,7 @@ class CalendarService:
         cls,
         db: AsyncSession,
         user: User,
-        interview_id: str,
+        interview_id: uuid.UUID,
         new_start: datetime,
         new_end: datetime,
     ) -> dict:
@@ -242,13 +195,26 @@ class CalendarService:
         if new_end.tzinfo is None:
             new_end = new_end.replace(tzinfo=timezone.utc)
 
+        if new_start >= new_end:
+            raise APIError(
+                "Start time must be before end time",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="invalid_time_range",
+            )
+        if new_end <= datetime.now(timezone.utc):
+            raise APIError(
+                "Scheduled time must be in the future",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="invalid_time_range",
+            )
+
         # Fetch interview joined with candidate and interviewer for the return shape
         query = (
             select(Interview, Candidate, User)
             .join(Candidate, Interview.candidate_id == Candidate.id)
             .join(User, Interview.interviewer_id == User.id)
             .where(
-                Interview.id == uuid.UUID(interview_id),
+                Interview.id == interview_id,
                 Interview.workspace_id == workspace_id,
             )
         )
@@ -299,7 +265,7 @@ class CalendarService:
 
     @classmethod
     async def cancel_appointment(
-        cls, db: AsyncSession, user: User, interview_id: str
+        cls, db: AsyncSession, user: User, interview_id: uuid.UUID
     ) -> dict:
         workspace_id = await db.scalar(
             select(WorkspaceMember.workspace_id).where(
@@ -312,7 +278,7 @@ class CalendarService:
             .join(Candidate, Interview.candidate_id == Candidate.id)
             .join(User, Interview.interviewer_id == User.id)
             .where(
-                Interview.id == uuid.UUID(interview_id),
+                Interview.id == interview_id,
                 Interview.workspace_id == workspace_id,
             )
         )

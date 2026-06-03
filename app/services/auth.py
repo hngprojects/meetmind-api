@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import secrets
 import uuid
@@ -17,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.exceptions import UserAlreadyExistsException
 from app.core.responses import APIError
+from app.core.utils import hash_token, utcnow
 from app.models.user import ActiveSession, PasswordResetToken, RefreshToken, User
 from app.schemas.auth import SignupRequest
 from app.services.email_service import send_password_reset_security_alert
@@ -28,14 +28,6 @@ _DUMMY_HASH: str = bcrypt.hashpw(b"__dummy__", bcrypt.gensalt()).decode()
 
 RESET_TOKEN_EXPIRY_MINUTES = 60
 logger = logging.getLogger(__name__)
-
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _hash_token(raw: str) -> str:
-    return hashlib.sha256(raw.encode()).hexdigest()
 
 
 def _generate_jti() -> str:
@@ -87,7 +79,7 @@ class AuthService:
             email=request.email,
             password_hash=hashed_password,
         )
-        if settings.MOCK_EMAILS:
+        if settings.AUTO_VERIFY_USERS:
             user.is_verified = True
         db.add(user)
         await db.flush()
@@ -105,7 +97,7 @@ class AuthService:
         Returns:
             The encoded JWT as a compact serialization string.
         """
-        now = _now()
+        now = utcnow()
         expire = now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         payload = {
             "sub": str(user.id),
@@ -159,8 +151,8 @@ class AuthService:
             A tuple of ``(raw_token, expires_at)``.
         """
         raw = secrets.token_urlsafe(48)
-        token_hash = _hash_token(raw)
-        now = _now()
+        token_hash = hash_token(raw)
+        now = utcnow()
         expires_at = now + timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
 
         db.add(
@@ -239,12 +231,12 @@ class AuthService:
                 PasswordResetToken.used_at.is_(None),
             )
         )
-        now = _now()
+        now = utcnow()
         for old in result.scalars().all():
             old.used_at = now
 
         raw = secrets.token_urlsafe(48)
-        token_hash = _hash_token(raw)
+        token_hash = hash_token(raw)
         expires_at = now + timedelta(minutes=RESET_TOKEN_EXPIRY_MINUTES)
 
         rt = PasswordResetToken(
@@ -280,7 +272,7 @@ class AuthService:
         Raises:
             APIError: 400 for any token validation failure (invalid, expired, used).
         """
-        token_hash = _hash_token(raw_token)
+        token_hash = hash_token(raw_token)
         result = await db.execute(
             select(PasswordResetToken).where(
                 PasswordResetToken.token_hash == token_hash
@@ -303,7 +295,7 @@ class AuthService:
         expires_at = rt.expires_at
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=timezone.utc)
-        if expires_at < _now():
+        if expires_at < utcnow():
             raise _invalid
 
         result = await db.execute(select(User).where(User.id == rt.user_id))
@@ -313,7 +305,7 @@ class AuthService:
 
         # Write both changes in one commit — if the commit fails, both roll back
         user.password_hash = await AuthService.hash_password(new_password)
-        rt.used_at = _now()
+        rt.used_at = utcnow()
 
         # after a successful password reset, revoke every active session
         await db.execute(
@@ -383,7 +375,7 @@ class AuthService:
                 expired, or orphaned user) — single generic error prevents
                 enumeration of which check failed.
         """
-        token_hash = _hash_token(raw_token)
+        token_hash = hash_token(raw_token)
         result = await db.execute(
             select(RefreshToken).where(RefreshToken.token_hash == token_hash)
         )
@@ -399,7 +391,7 @@ class AuthService:
         if expires_at and expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=timezone.utc)
 
-        if not rt or rt.revoked or not expires_at or expires_at < _now():
+        if not rt or rt.revoked or not expires_at or expires_at < utcnow():
             raise _unauthorized
 
         result = await db.execute(select(User).where(User.id == rt.user_id))
@@ -409,8 +401,8 @@ class AuthService:
 
         # Rotate: new refresh token replaces the old one
         new_raw = secrets.token_urlsafe(48)
-        new_hash = _hash_token(new_raw)
-        now = _now()
+        new_hash = hash_token(new_raw)
+        now = utcnow()
         new_expires_at = now + timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
 
         db.add(
@@ -465,7 +457,7 @@ class AuthService:
         Raises:
             APIError: 401 if the token is not found.
         """
-        token_hash = _hash_token(raw_token)
+        token_hash = hash_token(raw_token)
         result = await db.execute(
             select(RefreshToken).where(RefreshToken.token_hash == token_hash)
         )
@@ -512,7 +504,7 @@ class AuthService:
             exp = payload.get("exp")
             if not jti or not exp:
                 return
-            remaining = int(exp) - int(_now().timestamp())
+            remaining = int(exp) - int(utcnow().timestamp())
             await blacklist_token(jti, remaining)
         except Exception:
             logger.debug("Could not blacklist access token on logout")

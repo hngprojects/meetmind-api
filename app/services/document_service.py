@@ -14,21 +14,14 @@ from app.db.session import AsyncSessionLocal
 from app.models.document import CandidateDocument, DocumentChunk, DocumentStatus
 from app.schemas.candidate import CandidateExtraction
 
+_gemini_client = genai.Client(api_key=settings.GEMINI_API_KEY or "dummy_key").aio
+
 
 class DocumentService:
-    @classmethod
-    def _client(cls):
-        if not getattr(cls, "_client_instance", None):
-            cls._client_instance = genai.Client(
-                api_key=settings.GEMINI_API_KEY or "dummy_key"
-            ).aio
-        return cls._client_instance
-
     EMBEDDING_BATCH_SIZE = 50
 
     @staticmethod
     async def extract_text(filename: str, content: bytes) -> str:
-        """Step 2: Turn uploaded documents into clean text"""
         ext = filename.split(".")[-1].lower()
         text = ""
 
@@ -50,7 +43,6 @@ class DocumentService:
 
     @classmethod
     async def extract_candidate_info(cls, text: str) -> CandidateExtraction:
-        """Uses Gemini to turn raw resume text into a structured JSON object."""
         prompt = f"""
         Extract the following information from the resume text provided below.
         If a field is not found, return null. 
@@ -60,9 +52,8 @@ class DocumentService:
         {text}
         """
 
-        # We use the 'generate_content' with a response_mime_type constraint
-        response = await cls._client().models.generate_content(
-            model="gemini-flash-lite-latest",  # Use Flash for low latency extraction
+        response = await _gemini_client.models.generate_content(
+            model="gemini-flash-lite-latest",
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -94,7 +85,7 @@ class DocumentService:
             return []
 
         try:
-            response = await cls._client().models.embed_content(
+            response = await _gemini_client.models.embed_content(
                 model="gemini-embedding-001",
                 contents=texts,
                 config=types.EmbedContentConfig(

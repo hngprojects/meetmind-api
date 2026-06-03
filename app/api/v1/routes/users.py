@@ -3,21 +3,14 @@
 from fastapi import APIRouter
 
 from app.api.deps import VerifiedUser
-from app.core.responses import success
+from app.core.responses import APIResponse, success
+from app.schemas.user import UserProfileResponse
 
 router = APIRouter()
 
 
-@router.get("/me")
+@router.get("/me", response_model=APIResponse[UserProfileResponse])
 async def get_me(user: VerifiedUser):
-    """Return the authenticated user's profile.
-
-    Args:
-        user: The currently authenticated user resolved by the JWT dependency.
-
-    Returns:
-        A standardized success envelope with the user's profile fields.
-    """
     return success(
         {
             "id": str(user.id),

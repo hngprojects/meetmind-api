@@ -72,8 +72,6 @@ class RefreshTokenRequest(BaseModel):
 
 
 class LogoutRequest(BaseModel):
-    """Payload for logging out — both tokens required."""
-
     access_token: str
     refresh_token: str
 
@@ -149,3 +147,44 @@ class SignupRequest(BaseModel):
         if not re.search(r"\d", v):
             raise ValueError("Password must contain at least one digit")
         return v
+
+
+class SignupResponseData(BaseModel):
+    id: str
+    email: str
+    name: str
+    next_step: str
+    onboarding_completed: bool
+
+
+class LoginResponseData(BaseModel):
+    id: str
+    email: str
+    name: str
+    next_step: str
+    access_token: str
+    refresh_token: str
+    access_token_expires_at: str
+    refresh_token_expires_at: str
+
+
+class RefreshResponseData(BaseModel):
+    access_token: str
+    refresh_token: str
+    access_token_expires_at: str
+    refresh_token_expires_at: str
+    next_step: str
+
+
+class VerifyEmailResponseData(BaseModel):
+    id: str
+    email: str
+    next_step: str
+
+
+class NextStepResponse(BaseModel):
+    next_step: str  # for reset-password
+
+
+class CheckEmailResponse(BaseModel):
+    next_step: str  # for forgot-password

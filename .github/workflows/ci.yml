@@ -44,6 +44,8 @@ jobs:
             GOOGLE_CLIENT_SECRET: test-google-client-secret
             GOOGLE_REDIRECT_URI: http://localhost:8000/api/v1/auth/google/callback
             GEMINI_API_KEY: test-gemini-api-key
+            GROQ_API_KEY: test-groq-api-key
+            OPENROUTER_API_KEY: test-openrouter-api-key
             FRONTEND_URL: http://localhost:3000
 
         steps:

@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     # CI where sending real emails is undesirable.
     MOCK_EMAILS: bool = False
 
+    # Set true in development to skip email verification
+    AUTO_VERIFY_USERS: bool = False
+
     # LiveKit — AI interviewer call infrastructure
     LIVEKIT_URL: str = ""
     LIVEKIT_API_KEY: str = ""

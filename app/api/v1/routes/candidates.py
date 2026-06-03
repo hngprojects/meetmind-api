@@ -15,13 +15,13 @@ from sqlalchemy import select
 
 from app.api.deps import DBSession, VerifiedUser
 from app.core.responses import APIError, APIResponse, success
+from app.core.utils import INTERVIEW_STATUS_MAP, get_user_workspace
 from app.models.document import CandidateDocument, DocumentStatus
 from app.models.interview import Candidate, Interview
 from app.models.workspace import WorkspaceMember
 from app.schemas.candidate import CandidateListItem, CandidateSearchResult
 from app.services.candidate import CandidateService
 from app.services.document_service import DocumentService
-from app.services.interview import _get_workspace
 
 router = APIRouter()
 
@@ -43,25 +43,10 @@ async def search_candidates(
     Search candidates by name or email.
 
     GET /api/v1/candidates/search?q=john&page=1&page_size=20
-
-    WHY Query(...) with min_length=1?
-    The ... means the parameter is required — FastAPI returns 422 automatically
-    if it is missing. min_length=1 prevents empty string searches like ?q=
-    which would match everything and is not a real search.
-
-    WHY ge=1 on page?
-    ge means "greater than or equal to". Page 0 makes no sense — pages start
-    at 1. FastAPI validates this automatically and returns 422 if violated.
-
-    WHY le=100 on page_size?
-    We cap the maximum page size at 100. Without this cap, a malicious or
-    careless client could send page_size=999999 and load the entire database
-    into memory in one query. This is a denial-of-service protection.
     """
-
     # Get the user's workspace to scope the query
     # Every candidate belongs to a workspace — we never leak cross-workspace data
-    workspace_id = await _get_workspace(db, current_user)
+    workspace_id = await get_user_workspace(db, current_user.id)
 
     if not workspace_id:
         raise APIError(
@@ -103,10 +88,12 @@ async def search_candidates(
 async def export_candidates(
     db: DBSession,
     current_user: VerifiedUser,
-    q: str | None = Query(default=None, description="Optional search filter"),
+    q: str | None = Query(
+        default=None, min_length=1, description="Optional search filter"
+    ),
 ):
 
-    workspace_id = await _get_workspace(db, current_user)
+    workspace_id = await get_user_workspace(db, current_user.id)
 
     if not workspace_id:
         raise APIError(
@@ -149,7 +136,7 @@ async def list_candidates(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100, alias="page_size"),
 ):
-    workspace_id = await _get_workspace(db, current_user)
+    workspace_id = await get_user_workspace(db, current_user.id)
     if not workspace_id:
         return success(
             data=[],
@@ -173,8 +160,6 @@ async def list_candidates(
         page=page,
         page_size=page_size,
     )
-
-    import math
 
     total_pages = math.ceil(total / page_size) if total > 0 else 0
 
@@ -208,8 +193,7 @@ async def get_candidate(
     Returns all fields from the Candidate model — no nested interviews or
     computed stats. Use the dedicated /interviews endpoints for that data.
     """
-
-    workspace_id = await _get_workspace(db, current_user)
+    workspace_id = await get_user_workspace(db, current_user.id)
 
     if not workspace_id:
         raise APIError(
@@ -240,19 +224,13 @@ async def get_candidate(
     )
     latest_interview = latest_interview_result.scalar_one_or_none()
 
-    interview_status_map = {
-        "in_progress": "ongoing",
-        "completed": "completed",
-        "needs_attention": "needs_review",
-    }
-
     return success(
         CandidateListItem(
             id=str(candidate.id),
             name=candidate.full_name,
             email=candidate.email,
             role=latest_interview.role_title if latest_interview else None,
-            status=interview_status_map.get(latest_interview.status, "ongoing")
+            status=INTERVIEW_STATUS_MAP.get(latest_interview.status, "ongoing")
             if latest_interview
             else "ongoing",
             score=latest_interview.rating if latest_interview else None,
@@ -298,7 +276,12 @@ async def upload_candidate_document(
             code="file_too_large",
         )
 
-    raw_text = await DocumentService.extract_text(file.filename, content)
+    try:
+        raw_text = await DocumentService.extract_text(file.filename, content)
+    except ValueError as e:
+        raise APIError(
+            str(e), status_code=status.HTTP_400_BAD_REQUEST, code="invalid_file"
+        )
 
     extracted_data = await DocumentService.extract_candidate_info(raw_text)
 

@@ -6,11 +6,14 @@ import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
 from fastapi.responses import StreamingResponse
+from pydantic import EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import VerifiedUser
 from app.core.responses import APIResponse, paginated, success
+from app.core.utils import safe_notify
 from app.db.session import get_session
+from app.schemas.chat import ChatHistoryResponse
 from app.schemas.interview import (
     AIConfigUpdateResponse,
     ContextUpdateResponse,
@@ -29,10 +32,10 @@ from app.schemas.interview import (
     UpdateContextRequest,
     UpdateCriteriaRequest,
 )
+from app.schemas.transcript import TranscriptResponse
 from app.services.chat_history import ChatHistoryService
 from app.services.email_service import send_interview_link_email
 from app.services.interview import InterviewService
-from app.services.notification_service import NotificationService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -50,20 +53,18 @@ async def create_interview(
 ):
     interview = await InterviewService.create_interview(payload, db, user)
 
-    try:
-        description = f"{interview.candidate_name} - {interview.role_title}"
-        if interview.scheduled_date:
-            description += f" - {interview.scheduled_date}"
-        await NotificationService.create(
-            db=db,
-            user_id=user.id,
-            type="meeting",
-            title="Interview Scheduled",
-            description=description,
-            action_url=f"/interviews/{interview.id}",
-        )
-    except Exception:
-        logger.exception("Failed to create meeting notification")
+    description = f"{interview.candidate_name} - {interview.role_title}"
+    if interview.scheduled_date:
+        description += f" - {interview.scheduled_date}"
+    await safe_notify(
+        db,
+        user_id=user.id,
+        type="meeting",
+        title="Interview Scheduled",
+        description=description,
+        action_url=f"/interviews/{interview.id}",
+        label="meeting notification",
+    )
 
     return success(
         interview.model_dump(mode="json"),
@@ -80,13 +81,13 @@ async def create_interview(
 async def list_interviews(
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
-    page: int = 1,
-    page_size: int = 20,
-    status: str | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    status_filter: str | None = Query(default=None),
     search: str | None = Query(default=None),
 ):
     rows, total = await InterviewService.list_interviews(
-        db, user, page, page_size, status, search
+        db, user, page, page_size, status_filter, search
     )
     items = [
         InterviewListItem(
@@ -147,20 +148,18 @@ async def cancel_interview(
 ):
     interview = await InterviewService.cancel_interview(interview_id, db, user)
 
-    try:
-        desc = f"{interview.candidate_name} - {interview.role_title}"
-        if interview.scheduled_date:
-            desc += f" - {interview.scheduled_date}"
-        await NotificationService.create(
-            db=db,
-            user_id=user.id,
-            type="meeting",
-            title="Interview Cancelled",
-            description=desc,
-            action_url=f"/interviews/{interview.id}",
-        )
-    except Exception:
-        logger.exception("Failed to create cancellation notification")
+    desc = f"{interview.candidate_name} - {interview.role_title}"
+    if interview.scheduled_date:
+        desc += f" - {interview.scheduled_date}"
+    await safe_notify(
+        db,
+        user_id=user.id,
+        type="meeting",
+        title="Interview Cancelled",
+        description=desc,
+        action_url=f"/interviews/{interview.id}",
+        label="cancellation notification",
+    )
 
     return success(
         interview.model_dump(mode="json"),
@@ -168,7 +167,9 @@ async def cancel_interview(
     )
 
 
-@router.get("/{interview_id}/chat/history", status_code=status.HTTP_200_OK)
+@router.get(
+    "/{interview_id}/chat/history", response_model=APIResponse[ChatHistoryResponse]
+)
 async def get_chat_history(
     interview_id: uuid.UUID,
     user: VerifiedUser,
@@ -181,7 +182,9 @@ async def get_chat_history(
     )
 
 
-@router.get("/{interview_id}/transcript", status_code=status.HTTP_200_OK)
+@router.get(
+    "/{interview_id}/transcript", response_model=APIResponse[TranscriptResponse]
+)
 async def get_transcript(
     interview_id: uuid.UUID,
     user: VerifiedUser,
@@ -348,13 +351,13 @@ async def rejoin_interview_session(
     return success(result, message="Session rejoin successfully requested")
 
 
-@router.post("/{interview_id}/send-link", status_code=status.HTTP_200_OK)
+@router.post("/{interview_id}/send-link", response_model=APIResponse[None])
 async def send_interview_link(
     interview_id: uuid.UUID,
     user: VerifiedUser,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_session),
-    email: str | None = None,
+    email: EmailStr | None = None,
 ):
     """Send the interview session/LiveKit invitation link via email.
 
