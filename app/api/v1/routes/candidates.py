@@ -39,6 +39,11 @@ async def search_candidates(
     page: int = Query(default=1, ge=1, description="Page number"),
     page_size: int = Query(default=20, ge=1, le=100, description="Results per page"),
 ):
+    """
+    Search candidates by name or email.
+
+    GET /api/v1/candidates/search?q=john&page=1&page_size=20
+    """
     # Get the user's workspace to scope the query
     # Every candidate belongs to a workspace — we never leak cross-workspace data
     workspace_id = await get_user_workspace(db, current_user.id)
@@ -180,6 +185,14 @@ async def get_candidate(
     db: DBSession,
     current_user: VerifiedUser,
 ):
+    """
+    Get a single candidate's profile.
+
+    GET /api/v1/candidates/{candidate_id}
+
+    Returns all fields from the Candidate model — no nested interviews or
+    computed stats. Use the dedicated /interviews endpoints for that data.
+    """
     workspace_id = await get_user_workspace(db, current_user.id)
 
     if not workspace_id:

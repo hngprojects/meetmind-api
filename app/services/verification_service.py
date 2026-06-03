@@ -39,6 +39,22 @@ class VerificationService:
         user: User,
         background_tasks: BackgroundTasks | None = None,
     ) -> str:
+        """Issue, persist, and email a verification token to the user.
+
+        Any previously unused tokens for the same user are invalidated before
+        the new one is created, ensuring only one active token exists at a time.
+
+        Args:
+            db: Active async database session.
+            user: The user to issue the token for.
+
+        Returns:
+            The raw (un-hashed) token string.
+
+        Raises:
+            Exception: If the email delivery service fails. Callers should
+                surface this as a safe 500.
+        """
         # Invalidate all outstanding unused tokens for this user (criterion 8).
         result = await db.execute(
             select(EmailVerificationToken).where(
@@ -78,6 +94,19 @@ class VerificationService:
         token: str,
         background_tasks: BackgroundTasks | None = None,
     ) -> User:
+        """Redeem a verification token and mark the owning user as verified.
+
+        Args:
+            db: Active async database session.
+            token: Raw verification token submitted by the client.
+
+        Returns:
+            The :class:`User` that has just been marked verified.
+
+        Raises:
+            APIError: If the token is unknown, already redeemed, expired, or
+                its owning user no longer exists.
+        """
         token_hash = hash_token(token)
         result = await db.execute(
             select(EmailVerificationToken).where(
@@ -136,6 +165,16 @@ class VerificationService:
         email: str,
         background_tasks: BackgroundTasks | None = None,
     ) -> None:
+        """Issue a fresh verification token for an unverified user.
+
+        Args:
+            db: Active async database session.
+            email: Email address of the account requesting a new token.
+
+        Raises:
+            APIError: If no user has the supplied email or the user is
+                already verified.
+        """
         result = await db.execute(select(User).where(User.email == email))
         user = result.scalar_one_or_none()
 

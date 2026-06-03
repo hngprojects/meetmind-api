@@ -359,6 +359,12 @@ async def send_interview_link(
     db: AsyncSession = Depends(get_session),
     email: EmailStr | None = None,
 ):
+    """Send the interview session/LiveKit invitation link via email.
+
+    If an optional `email` query param is provided, the invite will be sent to
+    that address. Otherwise, it defaults to the verified user's registered
+    email address.
+    """
     interview = await InterviewService.get_interview(interview_id, db, user)
 
     recipient_email = email or user.email

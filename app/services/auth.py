@@ -57,6 +57,19 @@ class AuthService:
 
     @staticmethod
     async def create_user(request: SignupRequest, db: AsyncSession) -> User:
+        """Create a new user row, after asserting the email is unused.
+
+        Args:
+            request: Validated signup payload.
+            db: Active async database session.
+
+        Returns:
+            The newly created :class:`User`, flushed but not committed.
+
+        Raises:
+            UserAlreadyExistsException: If ``request.email`` is already
+                registered to another account.
+        """
         if await AuthService.check_email_exists(request.email, db):
             raise UserAlreadyExistsException(email=request.email)
 
@@ -76,6 +89,14 @@ class AuthService:
 
     @staticmethod
     async def create_access_token(user: User) -> str:
+        """Issue a signed JWT access token for the given user.
+
+        Args:
+            user: The user the token should be issued for.
+
+        Returns:
+            The encoded JWT as a compact serialization string.
+        """
         now = utcnow()
         expire = now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         payload = {
@@ -93,6 +114,17 @@ class AuthService:
 
     @staticmethod
     async def decode_access_token(token: str) -> dict:
+        """Decode and validate a previously issued access token.
+
+        Args:
+            token: The encoded JWT string.
+
+        Returns:
+            The decoded JWT claims as a dictionary.
+
+        Raises:
+            jwt.exceptions.InvalidTokenError: If the token signature are invalid.
+        """
         return jwt.decode(
             token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM]
         )
@@ -104,6 +136,20 @@ class AuthService:
         ip_address: str | None = None,
         device_hint: str | None = None,
     ) -> tuple[str, datetime]:
+        """Generate, persist, and return a new refresh token.
+
+        Only the SHA-256 hash is stored in the database. Also creates an
+        ``ActiveSession`` row to track the session for revocation and auditing.
+
+        Args:
+            db: Active async database session.
+            user_id: Identifier of the user the token is issued for.
+            ip_address: Client IP address for session auditing.
+            device_hint: Optional client hint (e.g. user-agent prefix).
+
+        Returns:
+            A tuple of ``(raw_token, expires_at)``.
+        """
         raw = secrets.token_urlsafe(48)
         token_hash = hash_token(raw)
         now = utcnow()
@@ -130,6 +176,22 @@ class AuthService:
 
     @staticmethod
     async def login(email: str, password: str, db: AsyncSession) -> User:
+        """Authenticate a user by email and password.
+
+        Always runs bcrypt regardless of whether the email exists, preventing
+        timing-based account enumeration.
+
+        Args:
+            email: The user's email address.
+            password: The plaintext password to verify.
+            db: Active async database session.
+
+        Returns:
+            The authenticated :class:`User`.
+
+        Raises:
+            APIError: 401 if the email is not found or the password is wrong.
+        """
         result = await db.execute(select(User).where(User.email == email))
         user = result.scalar_one_or_none()
 
@@ -151,6 +213,18 @@ class AuthService:
 
     @staticmethod
     async def create_password_reset_token(db: AsyncSession, user: User) -> str:
+        """Generate, persist, and return a new password reset token.
+
+        Invalidates all previously unused reset tokens for the user before
+        creating a new one (criterion 9 of AUTH-FPW-05-BE).
+
+        Args:
+            db: Active async database session.
+            user: The user requesting a password reset.
+
+        Returns:
+            The raw (un-hashed) reset token string to embed in the email link.
+        """
         result = await db.execute(
             select(PasswordResetToken).where(
                 PasswordResetToken.user_id == user.id,
@@ -181,6 +255,23 @@ class AuthService:
         db: AsyncSession,
         background_tasks=None,
     ) -> None:
+        """Validate a password reset token and update the user's password.
+
+        Token validation (exists, not used, not expired) and the password +
+        token update are performed in a single commit so the account is never
+        left in a partially updated state (criterion 10).
+
+        All token validation failures raise the same generic error to prevent
+        leaking which specific check failed (criterion 9).
+
+        Args:
+            raw_token: The raw reset token from the client.
+            new_password: The new plaintext password (pre-validated by schema).
+            db: Active async database session.
+
+        Raises:
+            APIError: 400 for any token validation failure (invalid, expired, used).
+        """
         token_hash = hash_token(raw_token)
         result = await db.execute(
             select(PasswordResetToken).where(
@@ -264,6 +355,26 @@ class AuthService:
         db: AsyncSession,
         ip_address: str | None = None,
     ) -> dict:
+        """Rotate a refresh token and issue a new access token.
+
+        The old refresh token is revoked and a new one is issued in a single
+        commit (rotation). The associated ``ActiveSession`` is updated with
+        the new token hash and ``last_seen_at``.
+
+        Args:
+            raw_token: The raw refresh token string from the client.
+            db: Active async database session.
+            ip_address: Client IP, used to update the session record.
+
+        Returns:
+            A dict with ``access_token``, ``refresh_token``,
+            ``access_expires_at``, ``refresh_expires_at``, and ``user``.
+
+        Raises:
+            APIError: 401 for any token validation failure (not found, revoked,
+                expired, or orphaned user) — single generic error prevents
+                enumeration of which check failed.
+        """
         token_hash = hash_token(raw_token)
         result = await db.execute(
             select(RefreshToken).where(RefreshToken.token_hash == token_hash)
@@ -337,6 +448,15 @@ class AuthService:
 
     @staticmethod
     async def logout(raw_token: str, db: AsyncSession) -> None:
+        """Revoke a refresh token and remove the active session.
+
+        Args:
+            raw_token: The raw refresh token string from the client.
+            db: Active async database session.
+
+        Raises:
+            APIError: 401 if the token is not found.
+        """
         token_hash = hash_token(raw_token)
         result = await db.execute(
             select(RefreshToken).where(RefreshToken.token_hash == token_hash)
@@ -363,6 +483,14 @@ class AuthService:
 
     @staticmethod
     async def blacklist_access_token_raw(token: str) -> None:
+        """Blacklist an access token by its raw JWT string.
+
+        Decodes the ``jti`` and ``exp`` claims and stores the ``jti`` in
+        Redis with a TTL equal to the remaining token lifetime.
+
+        Args:
+            token: The raw JWT access token string.
+        """
         from app.core.redis import blacklist_token
 
         try:
