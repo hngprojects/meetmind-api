@@ -172,7 +172,7 @@ async def send_interview_link_email(
         role_title: The job position name.
         background_tasks: Optional FastAPI BackgroundTasks for fire-and-forget sending.
     """
-    interview_url = f"{settings.FRONTEND_URL.rstrip('/')}/interview/{interview_id}"
+    interview_url = f"{settings.FRONTEND_URL.rstrip('/')}/call/interview/{interview_id}"
     safe_name = escape_html(name) if name else None
     greeting = f"Hi {safe_name}," if safe_name else "Hi,"
 
