@@ -119,30 +119,6 @@ async def get_dashboard_live(
     response_model=APIResponse[list[ScheduledInterviewItem]],
     status_code=status.HTTP_200_OK,
 )
-async def get_dashboard_live_sessions(
-    user: VerifiedUser,
-    db: AsyncSession = Depends(get_session),
-):
-    """Return all currently in-progress interviews for the Live Now panel.
-
-    Each item includes candidate name, role title, elapsed time in seconds,
-    and question progress.
-    """
-    workspace_id = await _resolve_workspace(user, db)
-    if workspace_id is None:
-        return success([], message="Live sessions retrieved successfully")
-    stats = await get_live_interviews(workspace_id, db)
-    return success(
-        stats.live_interviews,
-        message="Live sessions retrieved successfully",
-    )
-
-
-@router.get(
-    "/schedule",
-    response_model=APIResponse[list[ScheduledInterviewItem]],
-    status_code=status.HTTP_200_OK,
-)
 async def get_dashboard_schedule(
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
