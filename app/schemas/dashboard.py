@@ -48,6 +48,7 @@ class CompletedInterviewItem(BaseModel):
     role: str | None
     score: int | None
     completed_at: str | None
+    status: str
 
 
 class ScheduledInterviewItem(BaseModel):

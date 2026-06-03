@@ -165,6 +165,7 @@ async def get_completed(
             Interview.role_title,
             Interview.updated_at,
             Interview.rating,
+            Interview.status,
             Candidate.full_name,
         )
         .outerjoin(Candidate, Candidate.id == Interview.candidate_id)
@@ -183,6 +184,7 @@ async def get_completed(
             role=row.role_title,
             score=row.rating,
             completed_at=row.updated_at.isoformat() if row.updated_at else None,
+            status=row.status,
         )
         for row in rows
     ]
