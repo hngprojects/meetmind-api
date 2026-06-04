@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.utils import retry_async
 from app.db.session import AsyncSessionLocal
 from app.models.document import CandidateDocument, DocumentChunk, DocumentStatus
 from app.schemas.candidate import CandidateExtraction
@@ -52,13 +53,18 @@ class DocumentService:
         {text}
         """
 
-        response = await _gemini_client.models.generate_content(
+        response = await retry_async(
+            _gemini_client.models.generate_content,
             model="gemini-flash-lite-latest",
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=CandidateExtraction,
             ),
+            max_retries=3,
+            initial_delay=2.0,
+            backoff_factor=2.0,
+            task_name="Extract candidate info from resume",
         )
 
         return CandidateExtraction.model_validate_json(response.text)
@@ -85,13 +91,18 @@ class DocumentService:
             return []
 
         try:
-            response = await _gemini_client.models.embed_content(
+            response = await retry_async(
+                _gemini_client.models.embed_content,
                 model="gemini-embedding-001",
                 contents=texts,
                 config=types.EmbedContentConfig(
                     task_type="RETRIEVAL_DOCUMENT",
                     output_dimensionality=768,
                 ),
+                max_retries=3,
+                initial_delay=2.0,
+                backoff_factor=2.0,
+                task_name="Get embedding batch for document",
             )
 
             return [embedding.values for embedding in response.embeddings]

@@ -14,10 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.llm import generate_structured_output, generate_text
 from app.core.responses import APIError
+from app.core.utils import retry_async
 from app.db.session import AsyncSessionLocal
 from app.models.interview import (
     Candidate,
     Interview,
+    InterviewSession,
     InterviewSummary,
     InterviewTranscript,
     InterviewTranscriptTurn,
@@ -134,20 +136,47 @@ class AIGenerationService:
             )
         ).scalar_one_or_none()
 
-        if not transcript:
-            return None
-
-        turns = (
-            (
-                await db.execute(
-                    select(InterviewTranscriptTurn)
-                    .where(InterviewTranscriptTurn.transcript_id == transcript.id)
-                    .order_by(InterviewTranscriptTurn.sequence_no.asc())
+        turns = []
+        if transcript:
+            turns = (
+                (
+                    await db.execute(
+                        select(InterviewTranscriptTurn)
+                        .where(InterviewTranscriptTurn.transcript_id == transcript.id)
+                        .order_by(InterviewTranscriptTurn.sequence_no.asc())
+                    )
                 )
+                .scalars()
+                .all()
             )
-            .scalars()
-            .all()
-        )
+
+        # Fallback to InterviewSession transcript_json if no DB turns found
+        if not turns:
+            interview = await db.get(Interview, interview_id)
+            if interview and interview.session_id:
+                session = await db.get(InterviewSession, interview.session_id)
+                if session and session.transcript_json:
+                    try:
+                        fallback_turns = json.loads(session.transcript_json)
+                        if isinstance(fallback_turns, list):
+                            if not include_backchannel:
+                                fallback_turns = [
+                                    t
+                                    for t in fallback_turns
+                                    if t.get("speaker") in _INTERVIEW_SPEAKERS
+                                ]
+                            if fallback_turns:
+                                lines = [
+                                    f"{_SPEAKER_LABELS.get(t.get('speaker', 'unknown'), 'Unknown')}: {t.get('content') or t.get('text') or ''}"
+                                    for t in fallback_turns
+                                ]
+                                return "\n".join(lines)
+                    except Exception as e:
+                        logger.exception(
+                            "Failed to parse fallback transcript JSON in _format_turns_text: %s",
+                            e,
+                        )
+            return None
 
         if not include_backchannel:
             turns = [t for t in turns if t.speaker in _INTERVIEW_SPEAKERS]
@@ -301,7 +330,8 @@ class AIGenerationService:
             else "No conversation yet — this is the beginning of the interview."
         )
 
-        question = await generate_text(
+        question = await retry_async(
+            generate_text,
             system_instruction=system_instruction,
             user_content=dedent(f"""
                 # CONVERSATION SO FAR
@@ -314,6 +344,10 @@ class AIGenerationService:
             """).strip(),
             temperature=0.7,
             max_tokens=500,
+            max_retries=3,
+            initial_delay=1.0,
+            backoff_factor=2.0,
+            task_name=f"Generate next question for interview {interview_id}",
         )
 
         transcript = await cls._get_or_create_transcript(interview_id, db)
@@ -384,7 +418,8 @@ class AIGenerationService:
                     await db.commit()
                     return
 
-                result = await generate_structured_output(
+                result = await retry_async(
+                    generate_structured_output,
                     system_instruction=system_instruction,
                     user_content=dedent(f"""
                         # FULL INTERVIEW TRANSCRIPT
@@ -405,6 +440,10 @@ class AIGenerationService:
                     output_schema=AssessmentOutput,
                     temperature=0.3,
                     max_tokens=2000,
+                    max_retries=3,
+                    initial_delay=2.0,
+                    backoff_factor=2.0,
+                    task_name=f"Generate assessment for interview {interview_id}",
                 )
 
                 summary.ai_assessment = json.dumps(result)
@@ -468,7 +507,8 @@ class AIGenerationService:
             turns_text if turns_text is not None else "No transcript available."
         )
 
-        return await generate_text(
+        return await retry_async(
+            generate_text,
             system_instruction=dedent("""
                 You are MeetMind, an AI assistant that helps users
                 understand and extract insights from interview sessions. Answer questions based
@@ -497,6 +537,10 @@ class AIGenerationService:
             """).strip(),
             temperature=0.5,
             max_tokens=1000,
+            max_retries=3,
+            initial_delay=1.0,
+            backoff_factor=2.0,
+            task_name=f"Answer query for interview {interview_id}",
         )
 
     @classmethod
@@ -603,12 +647,17 @@ structured interview plan for the role of '{role_title}'.
 Keep all text suitable for a live audio call (concise and natural).
             """).strip()
 
-        result_dict = await generate_structured_output(
+        result_dict = await retry_async(
+            generate_structured_output,
             system_instruction=system_instruction,
             user_content="Generate the complete interview plan based on the provided context.",
             output_schema=InterviewPlanOutput,
             temperature=0.7,
             max_tokens=2000,
+            max_retries=3,
+            initial_delay=2.0,
+            backoff_factor=2.0,
+            task_name=f"Generate interview plan for role {role_title}",
         )
 
         # result_dict is already a dict or Pydantic model depending on your provider implementation
