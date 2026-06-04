@@ -19,10 +19,10 @@ from app.db.session import AsyncSessionLocal
 from app.models.interview import (
     Candidate,
     Interview,
+    InterviewSession,
     InterviewSummary,
     InterviewTranscript,
     InterviewTranscriptTurn,
-    InterviewSession,
 )
 from app.models.user import User
 from app.schemas.assessment import AssessmentOutput
@@ -160,7 +160,11 @@ class AIGenerationService:
                         fallback_turns = json.loads(session.transcript_json)
                         if isinstance(fallback_turns, list):
                             if not include_backchannel:
-                                fallback_turns = [t for t in fallback_turns if t.get("speaker") in _INTERVIEW_SPEAKERS]
+                                fallback_turns = [
+                                    t
+                                    for t in fallback_turns
+                                    if t.get("speaker") in _INTERVIEW_SPEAKERS
+                                ]
                             if fallback_turns:
                                 lines = [
                                     f"{_SPEAKER_LABELS.get(t.get('speaker', 'unknown'), 'Unknown')}: {t.get('content') or t.get('text') or ''}"
@@ -168,7 +172,10 @@ class AIGenerationService:
                                 ]
                                 return "\n".join(lines)
                     except Exception as e:
-                        logger.exception("Failed to parse fallback transcript JSON in _format_turns_text: %s", e)
+                        logger.exception(
+                            "Failed to parse fallback transcript JSON in _format_turns_text: %s",
+                            e,
+                        )
             return None
 
         if not include_backchannel:

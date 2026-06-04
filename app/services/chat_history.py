@@ -7,7 +7,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.responses import APIError
-from app.models.interview import Interview, InterviewTranscript, InterviewTranscriptTurn, InterviewSession
+from app.models.interview import (
+    Interview,
+    InterviewSession,
+    InterviewTranscript,
+    InterviewTranscriptTurn,
+)
 from app.models.user import User
 from app.schemas.chat import ChatHistoryResponse, ChatMessageResponse
 from app.schemas.transcript import TranscriptResponse, TranscriptTurnResponse
@@ -137,8 +142,12 @@ class ChatHistoryService:
             ]
         else:
             # Fallback to session JSON
-            fallback_turns = await ChatHistoryService._get_fallback_turns_from_session(interview, db)
+            fallback_turns = await ChatHistoryService._get_fallback_turns_from_session(
+                interview,
+                db,
+            )
             from datetime import datetime, timedelta, timezone
+
             base_time = interview.started_at or interview.created_at
             if base_time is None:
                 base_time = datetime.now(timezone.utc)
@@ -151,7 +160,10 @@ class ChatHistoryService:
                     id=uuid.uuid4(),
                     role=turn_data.get("speaker", "unknown"),
                     content=turn_data.get("content") or turn_data.get("text") or "",
-                    sent_at=base_time + timedelta(seconds=turn_data.get("timestamp_sec") or 0),
+                    sent_at=base_time
+                    + timedelta(
+                        seconds=turn_data.get("timestamp_sec") or 0,
+                    ),
                     sequence_no=turn_data.get("sequence_no") or (idx + 1),
                 )
                 for idx, turn_data in enumerate(fallback_turns)
@@ -215,9 +227,14 @@ class ChatHistoryService:
                     )
                 )
         else:
-            fallback_turns = await ChatHistoryService._get_fallback_turns_from_session(interview, db)
+            fallback_turns = await ChatHistoryService._get_fallback_turns_from_session(
+                interview,
+                db,
+            )
             first_timestamp = (
-                fallback_turns[0].get("timestamp_sec") if fallback_turns and fallback_turns[0].get("timestamp_sec") else 0
+                fallback_turns[0].get("timestamp_sec")
+                if fallback_turns and fallback_turns[0].get("timestamp_sec")
+                else 0
             )
             for idx, turn_data in enumerate(fallback_turns):
                 speaker = turn_data.get("speaker", "unknown")
@@ -290,10 +307,15 @@ class ChatHistoryService:
                 )
                 lines.append(f"[{timestamp}] {speaker_label}: {turn.content}\n")
         else:
-            fallback_turns = await ChatHistoryService._get_fallback_turns_from_session(interview, db)
+            fallback_turns = await ChatHistoryService._get_fallback_turns_from_session(
+                interview,
+                db,
+            )
             if fallback_turns:
                 first_timestamp = (
-                    fallback_turns[0].get("timestamp_sec") if fallback_turns and fallback_turns[0].get("timestamp_sec") else 0
+                    fallback_turns[0].get("timestamp_sec")
+                    if fallback_turns and fallback_turns[0].get("timestamp_sec")
+                    else 0
                 )
                 for idx, turn_data in enumerate(fallback_turns):
                     speaker = turn_data.get("speaker", "unknown")

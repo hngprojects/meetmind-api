@@ -64,7 +64,6 @@ async def retry_async(
     raise last_exception
 
 
-
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
