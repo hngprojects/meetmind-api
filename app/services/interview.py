@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
-import os
 
 from fastapi import status
 from sqlalchemy import delete, func, or_, select
@@ -826,7 +826,6 @@ Keep all text suitable for a live audio call (concise and natural).
             ),
             "participationMode": interview.participation_mode or "standard",
             "aiTone": interview.ai_tone,
-
             "model": os.getenv("INTERVIEWER_LLM", "openai/gpt-5.2-chat-latest"),
             "voice": os.getenv(
                 "INTERVIEWER_TTS_VOICE",
