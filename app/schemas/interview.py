@@ -107,7 +107,7 @@ class CreateInterviewRequest(BaseModel):
     scheduled_start: datetime | None = Field(default=None)
     scheduled_end: datetime | None = Field(default=None)
 
-    role_title: str | None = Field(default=None, max_length=200)
+    role_title: str = Field(..., max_length=200)
     custom_question: str | None = Field(default=None, max_length=200)
     job_description: str | None = Field(default=None)
     ai_tone: str | None = Field(default=None, max_length=20)
