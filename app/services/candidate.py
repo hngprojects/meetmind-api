@@ -208,7 +208,9 @@ class CandidateService:
                     "id": str(candidate.id),
                     "name": candidate.full_name,
                     "email": candidate.email,
-                    "role": interview.role_title if interview else candidate.current_role,
+                    "role": interview.role_title
+                    if interview
+                    else candidate.current_role,
                     "status": interview_status_map.get(interview.status, "ongoing")
                     if interview
                     else "ongoing",
