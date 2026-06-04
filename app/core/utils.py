@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import uuid
 from datetime import date, datetime, timedelta, timezone
+from typing import Any, Callable, TypeVar
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +15,54 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.workspace import WorkspaceMember
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+
+async def retry_async(
+    func: Callable[..., T],
+    *args: Any,
+    max_retries: int = 3,
+    initial_delay: float = 2.0,
+    backoff_factor: float = 2.0,
+    exceptions: tuple[type[BaseException], ...] = (Exception,),
+    task_name: str = "Task",
+    **kwargs: Any,
+) -> T:
+    """Run an async function with retries and exponential backoff.
+
+    Logs a warning on intermediate retries and an error on final exhaustion.
+    """
+    delay = initial_delay
+    last_exception = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            return await func(*args, **kwargs)
+        except exceptions as e:
+            last_exception = e
+            logger.warning(
+                "Attempt %d/%d failed for %s. Error: %s. Retrying in %.2fs...",
+                attempt,
+                max_retries,
+                task_name,
+                str(e),
+                delay,
+                exc_info=True,
+            )
+            if attempt == max_retries:
+                break
+            await asyncio.sleep(delay)
+            delay *= backoff_factor
+
+    logger.error(
+        "All %d attempts failed for %s. Final exception: %s",
+        max_retries,
+        task_name,
+        str(last_exception),
+        exc_info=True,
+    )
+    raise last_exception
+
 
 
 def utcnow() -> datetime:
