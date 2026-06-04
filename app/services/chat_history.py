@@ -1,7 +1,5 @@
-"""Interview chat history service."""
-
-from __future__ import annotations
-
+import json
+import logging
 import uuid
 
 from fastapi import status
@@ -9,10 +7,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.responses import APIError
-from app.models.interview import Interview, InterviewTranscript, InterviewTranscriptTurn
+from app.models.interview import Interview, InterviewTranscript, InterviewTranscriptTurn, InterviewSession
 from app.models.user import User
 from app.schemas.chat import ChatHistoryResponse, ChatMessageResponse
 from app.schemas.transcript import TranscriptResponse, TranscriptTurnResponse
+
+logger = logging.getLogger(__name__)
 
 
 class ChatHistoryService:
@@ -56,6 +56,28 @@ class ChatHistoryService:
         return mapping.get(speaker, ("unknown", "Unknown"))
 
     @staticmethod
+    async def _get_fallback_turns_from_session(
+        interview: Interview,
+        db: AsyncSession,
+    ) -> list[dict]:
+        if not interview.session_id:
+            return []
+        session = await db.get(InterviewSession, interview.session_id)
+        if not session or not session.transcript_json:
+            return []
+        try:
+            fallback_turns = json.loads(session.transcript_json)
+            if isinstance(fallback_turns, list):
+                return fallback_turns
+        except Exception as e:
+            logger.exception(
+                "Failed to parse fallback transcript JSON from session %s: %s",
+                interview.session_id,
+                e,
+            )
+        return []
+
+    @staticmethod
     async def get_chat_history(
         interview_id: uuid.UUID,
         db: AsyncSession,
@@ -79,7 +101,7 @@ class ChatHistoryService:
                 to the requesting user. Same message in both cases — no leakage.
         """
         # 1. Verify interview exists and belongs to the requesting user.
-        await ChatHistoryService._assert_interview_belongs_to_user(
+        interview = await ChatHistoryService._assert_interview_belongs_to_user(
             interview_id, db, user
         )
 
@@ -91,32 +113,49 @@ class ChatHistoryService:
         )
         transcript = transcript_result.scalar_one_or_none()
 
-        # Interview exists but no transcript yet — return empty history, not 404.
-        if transcript is None:
-            return ChatHistoryResponse(
-                interview_id=interview_id,
-                total_messages=0,
-                messages=[],
+        turns = []
+        if transcript is not None:
+            # 3. Fetch all turns ordered by sequence_no ascending.
+            turns_result = await db.execute(
+                select(InterviewTranscriptTurn)
+                .where(InterviewTranscriptTurn.transcript_id == transcript.id)
+                .order_by(InterviewTranscriptTurn.sequence_no.asc())
             )
+            turns = turns_result.scalars().all()
 
-        # 3. Fetch all turns ordered by sequence_no ascending.
-        turns_result = await db.execute(
-            select(InterviewTranscriptTurn)
-            .where(InterviewTranscriptTurn.transcript_id == transcript.id)
-            .order_by(InterviewTranscriptTurn.sequence_no.asc())
-        )
-        turns = turns_result.scalars().all()
+        messages = []
+        if turns:
+            messages = [
+                ChatMessageResponse(
+                    id=turn.id,
+                    role=turn.speaker,
+                    content=turn.content,
+                    sent_at=turn.created_at,
+                    sequence_no=turn.sequence_no,
+                )
+                for turn in turns
+            ]
+        else:
+            # Fallback to session JSON
+            fallback_turns = await ChatHistoryService._get_fallback_turns_from_session(interview, db)
+            from datetime import datetime, timedelta, timezone
+            base_time = interview.started_at or interview.created_at
+            if base_time is None:
+                base_time = datetime.now(timezone.utc)
+            else:
+                if base_time.tzinfo is None:
+                    base_time = base_time.replace(tzinfo=timezone.utc)
 
-        messages = [
-            ChatMessageResponse(
-                id=turn.id,
-                role=turn.speaker,
-                content=turn.content,
-                sent_at=turn.created_at,
-                sequence_no=turn.sequence_no,
-            )
-            for turn in turns
-        ]
+            messages = [
+                ChatMessageResponse(
+                    id=uuid.uuid4(),
+                    role=turn_data.get("speaker", "unknown"),
+                    content=turn_data.get("content") or turn_data.get("text") or "",
+                    sent_at=base_time + timedelta(seconds=turn_data.get("timestamp_sec") or 0),
+                    sequence_no=turn_data.get("sequence_no") or (idx + 1),
+                )
+                for idx, turn_data in enumerate(fallback_turns)
+            ]
 
         return ChatHistoryResponse(
             interview_id=interview_id,
@@ -143,45 +182,66 @@ class ChatHistoryService:
         )
         transcript = transcript_result.scalar_one_or_none()
 
-        if transcript is None:
-            return TranscriptResponse(
-                interview_id=interview_id,
-                total_turns=0,
-                turns=[],
-                is_live=is_live,
-                status=response_status,
-                messages=[],
+        turns = []
+        if transcript is not None:
+            turns_result = await db.execute(
+                select(InterviewTranscriptTurn)
+                .where(InterviewTranscriptTurn.transcript_id == transcript.id)
+                .order_by(InterviewTranscriptTurn.sequence_no.asc())
             )
+            turns = turns_result.scalars().all()
 
-        turns_result = await db.execute(
-            select(InterviewTranscriptTurn)
-            .where(InterviewTranscriptTurn.transcript_id == transcript.id)
-            .order_by(InterviewTranscriptTurn.sequence_no.asc())
-        )
-        turns = turns_result.scalars().all()
-
-        first_timestamp = (
-            turns[0].timestamp_sec if turns and turns[0].timestamp_sec else 0
-        )
         transcript_turns = []
-        for turn in turns:
-            speaker, speaker_label = ChatHistoryService._map_speaker(turn.speaker)
-            transcript_turns.append(
-                TranscriptTurnResponse(
-                    id=turn.id,
-                    speaker=speaker,
-                    speaker_label=speaker_label,
-                    timestamp=ChatHistoryService._format_elapsed_timestamp(
-                        first_timestamp, turn.timestamp_sec or 0
-                    ),
-                    content=turn.content,
-                    text=turn.content,
-                    speaker_type=speaker,
-                    is_typing=False,
-                    is_active=False,
-                    sequence_no=turn.sequence_no,
-                )
+        if turns:
+            first_timestamp = (
+                turns[0].timestamp_sec if turns and turns[0].timestamp_sec else 0
             )
+            for turn in turns:
+                speaker, speaker_label = ChatHistoryService._map_speaker(turn.speaker)
+                transcript_turns.append(
+                    TranscriptTurnResponse(
+                        id=turn.id,
+                        speaker=speaker,
+                        speaker_label=speaker_label,
+                        timestamp=ChatHistoryService._format_elapsed_timestamp(
+                            first_timestamp, turn.timestamp_sec or 0
+                        ),
+                        content=turn.content,
+                        text=turn.content,
+                        speaker_type=speaker,
+                        is_typing=False,
+                        is_active=False,
+                        sequence_no=turn.sequence_no,
+                    )
+                )
+        else:
+            fallback_turns = await ChatHistoryService._get_fallback_turns_from_session(interview, db)
+            first_timestamp = (
+                fallback_turns[0].get("timestamp_sec") if fallback_turns and fallback_turns[0].get("timestamp_sec") else 0
+            )
+            for idx, turn_data in enumerate(fallback_turns):
+                speaker = turn_data.get("speaker", "unknown")
+                content = turn_data.get("content") or turn_data.get("text") or ""
+                timestamp_sec = turn_data.get("timestamp_sec") or 0
+                seq_no = turn_data.get("sequence_no") or (idx + 1)
+
+                speaker_role, speaker_label = ChatHistoryService._map_speaker(speaker)
+                transcript_turns.append(
+                    TranscriptTurnResponse(
+                        id=uuid.uuid4(),
+                        speaker=speaker_role,
+                        speaker_label=speaker_label,
+                        timestamp=ChatHistoryService._format_elapsed_timestamp(
+                            first_timestamp, timestamp_sec
+                        ),
+                        content=content,
+                        text=content,
+                        speaker_type=speaker_role,
+                        is_typing=False,
+                        is_active=False,
+                        sequence_no=seq_no,
+                    )
+                )
 
         return TranscriptResponse(
             interview_id=interview_id,
@@ -198,7 +258,7 @@ class ChatHistoryService:
         db: AsyncSession,
         user: User,
     ) -> list[str]:
-        await ChatHistoryService._assert_interview_belongs_to_user(
+        interview = await ChatHistoryService._assert_interview_belongs_to_user(
             interview_id, db, user
         )
 
@@ -209,7 +269,7 @@ class ChatHistoryService:
         )
         transcript = transcript_result.scalar_one_or_none()
 
-        lines: list[str] = []
+        turns = []
         if transcript is not None:
             turns_result = await db.execute(
                 select(InterviewTranscriptTurn)
@@ -217,6 +277,9 @@ class ChatHistoryService:
                 .order_by(InterviewTranscriptTurn.sequence_no.asc())
             )
             turns = turns_result.scalars().all()
+
+        lines: list[str] = []
+        if turns:
             first_timestamp = (
                 turns[0].timestamp_sec if turns and turns[0].timestamp_sec else 0
             )
@@ -226,6 +289,22 @@ class ChatHistoryService:
                     first_timestamp, turn.timestamp_sec or 0
                 )
                 lines.append(f"[{timestamp}] {speaker_label}: {turn.content}\n")
+        else:
+            fallback_turns = await ChatHistoryService._get_fallback_turns_from_session(interview, db)
+            if fallback_turns:
+                first_timestamp = (
+                    fallback_turns[0].get("timestamp_sec") if fallback_turns and fallback_turns[0].get("timestamp_sec") else 0
+                )
+                for idx, turn_data in enumerate(fallback_turns):
+                    speaker = turn_data.get("speaker", "unknown")
+                    content = turn_data.get("content") or turn_data.get("text") or ""
+                    timestamp_sec = turn_data.get("timestamp_sec") or 0
+
+                    _, speaker_label = ChatHistoryService._map_speaker(speaker)
+                    timestamp = ChatHistoryService._format_elapsed_timestamp(
+                        first_timestamp, timestamp_sec
+                    )
+                    lines.append(f"[{timestamp}] {speaker_label}: {content}\n")
 
         if not lines:
             lines = [f"Transcript export for interview {interview_id}\n"]
