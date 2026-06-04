@@ -11,6 +11,7 @@ import resend
 from fastapi import BackgroundTasks
 
 from app.core.config import settings
+from app.core.utils import retry_async
 from app.services.email_renderer import render_template
 
 logger = logging.getLogger(__name__)
@@ -38,16 +39,21 @@ async def _send_email(email: str, subject: str, html: str) -> None:
         return
 
     try:
-        await resend.Emails.send_async(
+        await retry_async(
+            resend.Emails.send_async,
             {
                 "from": settings.EMAIL_FROM,
                 "to": email,
                 "subject": subject,
                 "html": html,
-            }
+            },
+            max_retries=3,
+            initial_delay=1.0,
+            backoff_factor=2.0,
+            task_name=f"Email delivery to {email}",
         )
     except Exception:
-        logger.exception("Failed to send email to %s", email)
+        logger.exception("Failed to send email to %s after all retries", email)
         raise
 
 

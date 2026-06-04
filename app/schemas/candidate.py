@@ -39,6 +39,7 @@ class CandidateSearchResult(BaseModel):
     portfolio_url: str | None
     workspace_id: uuid.UUID
     created_at: datetime | None
+    current_role: str | None = None
 
     model_config = {"from_attributes": True}
     # from_attributes=True tells Pydantic to read data from SQLAlchemy
@@ -62,6 +63,7 @@ class CandidateProfile(BaseModel):
     avatar_initials: str | None
     resume_url: str | None
     portfolio_url: str | None
+    current_role: str | None = None
     created_at: datetime | None
     updated_at: datetime | None
 
