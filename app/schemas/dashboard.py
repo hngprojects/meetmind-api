@@ -44,7 +44,7 @@ class DashboardStatsResponse(BaseModel):
 
 class CompletedInterviewItem(BaseModel):
     interview_id: str
-    candidate_name: str | None
+    candidate_name: str
     role: str | None
     score: int | None
     completed_at: str | None
@@ -53,7 +53,7 @@ class CompletedInterviewItem(BaseModel):
 
 class ScheduledInterviewItem(BaseModel):
     interview_id: str
-    candidate_name: str | None
+    candidate_name: str
     role: str | None
     start_time: str | None
     end_time: str | None
