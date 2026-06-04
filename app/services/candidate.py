@@ -73,6 +73,7 @@ class CandidateService:
                 "full_name",
                 "email",
                 "phone",
+                "current_role",
                 "workspace_id",
                 "created_at",
             ]
@@ -105,6 +106,7 @@ class CandidateService:
                     candidate.full_name,
                     candidate.email or "",
                     candidate.phone or "",
+                    candidate.current_role or "",
                     str(candidate.workspace_id),
                     candidate.created_at.isoformat() if candidate.created_at else "",
                 ]
@@ -206,7 +208,7 @@ class CandidateService:
                     "id": str(candidate.id),
                     "name": candidate.full_name,
                     "email": candidate.email,
-                    "role": interview.role_title if interview else None,
+                    "role": interview.role_title if interview else candidate.current_role,
                     "status": interview_status_map.get(interview.status, "ongoing")
                     if interview
                     else "ongoing",

@@ -229,7 +229,7 @@ async def get_candidate(
             id=str(candidate.id),
             name=candidate.full_name,
             email=candidate.email,
-            role=latest_interview.role_title if latest_interview else None,
+            role=latest_interview.role_title if latest_interview else candidate.current_role,
             status=INTERVIEW_STATUS_MAP.get(latest_interview.status, "ongoing")
             if latest_interview
             else "ongoing",
