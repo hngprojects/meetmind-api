@@ -81,6 +81,13 @@ Do not call `/scorecard` before receiving this notification — it will return `
           "Struggled to provide in-depth explanations"
         ],
         "justification": "The candidate explained retry logic but lacked depth on exponential backoff.",
+        "evidence": [
+          {
+            "question_turn_id": "019e9770-77fa-7000-b146-dffef3e21001",
+            "response_turn_id": "019e9770-e832-7000-b146-dffef3e21002",
+            "reason": "The candidate explained retry logic here"
+          }
+        ],
         "expanded": true
       }
     ]
@@ -105,6 +112,7 @@ Do not call `/scorecard` before receiving this notification — it will return `
 | `strengths` | string[] | Positive indicators only |
 | `weaknesses` | string[] | Areas for improvement or gaps |
 | `justification` | string\|null | Transcript-grounded explanation of why this score was given |
+| `evidence` | object[] | Paired transcript turn references for Q&A evidence. Each item: `question_turn_id` (the AI's question turn UUID), `response_turn_id` (the candidate's response turn UUID), `reason` (why this evidence supports the score). Frontend cross-references these IDs with `/transcript` data. Empty list when no evidence is available |
 | `expanded` | bool | Suggestion for which section to show open by default. Only the **first** section is `true`; the rest are `false` |
 
 ### Notes for Frontend
@@ -112,6 +120,7 @@ Do not call `/scorecard` before receiving this notification — it will return `
 - **`expanded`**: Set `expanded: true` on only the first section so the UI doesn't appear cluttered. The frontend can still let users toggle others open/closed.
 - **`view=summary`**: Use this for list/card views where space is tight. Use `view=detailed` for the full scorecard detail page.
 - **Signals are deduplicated**: A signal may appear in both `signals_detected` and one of `strengths` or `weaknesses`. Render `signals_detected` as the complete list and use `strengths`/`weaknesses` for visual badges/tags.
+- **Evidence cross-referencing**: Each section's `evidence` array contains paired turn IDs (`question_turn_id`, `response_turn_id`) that map directly to IDs in the `/transcript` response. Filter your existing transcript turns to these IDs to render the Q&A evidence per section. The `reason` field explains why that evidence supports the score.
 - **Old interviews**: Interviews completed before this feature was deployed will return `sections: []` because scorecard data was never generated for them.
 - **Timing**: The assessment runs as a background task and can take 10–60 seconds. Poll `GET .../notifications` for the `"Interview Summary Ready"` notification before calling this endpoint.
 

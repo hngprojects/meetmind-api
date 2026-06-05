@@ -252,7 +252,27 @@ class InterviewSessionStatusResponse(BaseModel):
     connection_status: str
 
 
+class ScorecardEvidence(BaseModel):
+    question_turn_id: str
+    response_turn_id: str
+    reason: str
+
+
+class ScorecardSubRubric(BaseModel):
+    id: str
+    title: str
+    score: int
+    confidence: int = 0
+    score_bar_percent: int
+    strengths: list[str] = []
+    weaknesses: list[str] = []
+    justification: str | None = None
+    evidence: list[ScorecardEvidence] = []
+    expanded: bool = False
+
+
 class ScorecardSection(BaseModel):
+    id: str
     title: str
     score: int
     confidence: int = 0
@@ -262,7 +282,9 @@ class ScorecardSection(BaseModel):
     strengths: list[str] = []
     weaknesses: list[str] = []
     justification: str | None = None
+    evidence: list[ScorecardEvidence] = []
     expanded: bool
+    sub_rubrics: list[ScorecardSubRubric] = []
 
 
 class InterviewScorecardResponse(BaseModel):

@@ -25,9 +25,11 @@ from app.models.interview import (
 from app.models.scorecard import (
     InterviewScorecard,
     ScorecardCategory,
+    ScorecardEvidence,
     ScorecardQuestion,
     ScorecardScore,
     ScorecardSignal,
+    ScorecardSubRubric,
 )
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
@@ -971,6 +973,57 @@ Keep all text suitable for a live audio call (concise and natural).
                     )
                 )
 
+            # Persist sub-rubrics
+            await db.execute(
+                delete(ScorecardSubRubric).where(
+                    ScorecardSubRubric.score_id == score.id
+                )
+            )
+            for sr_idx, sub_rubric in enumerate(criterion.get("sub_rubrics", [])):
+                sr = ScorecardSubRubric(
+                    score_id=score.id,
+                    name=sub_rubric["name"],
+                    score_pct=sub_rubric.get("percentage")
+                    or sub_rubric.get("score", 0),
+                    confidence=sub_rubric.get("confidence", 0),
+                    justification=sub_rubric.get("justification"),
+                    sort_order=sr_idx,
+                )
+                db.add(sr)
+                await db.flush()
+
+                await db.execute(
+                    delete(ScorecardEvidence).where(
+                        ScorecardEvidence.sub_rubric_id == sr.id
+                    )
+                )
+                for ev in sub_rubric.get("evidence", []):
+                    db.add(
+                        ScorecardEvidence(
+                            sub_rubric_id=sr.id,
+                            question_turn_id=ev["question_turn_id"],
+                            response_turn_id=ev["response_turn_id"],
+                            reason=ev["reason"],
+                        )
+                    )
+
+            # Persist section-level evidence
+            await db.execute(
+                delete(ScorecardEvidence).where(
+                    ScorecardEvidence.score_id == score.id,
+                    ScorecardEvidence.sub_rubric_id.is_(None),
+                )
+            )
+            for ev in criterion.get("evidence", []):
+                db.add(
+                    ScorecardEvidence(
+                        score_id=score.id,
+                        question_turn_id=ev["question_turn_id"],
+                        response_turn_id=ev["response_turn_id"],
+                        reason=ev["reason"],
+                    )
+                )
+
     @staticmethod
     async def _update_summary(
         interview: Interview,
@@ -1355,8 +1408,64 @@ Keep all text suitable for a live audio call (concise and natural).
                 else:
                     clean_signals.append(label)
 
+            # Load sub-rubrics
+            sub_rubrics_result = await db.execute(
+                select(ScorecardSubRubric)
+                .where(ScorecardSubRubric.score_id == score.id)
+                .order_by(ScorecardSubRubric.sort_order)
+            )
+            sub_rubrics_db = sub_rubrics_result.scalars().all()
+
+            sub_rubrics = []
+            for sr in sub_rubrics_db:
+                sr_evidence_result = await db.execute(
+                    select(ScorecardEvidence).where(
+                        ScorecardEvidence.sub_rubric_id == sr.id
+                    )
+                )
+                sr_evidence = [
+                    {
+                        "question_turn_id": e.question_turn_id,
+                        "response_turn_id": e.response_turn_id,
+                        "reason": e.reason,
+                    }
+                    for e in sr_evidence_result.scalars().all()
+                ]
+
+                sub_rubrics.append(
+                    {
+                        "id": sr.name.lower().replace(" ", "_"),
+                        "title": sr.name,
+                        "score": sr.score_pct or 0,
+                        "confidence": sr.confidence or 0,
+                        "score_bar_percent": sr.score_pct or 0,
+                        "strengths": [],
+                        "weaknesses": [],
+                        "justification": sr.justification,
+                        "evidence": sr_evidence,
+                        "expanded": False,
+                    }
+                )
+
+            # Load section-level evidence
+            section_evidence_result = await db.execute(
+                select(ScorecardEvidence).where(
+                    ScorecardEvidence.score_id == score.id,
+                    ScorecardEvidence.sub_rubric_id.is_(None),
+                )
+            )
+            section_evidence = [
+                {
+                    "question_turn_id": e.question_turn_id,
+                    "response_turn_id": e.response_turn_id,
+                    "reason": e.reason,
+                }
+                for e in section_evidence_result.scalars().all()
+            ]
+
             sections.append(
                 {
+                    "id": category_name.lower().replace(" ", "_"),
                     "title": category_name,
                     "score": score.score_pct or 0,
                     "confidence": score.confidence or 0,
@@ -1366,7 +1475,9 @@ Keep all text suitable for a live audio call (concise and natural).
                     "strengths": strengths,
                     "weaknesses": weaknesses,
                     "justification": score.justification,
+                    "evidence": section_evidence,
                     "expanded": idx == 0,
+                    "sub_rubrics": sub_rubrics,
                 }
             )
 

@@ -59,3 +59,30 @@ class ScorecardSignal(Base, UUIDPrimaryKey, TimestampMixin):
     )
     label: Mapped[str] = mapped_column(Text, nullable=False)
     sort_order: Mapped[int | None] = mapped_column(Integer)
+
+
+class ScorecardSubRubric(Base, UUIDPrimaryKey, TimestampMixin):
+    __tablename__ = "scorecard_sub_rubrics"
+
+    score_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("scorecard_scores.id"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    score_pct: Mapped[int | None] = mapped_column(Integer)
+    confidence: Mapped[int | None] = mapped_column(Integer, default=0)
+    justification: Mapped[str | None] = mapped_column(Text)
+    sort_order: Mapped[int | None] = mapped_column(Integer)
+
+
+class ScorecardEvidence(Base, UUIDPrimaryKey, TimestampMixin):
+    __tablename__ = "scorecard_evidence"
+
+    score_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("scorecard_scores.id"), nullable=True
+    )
+    sub_rubric_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("scorecard_sub_rubrics.id"), nullable=True
+    )
+    question_turn_id: Mapped[str] = mapped_column(Text, nullable=False)
+    response_turn_id: Mapped[str] = mapped_column(Text, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)

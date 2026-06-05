@@ -82,7 +82,7 @@ class TestBaseMetadata:
         assert expected.issubset(actual)
 
     def test_table_count(self):
-        assert len(Base.metadata.tables) == 51
+        assert len(Base.metadata.tables) == 53
 
 
 class TestUUIDPrimaryKeyMixin:
