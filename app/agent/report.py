@@ -32,12 +32,9 @@ async def generate_report(
 
 Score the CANDIDATE only. For each rubric criterion:
 1. Provide a "percentage" score (0-100) based on their answers.
-2. Provide a "confidence" level (0-100) indicating how certain you are of this score.
-3. List the specific "questions" asked (by the interviewer) relating to this criterion.
-4. List 2-4 key "signals" (competencies/traits) detected from their answer.
-5. List 2-3 specific "strengths" demonstrated by the candidate for this criterion.
-6. List 1-2 "weaknesses" or areas for improvement for this criterion.
-7. Provide one sentence of "justification" grounded in the transcript.
+2. List the specific "questions" asked (by the interviewer) relating to this criterion.
+3. List 2-4 key "signals" (competencies/traits) detected from their answer.
+4. Provide one sentence of "justification" grounded in the transcript.
 
 Then give an overall weighted recommendation: one of strong_yes, yes, no, strong_no.
 
@@ -53,11 +50,8 @@ Respond with ONLY JSON, no prose or markdown fences:
     {{
       "name": "...",
       "percentage": 0,
-      "confidence": 0,
       "questions": ["...", "..."],
       "signals": ["...", "..."],
-      "strengths": ["...", "..."],
-      "weaknesses": ["...", "..."],
       "justification": "..."
     }}
   ],
