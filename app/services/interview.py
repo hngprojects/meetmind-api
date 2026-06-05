@@ -1285,9 +1285,13 @@ Keep all text suitable for a live audio call (concise and natural).
         interview_id: uuid.UUID,
         db: AsyncSession,
         user: User,
+        view: str = "detailed",
     ) -> InterviewScorecardResponse:
         """Retrieve the evaluated scorecard with HSL scores, categories,
         questions, and signals.
+
+        - `view=detailed` (default): full scorecard with questions, signals, justification.
+        - `view=summary`: only scores, confidence, strengths, weaknesses, and evidence.
         """
         interview = await InterviewService._fetch_interview(interview_id, db, user)
 
@@ -1363,6 +1367,11 @@ Keep all text suitable for a live audio call (concise and natural).
                     "expanded": idx == 0,
                 }
             )
+
+        if view == "summary":
+            for section in sections:
+                section["questions_asked"] = []
+                section["signals_detected"] = []
 
         scores_list = [s.score_pct or 0 for s in scores]
         total_score = round(sum(scores_list) / len(scores_list)) if scores_list else 0

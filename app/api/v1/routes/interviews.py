@@ -322,11 +322,7 @@ async def get_interview_scorecard(
     - `view=detailed` (default): full scorecard with questions, signals, justification.
     - `view=summary`: only scores, confidence, strengths, weaknesses, and evidence.
     """
-    scorecard = await InterviewService.get_scorecard(interview_id, db, user)
-    if view == "summary":
-        for section in scorecard.sections:
-            section.questions_asked = []
-            section.signals_detected = []
+    scorecard = await InterviewService.get_scorecard(interview_id, db, user, view=view)
     return success(scorecard, message="Scorecard retrieved successfully")
 
 
