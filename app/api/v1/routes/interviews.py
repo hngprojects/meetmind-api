@@ -5,6 +5,8 @@ import logging
 import uuid
 from typing import Literal
 
+from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
+
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response, status
 from fastapi.responses import StreamingResponse
 from pydantic import EmailStr
@@ -15,7 +17,7 @@ from app.api.deps import VerifiedUser
 from app.core.responses import APIError, APIResponse, paginated, success
 from app.core.utils import safe_notify
 from app.db.session import get_session
-from app.models.candidate import Candidate
+from app.models.interview import Candidate
 from app.schemas.chat import ChatHistoryResponse
 from app.schemas.interview import (
     AIConfigUpdateResponse,
@@ -146,12 +148,26 @@ async def get_interview_public(
     The token must contain the interview ID in the ``sub`` claim and be within the valid
     time window (30 minutes before start until 30 minutes after end).
     """
-    # Decode and validate token
-    payload = decode_interview_token(token)
+    # Decode and validate token — mirrors the pattern in app/api/deps.py
+    try:
+        payload = decode_interview_token(token)
+    except ExpiredSignatureError:
+        raise APIError(
+            "Interview token has expired",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            code="unauthorized",
+        )
+    except InvalidTokenError:
+        raise APIError(
+            "Invalid interview token",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            code="unauthorized",
+        )
+
     token_interview_id = payload.get("sub")
     if not token_interview_id or uuid.UUID(token_interview_id) != interview_id:
         raise APIError(
-            "Invalid token for requested interview",
+            "Token does not match requested interview",
             status_code=status.HTTP_401_UNAUTHORIZED,
             code="unauthorized",
         )
@@ -414,7 +430,10 @@ async def send_interview_link(
     that address. Otherwise, it defaults to the verified user's registered
     email address.
     """
-    interview = await InterviewService.get_interview(interview_id, db, user)
+    # fetch_interview returns the raw ORM Interview model, which has the
+    # scheduled_start / scheduled_end datetime fields needed by create_interview_token.
+    # (get_interview returns an InterviewResponse schema with only string date/time fields.)
+    interview = await InterviewService.fetch_interview(interview_id, db, user)
 
     token = create_interview_token(
         interview_id=interview.id,
