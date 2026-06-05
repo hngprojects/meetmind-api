@@ -1,57 +1,90 @@
-# Scorecard API
+## Description
 
-## `GET /api/v1/interviews/{id}/scorecard`
+Add confidence level, strengths/weaknesses split, justification, sub-rubrics with evidence, and aggregate fields (`total_score`, `overall_confidence`) to the scorecard endpoint. The scorecard is generated as a background task when `POST /{id}/complete` is called, and a notification is sent when ready.
 
-Retrieves candidate evaluation results grouped by rubric criteria. Generated as a background task after `POST /{id}/complete`.
+The response shape now includes sub-rubrics (nested criteria) and evidence objects linking back to specific transcript turns by UUID, enabling the frontend to display granular scores with supporting evidence traces.
 
-### Query Parameters
+## Type of Change
 
-| Param | Type | Default | Description |
-|---|---|---|---|
-| `view` | `"detailed" \| "summary"` | `"detailed"` | `detailed` — full response with questions & signals; `summary` — scores/confidence/strengths/weaknesses only |
+- [x] `feat` — New feature
 
-**Examples:**
-```
-GET /api/v1/interviews/019e976e-.../scorecard
-GET /api/v1/interviews/019e976e-.../scorecard?view=summary
-GET /api/v1/interviews/019e976e-.../scorecard?view=detailed
-```
+## Related Issue
 
-### Flow
+Closes MS4-BE-001
 
-1. User calls `POST /api/v1/interviews/{id}/complete`
-2. Backend marks the interview as completed and enqueues assessment generation as a **background task**
-3. The background task generates the LLM assessment and **persists the scorecard** (`total_score`, per-criterion scores, confidence, signals, strengths/weaknesses, justification) to the database
-4. User receives `"Interview Summary Ready"` notification (poll `GET .../notifications`)
-5. User calls `GET .../scorecard` — returns the full evaluation from the DB
+## Changes Made
 
-**Important:** The scorecard is only generated when `/complete` is called. Calling `/scorecard` before `/complete` or before the background task finishes will return `sections: []`.
+### Models (`app/models/scorecard.py`)
+- Added `ScorecardSubRubric` table: `score_id` (FK), `name`, `score_pct`, `confidence`, `justification`, `strengths` (JSON), `weaknesses` (JSON), `sort_order`
+- Added `ScorecardEvidence` table: `score_id` (FK, nullable), `sub_rubric_id` (FK, nullable), `question_turn_id`, `response_turn_id`, `reason`
+- Added `confidence` (Integer, default=0) and `justification` (Text) columns to `ScorecardScore`
+- Changed `ScorecardSignal.label` from `String(80)` to `Text`
 
-### Triggering Scorecard Generation
+### Migrations (1 new)
+- `6dfc72e0da4a` — label→Text, confidence + justification, scorecard_sub_rubrics (with strengths/weaknesses JSON), scorecard_evidence
 
-1. **Call `POST /api/v1/interviews/{id}/complete`** — this marks the interview as completed and enqueues scorecard generation as a **background task**
-2. **Wait for the notification** — the background task persists the scorecard to the database, then creates a notification of type `"report"` with title `"Interview Summary Ready"`
-3. **Poll for notifications** via `GET /api/v1/notifications` — when you see the `"Interview Summary Ready"` notification, the scorecard is ready
-4. **Call `GET /api/v1/interviews/{id}/scorecard`** — returns the full evaluation
+### Schemas (`app/schemas/assessment.py`)
+- Added `AssessmentEvidence` with `question_turn_id`, `response_turn_id`, `reason`
+- Added `AssessmentSubRubric` with `id`, `title`, `score`, `confidence`, `justification`, `strengths`, `weaknesses`, `evidence`
+- Renamed `AssessmentCriterionScore` fields: `name` → `id`+`title`, `signals` → `signals_detected`, `questions` → `questions_asked`
+- Added `sub_rubrics` list to `AssessmentCriterionScore`
 
-The notification payload looks like:
+### Schemas (`app/schemas/interview.py`)
+- Added `ScorecardEvidence`, `ScorecardSubRubric` schemas with `id`/`title`, evidence, strengths/weaknesses
+- Updated `ScorecardSection`: added `id`, `signals_detected`, `strengths`, `weaknesses`, `evidence`, `sub_rubrics`, `expanded`
+- Added `total_score`, `overall_confidence` to `InterviewScorecardResponse`
+
+### Service (`app/services/interview.py`)
+- `_persist_scorecard_report`:
+  - Saves `confidence`/`justification` on scores
+  - Prepends `[strength]`/`[weakness]` prefix tags on signals for parsing
+  - **FK-safe delete order**: deletes evidence first (by sub_rubric_id subquery + score_id), then sub-rubrics, avoiding FK violations
+  - Persists sub-rubrics with `strengths`/`weaknesses` from LLM output
+  - Strips `[]` brackets from `question_turn_id`/`response_turn_id` via `.strip("[]")`
+  - Persists section-level evidence (`sub_rubric_id IS NULL`)
+- `get_scorecard`:
+  - Parses `[strength]`/`[weakness]` prefix tags into separate `strengths`/`weaknesses`/`signals_detected` lists
+  - Loads sub-rubrics with strengths/weaknesses from DB (not hardcoded `[]`)
+  - Loads section-level and sub-rubric-level evidence separately
+  - Computes `total_score` and `overall_confidence` as averages
+  - Supports `view="summary"` param (clears questions/signals)
+
+### AI Service (`app/services/ai_generation_service.py`)
+- **Transcript format**: DB turns output as `[uuid] Speaker: text`; fallback JSON format as `[idx] Speaker: text` — LLM sees real UUIDs for evidence reference
+- **Prompt rewrite**: Consolidated UUID instruction, explicit "no markdown/no code fences", JSON schema at end of prompt, confidence semantics explanation, mandatory sub-rubrics (1–3 per criterion), sub-rubric uniqueness guardrail
+- **Report builder**: Maps LLM field names (`title`→`name`, `signals_detected`→`signals`, `questions_asked`→`questions`) for persist compatibility
+- Calls `_persist_scorecard_report` after assessment generation
+- Wrapped `_retrieve_resume_context` in try/except to prevent embedding API failures from crashing generation
+
+### Agent (`app/agent/report.py`)
+- Updated LiveKit agent prompt to request `confidence`, `strengths`, `weaknesses`, `justification` in each criterion
+
+### Routes (`app/api/v1/routes/interviews.py`)
+- Added `?view=summary|detailed` query param to `GET /{id}/scorecard`
+
+### LLM Providers
+- Fixed `_client()` → `_client` in Gemini, Groq, OpenRouter providers (lazy init → module-level singleton)
+
+### Context Service (`app/services/interview_context_service.py`)
+- Fixed `DocumentService._client()` → direct `_gemini_client` import
+
+### Docs
+- `docs/api/scorecard-response.md` (full API contract)
+- `docs/rfc/ms4-be-001-scorecard-response.md` (design RFC)
+
+### Post-review fixes
+- Made `justification`, `questions`, `criteria` optional with defaults
+- Moved `view=summary` logic from route to service layer
+
+## Proof of Work
+
+<details>
+<summary>API Response — GET /scorecard?view=detailed (current)</summary>
+
 ```json
-{
-  "id": "uuid",
-  "type": "report",
-  "title": "Interview Summary Ready",
-  "description": "Jane Doe - Software Engineer",
-  "action_url": "/interviews/<interview_id>",
-  "read": false,
-  "created_at": "2026-06-05T12:00:00Z"
-}
-```
+GET /api/v1/interviews/{id}/scorecard
+Status: 200 OK
 
-Do not call `/scorecard` before receiving this notification — it will return `sections: []`.
-
-### Response Schema
-
-```json
 {
   "success": true,
   "message": "Scorecard retrieved successfully",
@@ -61,72 +94,107 @@ Do not call `/scorecard` before receiving this notification — it will return `
     "overall_confidence": 70,
     "sections": [
       {
+        "id": "technical_depth",
         "title": "Technical Depth",
-        "score": 40,
-        "confidence": 60,
-        "score_bar_percent": 40,
+        "score": 60,
+        "confidence": 80,
+        "score_bar_percent": 60,
         "questions_asked": [
+          "Can you tell me a little bit about your background as a backend developer?",
           "Can you walk me through how you designed and implemented the retry engine?"
         ],
         "signals_detected": [
-          "Demonstrated ability to build a retry engine with background worker processing",
-          "Struggled to provide in-depth explanations",
-          "Familiarity with SQLite3"
+          "built a retry engine",
+          "used SQLite3 and background workers",
+          "lacked concrete examples"
         ],
         "strengths": [
-          "Demonstrated ability to build a retry engine with background worker processing",
-          "Familiarity with SQLite3"
+          "built a retry engine",
+          "used SQLite3 and background workers"
         ],
         "weaknesses": [
-          "Struggled to provide in-depth explanations"
+          "lacked concrete examples"
         ],
-        "justification": "The candidate explained retry logic but lacked depth on exponential backoff.",
+        "justification": "The candidate demonstrated some knowledge of software engineering concepts...",
         "evidence": [
           {
-            "question_turn_id": "019e9770-77fa-7000-b146-dffef3e21001",
-            "response_turn_id": "019e9770-e832-7000-b146-dffef3e21002",
-            "reason": "The candidate explained retry logic here"
+            "question_turn_id": "019e976f-4baf-76c1-9440-352220ddd789",
+            "response_turn_id": "019e9770-428f-70e3-b90e-c76fefdc7574",
+            "reason": "Candidate mentioned building a retry engine, but didn't provide details."
           }
         ],
-        "expanded": true
+        "expanded": true,
+        "sub_rubrics": [
+          {
+            "id": "programming_languages_and_frameworks",
+            "title": "Programming Languages and Frameworks",
+            "score": 70,
+            "confidence": 90,
+            "score_bar_percent": 70,
+            "strengths": ["knowledge of SQLite3"],
+            "weaknesses": ["lacked depth"],
+            "justification": "...",
+            "evidence": [...],
+            "expanded": false
+          }
+        ]
+      },
+      {
+        "id": "communication",
+        "title": "Communication",
+        "score": 40,
+        "confidence": 80,
+        "score_bar_percent": 40,
+        "questions_asked": [...],
+        "signals_detected": [
+          "enthusiastic and willing to learn",
+          "struggled to provide clear explanations"
+        ],
+        "strengths": ["enthusiastic and willing to learn"],
+        "weaknesses": ["struggled to provide clear explanations"],
+        "justification": "...",
+        "evidence": [...],
+        "expanded": false,
+        "sub_rubrics": [
+          {
+            "id": "clarity",
+            "title": "Clarity",
+            "score": 30,
+            "confidence": 60,
+            "score_bar_percent": 30,
+            "strengths": [...],
+            "weaknesses": [...],
+            "justification": "...",
+            "evidence": [...],
+            "expanded": false
+          }
+        ]
       }
     ]
   }
 }
 ```
+</details>
 
-### Field Descriptions
+## Test Cases
 
-| Field | Type | Description |
-|---|---|---|
-| `interview_id` | UUID | Interview identifier |
-| `total_score` | int (0–100) | Average of all criterion `score` values |
-| `overall_confidence` | int (0–100) | Average of all criterion `confidence` values |
-| **sections[]** | | |
-| `title` | string | Rubric/criterion name (e.g. "Technical Depth") |
-| `score` | int (0–100) | How well the candidate performed on this criterion |
-| `confidence` | int (0–100) | AI's certainty in this score (lower = degraded audio, limited evidence) |
-| `score_bar_percent` | int (0–100) | Same as `score`, for rendering progress bars |
-| `questions_asked` | string[] | Interview questions mapped to this criterion. Empty in `view=summary` |
-| `signals_detected` | string[] | All detected signals (strengths + weaknesses combined + neutral). Empty in `view=summary` |
-| `strengths` | string[] | Positive indicators only |
-| `weaknesses` | string[] | Areas for improvement or gaps |
-| `justification` | string\|null | Transcript-grounded explanation of why this score was given |
-| `evidence` | object[] | Paired transcript turn references for Q&A evidence. Each item: `question_turn_id` (the AI's question turn UUID), `response_turn_id` (the candidate's response turn UUID), `reason` (why this evidence supports the score). Frontend cross-references these IDs with `/transcript` data. Empty list when no evidence is available |
-| `expanded` | bool | Suggestion for which section to show open by default. Only the **first** section is `true`; the rest are `false` |
+- [x] `test_transcript_fallback_format_turns_text` — fallback format includes `[idx]` prefix
+- [x] All 315 tests pass
 
-### Notes for Frontend
+<details>
+<summary>Test output</summary>
 
-- **`expanded`**: Set `expanded: true` on only the first section so the UI doesn't appear cluttered. The frontend can still let users toggle others open/closed.
-- **`view=summary`**: Use this for list/card views where space is tight. Use `view=detailed` for the full scorecard detail page.
-- **Signals are deduplicated**: A signal may appear in both `signals_detected` and one of `strengths` or `weaknesses`. Render `signals_detected` as the complete list and use `strengths`/`weaknesses` for visual badges/tags.
-- **Evidence cross-referencing**: Each section's `evidence` array contains paired turn IDs (`question_turn_id`, `response_turn_id`) that map directly to IDs in the `/transcript` response. Filter your existing transcript turns to these IDs to render the Q&A evidence per section. The `reason` field explains why that evidence supports the score.
-- **Old interviews**: Interviews completed before this feature was deployed will return `sections: []` because scorecard data was never generated for them.
-- **Timing**: The assessment runs as a background task and can take 10–60 seconds. Poll `GET .../notifications` for the `"Interview Summary Ready"` notification before calling this endpoint.
+```bash
+$ uv run pytest tests/ -v --tb=short
+====================== 315 passed, 2 warnings in 24.36s =======================
+```
+</details>
 
-### Error Responses
+## Checklist
 
-| Status | Code | Description |
-|---|---|---|
-| 404 | `interview_not_found` | Interview doesn't exist or not owned by user |
-| 401 | — | Missing or invalid auth token |
+- [x] My branch follows the naming convention (`<type>/<short-description>`)
+- [x] My commits follow [Conventional Commits](https://www.conventionalcommits.org/)
+- [x] All new and existing tests pass locally (`uv run pytest`)
+- [x] I have included proof of work (JSON responses or screenshots)
+- [x] I have updated documentation if needed
+- [x] My code follows the project's style guidelines (`ruff check` + `ruff format` pass)
