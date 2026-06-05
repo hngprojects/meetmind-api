@@ -3,16 +3,20 @@ and scorecard endpoints."""
 
 import logging
 import uuid
+from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response, status
 from fastapi.responses import StreamingResponse
+from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 from pydantic import EmailStr
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import VerifiedUser
-from app.core.responses import APIResponse, paginated, success
+from app.core.responses import APIError, APIResponse, paginated, success
 from app.core.utils import safe_notify
 from app.db.session import get_session
+from app.models.interview import Candidate
 from app.schemas.chat import ChatHistoryResponse
 from app.schemas.interview import (
     AIConfigUpdateResponse,
@@ -35,7 +39,9 @@ from app.schemas.interview import (
 from app.schemas.transcript import TranscriptResponse
 from app.services.chat_history import ChatHistoryService
 from app.services.email_service import send_interview_link_email
+from app.services.export import ExportService
 from app.services.interview import InterviewService
+from app.utils.jwt_helper import create_interview_token, decode_interview_token
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -121,6 +127,62 @@ async def get_interview(
     return success(
         interview.model_dump(mode="json"),
         message="Interview session retrieved successfully",
+    )
+
+
+@router.get(
+    "/call/{interview_id}",
+    response_model=APIResponse[InterviewResponse],
+    status_code=status.HTTP_200_OK,
+)
+async def get_interview_public(
+    interview_id: uuid.UUID,
+    token: str = Query(..., description="JWT token granting access to interview"),
+    db: AsyncSession = Depends(get_session),
+):
+    """Retrieve interview details using a signed JWT token without user auth.
+
+    The token must contain the interview ID in the ``sub`` claim and be
+    within the valid time window (30 min before start, 30 min after end).
+    """
+    # Decode and validate token — mirrors the pattern in app/api/deps.py
+    try:
+        payload = decode_interview_token(token)
+    except ExpiredSignatureError:
+        raise APIError(
+            "Interview token has expired",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            code="unauthorized",
+        )
+    except InvalidTokenError:
+        raise APIError(
+            "Invalid interview token",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            code="unauthorized",
+        )
+
+    token_interview_id = payload.get("sub")
+    if not token_interview_id or uuid.UUID(token_interview_id) != interview_id:
+        raise APIError(
+            "Token does not match requested interview",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            code="unauthorized",
+        )
+
+    # Fetch interview, candidate, and summary directly from DB
+    interview = await InterviewService._resolve_interview(interview_id, db)
+    # Fetch candidate
+    candidate_result = await db.execute(
+        select(Candidate).where(Candidate.id == interview.candidate_id)
+    )
+    candidate = candidate_result.scalar_one_or_none()
+    # Fetch summary
+    summary = await InterviewService.get_summary(interview_id, db)
+    # Build response using existing helper
+    response = InterviewService._build_interview_response(interview, candidate, summary)
+    return success(
+        response.model_dump(mode="json"),
+        message="Interview session retrieved via token",
     )
 
 
@@ -288,7 +350,7 @@ async def get_interview_summary(
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
 ):
-    summary = await InterviewService.get_summary(interview_id, db, user)
+    summary = await InterviewService.get_summary_record(interview_id, db, user)
     return success(summary, message="Summary retrieved successfully")
 
 
@@ -370,7 +432,17 @@ async def send_interview_link(
     that address. Otherwise, it defaults to the verified user's registered
     email address.
     """
-    interview = await InterviewService.get_interview(interview_id, db, user)
+    # fetch_interview returns the raw ORM Interview model, which has the
+    # scheduled_start / scheduled_end datetime fields needed by
+    # create_interview_token. (get_interview returns an InterviewResponse
+    # schema with only string date/time fields.)
+    interview = await InterviewService.fetch_interview(interview_id, db, user)
+
+    token = create_interview_token(
+        interview_id=interview.id,
+        scheduled_start=interview.scheduled_start,
+        scheduled_end=interview.scheduled_end,
+    )
 
     recipient_email = email or user.email
     recipient_name = user.name if not email else None
@@ -381,8 +453,46 @@ async def send_interview_link(
         interview_id=interview.id,
         role_title=interview.role_title or "Candidate Screening",
         background_tasks=background_tasks,
+        token=token,
     )
 
     return success(
         message=f"Interview link email sent successfully to {recipient_email}"
+    )
+
+
+@router.get("/{interview_id}/summary/export", response_model=None)
+async def export_summary(
+    interview_id: uuid.UUID,
+    format: Literal["pdf", "markdown"],
+    user: VerifiedUser,
+    db: AsyncSession = Depends(get_session),
+):
+    if format == "markdown":
+        content = await ExportService.build_markdown(
+            interview_id,
+            db,
+            user,
+        )
+
+        filename = f"interview_{interview_id}_report.md"
+
+        return StreamingResponse(
+            iter([content]),
+            media_type="text/markdown",
+            headers={"Content-Disposition": (f'attachment; filename="{filename}"')},
+        )
+
+    pdf_bytes = await ExportService.build_pdf(
+        interview_id,
+        db,
+        user,
+    )
+
+    filename = f"interview_{interview_id}_report.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": (f'attachment; filename="{filename}"')},
     )

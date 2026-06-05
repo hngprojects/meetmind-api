@@ -109,16 +109,16 @@ class TestTranscriptEndpoints:
         data = response.json()["data"]
         
         # Kept: Your logic for relative timestamps
-        assert data["turns"][0]["timestamp"] == "00:00" 
-        assert data["turns"][1]["timestamp"] == "01:05" 
+        assert data["turns"][0]["timestamp"] == "00:00:00" 
+        assert data["turns"][1]["timestamp"] == "00:01:05" 
 
         # Kept: Export assertions
         response_export = await client.get(
             f"{INTERVIEWS_URL}/{interview_id}/transcript/export",
             headers=auth_headers(token),
         )
-        assert "[00:00]" in response_export.text
-        assert "[01:05]" in response_export.text
+        assert "[00:00:00]" in response_export.text
+        assert "[00:01:05]" in response_export.text
 
     @pytest.mark.anyio
     async def test_get_transcript_access_control(self, client: AsyncClient, db_session: AsyncSession):

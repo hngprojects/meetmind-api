@@ -77,6 +77,7 @@ class TestBaseMetadata:
             "document_chunks",
             "interview_sessions",
             "notifications",
+            "data_deletion_audit_logs",
         }
         actual = set(Base.metadata.tables.keys())
         assert expected.issubset(actual)

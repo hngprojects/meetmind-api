@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      font-size: 13px;
+      color: #1a1a1a;
+      line-height: 1.6;
+      padding: 40px 48px;
+    }
+
+    /* ── Header ── */
+    .header {
+      border-bottom: 3px solid #1e40af;
+      padding-bottom: 16px;
+      margin-bottom: 28px;
+    }
+    .header h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #1e40af;
+    }
+    .header .meta {
+      font-size: 11px;
+      color: #6b7280;
+      margin-top: 4px;
+    }
+
+    /* ── Sections ── */
+    .section {
+      margin-bottom: 24px;
+    }
+    .section h2 {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #1e40af;
+      border-bottom: 1px solid #dbeafe;
+      padding-bottom: 4px;
+      margin-bottom: 12px;
+    }
+
+    /* ── Overview table ── */
+    .overview-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .overview-table td {
+      padding: 5px 8px;
+      vertical-align: top;
+    }
+    .overview-table td:first-child {
+      font-weight: 600;
+      color: #374151;
+      width: 160px;
+      white-space: nowrap;
+    }
+
+    /* ── Body text ── */
+    .body-text {
+      color: #374151;
+      white-space: pre-wrap;
+    }
+
+    /* ── Lists ── */
+    ul.report-list {
+      list-style: none;
+      padding: 0;
+    }
+    ul.report-list li {
+      padding: 4px 0 4px 16px;
+      position: relative;
+      color: #374151;
+    }
+    ul.report-list li::before {
+      content: "•";
+      position: absolute;
+      left: 0;
+      color: #1e40af;
+      font-weight: 700;
+    }
+    ul.report-list.red li::before { color: #dc2626; }
+    ul.report-list.green li::before { color: #16a34a; }
+
+    /* ── Scorecard ── */
+    .scorecard-item {
+      margin-bottom: 16px;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: 12px 16px;
+    }
+    .scorecard-item .sc-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .scorecard-item .sc-title {
+      font-weight: 700;
+      color: #111827;
+      font-size: 13px;
+    }
+    .scorecard-item .sc-score {
+      font-weight: 700;
+      color: #1e40af;
+      font-size: 13px;
+    }
+    .score-bar-bg {
+      background: #e5e7eb;
+      border-radius: 4px;
+      height: 6px;
+      margin-bottom: 10px;
+      width: 100%;
+    }
+    .score-bar-fill {
+      background: #1e40af;
+      border-radius: 4px;
+      height: 6px;
+    }
+    .sc-sub-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 4px;
+    }
+
+    /* ── Empty state ── */
+    .empty {
+      color: #9ca3af;
+      font-style: italic;
+    }
+
+    /* ── Footer ── */
+    .footer {
+      margin-top: 40px;
+      border-top: 1px solid #e5e7eb;
+      padding-top: 12px;
+      font-size: 10px;
+      color: #9ca3af;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <h1>Interview Report: {{ role_title }}</h1>
+    <div class="meta">Generated {{ generated_date }} &nbsp;·&nbsp; MeetMind AI Interviewer</div>
+  </div>
+
+  <!-- 1. Interview Overview -->
+  <div class="section">
+    <h2>Interview Overview</h2>
+    <table class="overview-table">
+      <tr><td>Candidate</td><td>{{ candidate_name }}</td></tr>
+      <tr><td>Email</td><td>{{ candidate_email or "N/A" }}</td></tr>
+      <tr><td>Phone</td><td>{{ candidate_phone or "N/A" }}</td></tr>
+      <tr><td>Role</td><td>{{ role_title }}</td></tr>
+      <tr><td>Platform</td><td>{{ platform or "N/A" }}</td></tr>
+      <tr><td>Scheduled</td><td>{{ scheduled_date or "N/A" }}</td></tr>
+      <tr><td>Status</td><td>{{ status }}</td></tr>
+    </table>
+  </div>
+
+  <!-- 2. Job Description -->
+  <div class="section">
+    <h2>Job Description</h2>
+    {% if job_description %}
+      <p class="body-text">{{ job_description }}</p>
+    {% else %}
+      <p class="empty">Not provided.</p>
+    {% endif %}
+  </div>
+
+  <!-- 3. Key Insights -->
+  <div class="section">
+    <h2>Key Insights</h2>
+    {% if observation %}
+      <p class="body-text">{{ observation }}</p>
+    {% else %}
+      <p class="empty">Assessment not yet generated.</p>
+    {% endif %}
+  </div>
+
+  <!-- 4. Strengths -->
+  <div class="section">
+    <h2>Strengths</h2>
+    {% if highlights %}
+      <ul class="report-list green">
+        {% for h in highlights %}<li>{{ h }}</li>{% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty">None recorded.</p>
+    {% endif %}
+  </div>
+
+  <!-- 5. Areas of Concern -->
+  <div class="section">
+    <h2>Areas of Concern</h2>
+    {% if red_flags %}
+      <ul class="report-list red">
+        {% for r in red_flags %}<li>{{ r }}</li>{% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty">None recorded.</p>
+    {% endif %}
+  </div>
+
+  <!-- 6. Scorecard -->
+  <div class="section">
+    <h2>Scorecard</h2>
+    {% if scorecard_sections %}
+      {% for section in scorecard_sections %}
+        <div class="scorecard-item">
+          <div class="sc-header">
+            <span class="sc-title">{{ section.title }}</span>
+            <span class="sc-score">{{ section.score }}%</span>
+          </div>
+          <div class="score-bar-bg">
+            <div class="score-bar-fill" style="width: {{ section.score }}%;"></div>
+          </div>
+          {% if section.questions_asked %}
+            <div class="sc-sub-label">Questions Asked</div>
+            <ul class="report-list">
+              {% for q in section.questions_asked %}<li>{{ q }}</li>{% endfor %}
+            </ul>
+          {% endif %}
+          {% if section.signals_detected %}
+            <div class="sc-sub-label" style="margin-top:8px;">Signals Detected</div>
+            <ul class="report-list">
+              {% for s in section.signals_detected %}<li>{{ s }}</li>{% endfor %}
+            </ul>
+          {% endif %}
+        </div>
+      {% endfor %}
+    {% else %}
+      <p class="empty">No scorecard data available.</p>
+    {% endif %}
+  </div>
+
+  <div class="footer">
+    Confidential &nbsp;·&nbsp; Generated by MeetMind AI Interviewer &nbsp;·&nbsp; {{ generated_date }}
+  </div>
+
+</body>
+</html>

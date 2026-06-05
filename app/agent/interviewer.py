@@ -10,6 +10,7 @@ transcript + AI report back.
 import asyncio
 import logging
 import os
+import time
 
 import aiohttp
 from dotenv import load_dotenv
@@ -30,6 +31,7 @@ from app.agent.interview import (
 )
 from app.agent.report import generate_report
 from app.agent.transcript import extract_turns, save_transcript
+from app.services.session_cleanup import schedule_cleanup
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -67,7 +69,9 @@ async def load_interview(session_id: str) -> Interview:
     return DEFAULT_INTERVIEW
 
 
-async def post_transcript_turn(interview_id: str, turn: dict, sequence_no: int) -> None:
+async def post_transcript_turn(
+    interview_id: str, turn: dict, sequence_no: int, timestamp_sec: int
+) -> None:
     """Send one transcript turn to the web app as soon as it is available."""
     speaker = turn.get("speaker")
     api_speaker = "ai" if speaker in {"interviewer", "assistant", "agent"} else speaker
@@ -76,6 +80,7 @@ async def post_transcript_turn(interview_id: str, turn: dict, sequence_no: int) 
         "speaker_name": "MeetMind" if api_speaker == "ai" else "Candidate",
         "content": turn.get("text") or turn.get("content") or "",
         "sequence_no": sequence_no,
+        "timestamp_sec": timestamp_sec,
     }
     if not payload["content"]:
         return
@@ -97,23 +102,35 @@ async def post_transcript_turn(interview_id: str, turn: dict, sequence_no: int) 
         logger.exception("failed to post transcript turn")
 
 
-async def stream_transcript_turns(interview_id: str, session: AgentSession) -> None:
+async def stream_transcript_turns(
+    interview_id: str, session: AgentSession, start_time: float, timestamps_dict: dict
+) -> None:
     """Poll the session history and persist new turns incrementally."""
     next_sequence_no = 1
     try:
         while True:
             turns = extract_turns(session.history)
             while next_sequence_no <= len(turns):
+                elapsed_sec = int(time.time() - start_time)
+                timestamps_dict[next_sequence_no] = elapsed_sec
                 await post_transcript_turn(
-                    interview_id, turns[next_sequence_no - 1], next_sequence_no
+                    interview_id,
+                    turns[next_sequence_no - 1],
+                    next_sequence_no,
+                    elapsed_sec,
                 )
                 next_sequence_no += 1
             await asyncio.sleep(1)
     except asyncio.CancelledError:
         turns = extract_turns(session.history)
         while next_sequence_no <= len(turns):
+            elapsed_sec = int(time.time() - start_time)
+            timestamps_dict[next_sequence_no] = elapsed_sec
             await post_transcript_turn(
-                interview_id, turns[next_sequence_no - 1], next_sequence_no
+                interview_id,
+                turns[next_sequence_no - 1],
+                next_sequence_no,
+                elapsed_sec,
             )
             next_sequence_no += 1
         raise
@@ -168,6 +185,9 @@ async def interview_session(ctx: agents.JobContext):
     interview = await load_interview(session_id)
     logger.info("interview for session %s — role: %s", session_id, interview.role)
 
+    start_time = time.time()
+    timestamps_dict = {}
+
     session = AgentSession(
         stt=inference.STT(model=STT_MODEL, language="multi"),
         llm=inference.LLM(model=LLM_MODEL),
@@ -176,7 +196,9 @@ async def interview_session(ctx: agents.JobContext):
         # turn_handling=TurnHandlingOptions(turn_detection=MultilingualModel()),
     )
 
-    transcript_task = asyncio.create_task(stream_transcript_turns(session_id, session))
+    transcript_task = asyncio.create_task(
+        stream_transcript_turns(session_id, session, start_time, timestamps_dict)
+    )
 
     async def on_shutdown():
         transcript_task.cancel()
@@ -186,6 +208,11 @@ async def interview_session(ctx: agents.JobContext):
             pass
 
         turns = extract_turns(session.history)
+        for idx, turn in enumerate(turns, start=1):
+            turn["timestamp_sec"] = timestamps_dict.get(
+                idx, int(time.time() - start_time)
+            )
+
         try:
             save_transcript(session_id, turns)
         except Exception:
@@ -196,6 +223,9 @@ async def interview_session(ctx: agents.JobContext):
         except Exception:
             logger.exception("failed to generate report")
         await post_result(session_id, turns, report)
+
+        # Schedule privacy cleanup after 10-minute window
+        await schedule_cleanup(session_id)
 
     ctx.add_shutdown_callback(on_shutdown)
 

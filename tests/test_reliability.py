@@ -181,9 +181,9 @@ async def test_transcript_fallback_get_transcript(db_session: AsyncSession):
 
     assert resp.total_turns == 2
     assert resp.turns[0].speaker == "meet_mind"
-    assert resp.turns[0].timestamp == "00:00"  # Relativized
+    assert resp.turns[0].timestamp == "00:00:00"  # Relativized
     assert resp.turns[1].speaker == "candidate"
-    assert resp.turns[1].timestamp == "00:30"  # Relativized (90s - 60s)
+    assert resp.turns[1].timestamp == "00:00:30"  # Relativized (90s - 60s)
 
 
 @pytest.mark.anyio
@@ -224,8 +224,8 @@ async def test_transcript_fallback_get_transcript_export(db_session: AsyncSessio
     )
 
     assert len(lines) == 2
-    assert "[00:00] Meet Mind: Welcome.\n" in lines
-    assert "[00:30] Candidate: Hello.\n" in lines
+    assert "[00:00:00] Meet Mind: Welcome.\n" in lines
+    assert "[00:00:30] Candidate: Hello.\n" in lines
 
 
 @pytest.mark.anyio
