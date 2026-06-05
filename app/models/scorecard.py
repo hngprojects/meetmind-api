@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -71,6 +71,8 @@ class ScorecardSubRubric(Base, UUIDPrimaryKey, TimestampMixin):
     score_pct: Mapped[int | None] = mapped_column(Integer)
     confidence: Mapped[int | None] = mapped_column(Integer, default=0)
     justification: Mapped[str | None] = mapped_column(Text)
+    strengths: Mapped[list[str] | None] = mapped_column(JSON, default=list)
+    weaknesses: Mapped[list[str] | None] = mapped_column(JSON, default=list)
     sort_order: Mapped[int | None] = mapped_column(Integer)
 
 

@@ -168,8 +168,8 @@ class AIGenerationService:
                                 ]
                             if fallback_turns:
                                 lines = [
-                                    f"{_SPEAKER_LABELS.get(t.get('speaker', 'unknown'), 'Unknown')}: {t.get('content') or t.get('text') or ''}"
-                                    for t in fallback_turns
+                                    f"[{t.get('id', i)}] {_SPEAKER_LABELS.get(t.get('speaker', 'unknown'), 'Unknown')}: {t.get('content') or t.get('text') or ''}"
+                                    for i, t in enumerate(fallback_turns)
                                 ]
                                 return "\n".join(lines)
                     except Exception as e:
@@ -186,7 +186,8 @@ class AIGenerationService:
             return None
 
         lines = [
-            f"{_SPEAKER_LABELS.get(t.speaker, 'Unknown')}: {t.content}" for t in turns
+            f"[{t.id}] {_SPEAKER_LABELS.get(t.speaker, 'Unknown')}: {t.content}"
+            for t in turns
         ]
         return "\n".join(lines)
 
@@ -416,7 +417,7 @@ class AIGenerationService:
                 summary.status = "generating"
                 await db.commit()
 
-                system_instruction = await cls._build_assessment_context(
+                scorecard_context = await cls._build_assessment_context(
                     candidate_id=candidate.id,
                     job_description=summary.job_description,
                     scorecard=summary.scoring_rubric or "",
@@ -431,33 +432,99 @@ class AIGenerationService:
 
                 result = await retry_async(
                     generate_structured_output,
-                    system_instruction=system_instruction,
+                    system_instruction="You are an expert technical interviewer evaluating a candidate based on a structured scorecard and interview transcript.",
                     user_content=dedent(f"""
+                        # TRANSCRIPT FORMAT
+                        Each turn is prefixed with a UUID in square brackets, e.g. [019e976f-4baf-76c1-9440-352220ddd789].
+                        These UUIDs identify individual turns. You MUST use these exact UUID strings (without the brackets)
+                        as `question_turn_id` and `response_turn_id` in all evidence objects.
+                        Do NOT invent, modify, or abbreviate any UUID. If no relevant turn exists for a criterion, set
+                        evidence to an empty list [].
+
                         # FULL INTERVIEW TRANSCRIPT
                         {turns_text}
 
-                        # TASK
-                        Evaluate the candidate based on the transcript and scorecard above.
-                        Cover each criterion, note strengths and weaknesses, flag any red flags,
-                        and provide an overall recommendation.
-                        
-                        For each criterion in the scorecard:
-                        - Assign a score (0-100)
-                        - Assign a confidence level (0-100) indicating how certain you are of this score based on transcript quality, answer clarity, and evidence sufficiency
-                        - List 2-4 key signals (competencies/traits detected)
-                        - List 2-3 specific strengths demonstrated by the candidate for this criterion
-                        - List 1-2 areas for improvement or weaknesses for this criterion
-                        - List the questions asked that relate to this criterion
-                        - Provide a brief justification grounded in the transcript
-                        Then provide overall highlights and red flags.
+                        # SCORECARD CRITERIA
+                        {scorecard_context}
 
-                        You MUST return your response strictly as a valid JSON object.
-                        Do NOT wrap the output in a parent key like "evaluation" or "data".
-                        Your JSON must be flat and contain EXACTLY the following root keys:
-                        - "observation" (string)
-                        - "criteria" (list of objects with "name", "score" 0-100, "confidence" 0-100, "signals" list of strings, "strengths" list of strings, "weaknesses" list of strings, "questions" list of strings, "justification" string)
-                        - "highlights" (list of strings)
-                        - "red_flags" (list of strings)
+                        Evaluate ONLY the criteria listed in the scorecard — do NOT invent new criteria.
+
+                        # TASK
+                        Evaluate the candidate against each criterion in the scorecard above using only
+                        evidence from the transcript. Do not infer qualities not demonstrated in the transcript.
+
+                        For each criterion:
+                        - Score 0–100 based on demonstrated performance
+                        - Confidence 0–100 based on transcript quality, answer depth, and evidence sufficiency
+                          (low confidence = thin transcript coverage for this criterion)
+                        - 2–4 signals_detected: specific competencies or traits you detected
+                        - 2–3 strengths grounded in transcript evidence
+                        - 1–2 weaknesses or improvement areas grounded in transcript evidence
+                        - The questions_asked that map to this criterion (exact text from transcript)
+                        - A concise justification referencing specific candidate responses
+                        - 1–3 evidence objects using exact UUIDs from the transcript
+
+                        For each criterion you MUST also provide 1–3 sub-rubrics:
+                        Break the criterion into specific, evaluable dimensions. Sub-rubrics make the
+                        score granular and useful. Every criterion must have at least one sub-rubric.
+                        Sub-rubric titles and ids must be unique within the criterion and must NOT
+                        duplicate any top-level criterion id or title.
+                        For each sub-rubric:
+                        - Same scoring rules apply
+                        - Evidence must reference the same transcript UUIDs
+                        - Strengths and weaknesses must be specific to the sub-rubric, not a repeat of the parent
+
+                        # OUTPUT RULES
+                        - Return ONLY a valid JSON object. No markdown, no code fences, no preamble, no trailing text.
+                        - Do NOT wrap output in a parent key like "evaluation", "result", or "data".
+                        - All confidence and score values are integers 0–100.
+                        - All UUID values must be copied exactly from the transcript — never generated.
+
+                        Your JSON must contain EXACTLY these root keys:
+
+                        {{
+                          "observation": "...",
+                          "criteria": [
+                            {{
+                              "id": "...",
+                              "title": "...",
+                              "score": 0,
+                              "confidence": 0,
+                              "signals_detected": ["..."],
+                              "strengths": ["..."],
+                              "weaknesses": ["..."],
+                              "questions_asked": ["..."],
+                              "justification": "...",
+                              "evidence": [
+                                {{
+                                  "question_turn_id": "...",
+                                  "response_turn_id": "...",
+                                  "reason": "..."
+                                }}
+                              ],
+                              "sub_rubrics": [
+                                {{
+                                  "id": "...",
+                                  "title": "...",
+                                  "score": 0,
+                                  "confidence": 0,
+                                  "justification": "...",
+                                  "strengths": ["..."],
+                                  "weaknesses": ["..."],
+                                  "evidence": [
+                                    {{
+                                      "question_turn_id": "...",
+                                      "response_turn_id": "...",
+                                      "reason": "..."
+                                    }}
+                                  ]
+                                }}
+                              ]
+                            }}
+                          ],
+                          "highlights": ["..."],
+                          "red_flags": ["..."]
+                        }}
                     """).strip(),
                     output_schema=AssessmentOutput,
                     temperature=0.3,
@@ -477,14 +544,27 @@ class AIGenerationService:
                 report = {
                     "criteria": [
                         {
-                            "name": c["name"],
+                            "name": c["title"],
                             "percentage": c["score"],
                             "confidence": c.get("confidence", 0),
-                            "questions": c.get("questions", []),
-                            "signals": c.get("signals", []),
+                            "questions": c.get("questions_asked", []),
+                            "signals": c.get("signals_detected", []),
                             "strengths": c.get("strengths", []),
                             "weaknesses": c.get("weaknesses", []),
                             "justification": c.get("justification", ""),
+                            "evidence": c.get("evidence", []),
+                            "sub_rubrics": [
+                                {
+                                    "name": sr["title"],
+                                    "percentage": sr["score"],
+                                    "confidence": sr.get("confidence", 0),
+                                    "justification": sr.get("justification", ""),
+                                    "strengths": sr.get("strengths", []),
+                                    "weaknesses": sr.get("weaknesses", []),
+                                    "evidence": sr.get("evidence", []),
+                                }
+                                for sr in c.get("sub_rubrics", [])
+                            ],
                         }
                         for c in result.get("criteria", [])
                     ],

@@ -253,8 +253,8 @@ class InterviewSessionStatusResponse(BaseModel):
 
 
 class ScorecardEvidence(BaseModel):
-    question_turn_id: str
-    response_turn_id: str
+    question_turn_id: int | str
+    response_turn_id: int | str
     reason: str
 
 

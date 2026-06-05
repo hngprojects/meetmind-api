@@ -262,4 +262,4 @@ async def test_transcript_fallback_format_turns_text(db_session: AsyncSession):
         db=db_session
     )
 
-    assert text == "Interviewer: Welcome.\nCandidate: Hello."
+    assert text == "[0] Interviewer: Welcome.\n[1] Candidate: Hello."
