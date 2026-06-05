@@ -159,19 +159,24 @@ class ChatHistoryService:
                 if base_time.tzinfo is None:
                     base_time = base_time.replace(tzinfo=timezone.utc)
 
-            messages = [
-                ChatMessageResponse(
-                    id=uuid.uuid4(),
-                    role=turn_data.get("speaker", "unknown"),
-                    content=turn_data.get("content") or turn_data.get("text") or "",
-                    sent_at=base_time
-                    + timedelta(
-                        seconds=turn_data.get("timestamp_sec") or 0,
-                    ),
-                    sequence_no=turn_data.get("sequence_no") or (idx + 1),
+            messages = []
+            for idx, turn_data in enumerate(fallback_turns):
+                seq_no = turn_data.get("sequence_no") or (idx + 1)
+                messages.append(
+                    ChatMessageResponse(
+                        id=uuid.uuid5(
+                            uuid.NAMESPACE_DNS,
+                            f"meetmind-turn-{interview_id}-{seq_no}",
+                        ),
+                        role=turn_data.get("speaker", "unknown"),
+                        content=turn_data.get("content") or turn_data.get("text") or "",
+                        sent_at=base_time
+                        + timedelta(
+                            seconds=turn_data.get("timestamp_sec") or 0,
+                        ),
+                        sequence_no=seq_no,
+                    )
                 )
-                for idx, turn_data in enumerate(fallback_turns)
-            ]
 
         return ChatHistoryResponse(
             interview_id=interview_id,
@@ -184,12 +189,44 @@ class ChatHistoryService:
         interview_id: uuid.UUID,
         db: AsyncSession,
         user: User,
+        *,
+        live: bool = False,
+        after_sequence_no: int | None = None,
     ) -> TranscriptResponse:
         interview = await ChatHistoryService._assert_interview_belongs_to_user(
             interview_id, db, user
         )
         is_live = interview.status == "in_progress"
-        response_status = "transcribing" if is_live else "completed"
+
+        # --- Derive transcript status ---
+        if is_live:
+            response_status = "transcribing"
+        elif interview.status in ("draft", "scheduled"):
+            response_status = "connecting" if live else "idle"
+        elif interview.status == "cancelled":
+            response_status = "failed"
+        elif interview.status == "needs_attention":
+            response_status = "interrupted"
+        else:
+            response_status = "completed"
+
+        # --- Populate error / message / partial_saved envelope ---
+        error: str | None = None
+        message: str | None = None
+        partial_saved: bool | None = None
+
+        if response_status == "idle":
+            message = "Live transcription will appear here when an interview begins."
+        elif response_status == "connecting":
+            message = "Connecting to live transcript stream…"
+        elif response_status == "interrupted":
+            error = "feed_lost"
+            message = "Live transcript stream was interrupted."
+            partial_saved = True
+        elif response_status == "failed":
+            error = "interview_cancelled"
+            message = "Interview was cancelled."
+            partial_saved = True
 
         transcript_result = await db.execute(
             select(InterviewTranscript).where(
@@ -200,11 +237,16 @@ class ChatHistoryService:
 
         turns = []
         if transcript is not None:
-            turns_result = await db.execute(
+            query = (
                 select(InterviewTranscriptTurn)
                 .where(InterviewTranscriptTurn.transcript_id == transcript.id)
                 .order_by(InterviewTranscriptTurn.sequence_no.asc())
             )
+            if after_sequence_no is not None:
+                query = query.where(
+                    InterviewTranscriptTurn.sequence_no > after_sequence_no
+                )
+            turns_result = await db.execute(query)
             turns = turns_result.scalars().all()
 
         transcript_turns = []
@@ -246,10 +288,17 @@ class ChatHistoryService:
                 timestamp_sec = turn_data.get("timestamp_sec") or 0
                 seq_no = turn_data.get("sequence_no") or (idx + 1)
 
+                # Skip turns the client already has when using cursor
+                if after_sequence_no is not None and seq_no <= after_sequence_no:
+                    continue
+
                 speaker_role, speaker_label = ChatHistoryService._map_speaker(speaker)
                 transcript_turns.append(
                     TranscriptTurnResponse(
-                        id=uuid.uuid4(),
+                        id=uuid.uuid5(
+                            uuid.NAMESPACE_DNS,
+                            f"meetmind-turn-{interview_id}-{seq_no}",
+                        ),
                         speaker=speaker_role,
                         speaker_label=speaker_label,
                         timestamp=ChatHistoryService._format_elapsed_timestamp(
@@ -271,6 +320,9 @@ class ChatHistoryService:
             is_live=is_live,
             status=response_status,
             messages=transcript_turns,
+            error=error,
+            message=message,
+            partial_saved=partial_saved,
         )
 
     @staticmethod

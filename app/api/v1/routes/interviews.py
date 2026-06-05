@@ -251,8 +251,12 @@ async def get_transcript(
     interview_id: uuid.UUID,
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
+    live: bool = Query(default=False),
+    after_sequence_no: int | None = Query(default=None),
 ):
-    transcript = await ChatHistoryService.get_transcript(interview_id, db, user)
+    transcript = await ChatHistoryService.get_transcript(
+        interview_id, db, user, live=live, after_sequence_no=after_sequence_no
+    )
     return success(
         transcript.model_dump(mode="json"),
         message="Transcript retrieved",
