@@ -5,7 +5,7 @@ from datetime import timedelta
 from typing import Any
 
 import jwt
-from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
+from jwt.exceptions import InvalidTokenError
 
 from app.core.config import settings
 from app.core.utils import utcnow
@@ -18,7 +18,7 @@ INTERVIEW_TOKEN_TYPE = "interview_access"
 def create_interview_token(
     interview_id: uuid.UUID,
     scheduled_start: Any,  # datetime | None
-    scheduled_end: Any,    # datetime | None
+    scheduled_end: Any,  # datetime | None
 ) -> str:
     """Issue a signed JWT that grants a candidate access to interview details.
 
@@ -60,7 +60,10 @@ def create_interview_token(
     # exp: 30 min after scheduled end, but at least MIN_VALIDITY_HOURS from
     # now so that links for past / unscheduled interviews are still valid.
     if scheduled_end is not None:
-        exp = max(scheduled_end + timedelta(minutes=30), now + timedelta(hours=MIN_VALIDITY_HOURS))
+        exp = max(
+            scheduled_end + timedelta(minutes=30),
+            now + timedelta(hours=MIN_VALIDITY_HOURS),
+        )
     else:
         exp = now + timedelta(hours=MIN_VALIDITY_HOURS)
 

@@ -5,10 +5,9 @@ import logging
 import uuid
 from typing import Literal
 
-from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
-
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response, status
 from fastapi.responses import StreamingResponse
+from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 from pydantic import EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,9 +41,7 @@ from app.services.chat_history import ChatHistoryService
 from app.services.email_service import send_interview_link_email
 from app.services.export import ExportService
 from app.services.interview import InterviewService
-from app.utils.jwt_helper import decode_interview_token, create_interview_token
-
-
+from app.utils.jwt_helper import create_interview_token, decode_interview_token
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -140,13 +137,13 @@ async def get_interview(
 )
 async def get_interview_public(
     interview_id: uuid.UUID,
-    token: str = Query(..., description="JWT token granting access to interview details"),
+    token: str = Query(..., description="JWT token granting access to interview"),
     db: AsyncSession = Depends(get_session),
 ):
-    """Retrieve interview details using a signed JWT token without requiring user authentication.
+    """Retrieve interview details using a signed JWT token without user auth.
 
-    The token must contain the interview ID in the ``sub`` claim and be within the valid
-    time window (30 minutes before start until 30 minutes after end).
+    The token must contain the interview ID in the ``sub`` claim and be
+    within the valid time window (30 min before start, 30 min after end).
     """
     # Decode and validate token — mirrors the pattern in app/api/deps.py
     try:
@@ -431,8 +428,9 @@ async def send_interview_link(
     email address.
     """
     # fetch_interview returns the raw ORM Interview model, which has the
-    # scheduled_start / scheduled_end datetime fields needed by create_interview_token.
-    # (get_interview returns an InterviewResponse schema with only string date/time fields.)
+    # scheduled_start / scheduled_end datetime fields needed by
+    # create_interview_token. (get_interview returns an InterviewResponse
+    # schema with only string date/time fields.)
     interview = await InterviewService.fetch_interview(interview_id, db, user)
 
     token = create_interview_token(
