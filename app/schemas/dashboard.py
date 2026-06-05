@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import UUID4, BaseModel
+from uuid import UUID
+
+from pydantic import BaseModel
 
 
 class DashboardLiveResponse(BaseModel):
@@ -24,7 +26,7 @@ class DashboardLiveResponse(BaseModel):
 class LiveInterviewItem(BaseModel):
     """A single in-progress interview entry for the Live Now panel."""
 
-    interview_id: UUID4
+    interview_id: UUID
     candidate_name: str
     role_title: str | None
     elapsed_seconds: int | None  # None when scheduled_start is null

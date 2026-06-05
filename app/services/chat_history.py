@@ -46,10 +46,14 @@ class ChatHistoryService:
 
     @staticmethod
     def _format_elapsed_timestamp(first_timestamp: int, timestamp: int) -> str:
+        # Safely compute elapsed seconds and prevent negative values
         elapsed = max(0, (timestamp or 0) - (first_timestamp or 0))
-        minutes = elapsed // 60
+        # Extract hours, minutes, and seconds
+        hours = elapsed // 3600
+        minutes = (elapsed % 3600) // 60
         seconds = elapsed % 60
-        return f"{minutes:02}:{seconds:02}"
+        # Format with 2-digit zero-padding for all blocks
+        return f"{hours:02}:{minutes:02}:{seconds:02}"
 
     @staticmethod
     def _map_speaker(speaker: str) -> tuple[str, str]:
