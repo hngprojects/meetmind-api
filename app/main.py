@@ -5,6 +5,7 @@ Wires the v1 router and registers the global exception handlers that map
 errors to the standardized response envelope.
 """
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from urllib.parse import urlparse
@@ -57,8 +58,24 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     logger.info("Starting %s", settings.PROJECT_NAME)
+
+    # Start privacy cleanup background tasks
+    from app.services.session_cleanup import listen_for_expirations, run_periodic_sweep
+
+    cleanup_listener_task = asyncio.create_task(listen_for_expirations())
+    sweep_task = asyncio.create_task(run_periodic_sweep())
+
     yield
+
     logger.info("Shutting down %s — disposing DB engine", settings.PROJECT_NAME)
+    cleanup_listener_task.cancel()
+    sweep_task.cancel()
+    # Wait for graceful cancellation
+    for task in (cleanup_listener_task, sweep_task):
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
     await engine.dispose()
     await redis_client.aclose()
 

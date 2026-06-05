@@ -82,6 +82,12 @@ class Settings(BaseSettings):
 
     LLM_PROVIDERS: list[str] = ["gemini", "openrouter", "groq"]
 
+    INTERVIEWER_TTS_VOICE: str = "9626c31c-bec5-4cca-baa8-f8ba9e84c8bc"
+    INTERVIEWER_TTS: str = "sonic-3"
+    INTERVIEWER_STT: str = "nova-3"
+    INTERVIEWER_LLM: str = "openai/gpt-5.2-chat-latest"
+    INTERVIEWER_STT_LANGUAGE: str = "multi"
+
 
 @lru_cache
 def get_settings() -> Settings:

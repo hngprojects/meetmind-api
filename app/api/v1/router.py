@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from app.api.v1.routes import (
+    admin,
     ai_generation,
     ask_mind,
     auth,
@@ -55,3 +56,4 @@ api_router.include_router(calendar.router, prefix="/calendar", tags=["Calendar"]
 api_router.include_router(
     notifications.router, prefix="/notifications", tags=["Notifications"]
 )
+api_router.include_router(admin.router, prefix="/admin", tags=["Admin"])

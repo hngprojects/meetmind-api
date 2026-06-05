@@ -11,6 +11,7 @@ from fastapi import status
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.llm import generate_structured_output
 from app.core.responses import APIError
 from app.core.utils import get_user_workspace, safe_notify
@@ -825,6 +826,11 @@ Keep all text suitable for a live audio call (concise and natural).
             ),
             "participationMode": interview.participation_mode or "standard",
             "aiTone": interview.ai_tone,
+            "model": settings.INTERVIEWER_LLM,
+            "voice": settings.INTERVIEWER_TTS_VOICE,
+            "language": settings.INTERVIEWER_STT_LANGUAGE,
+            "tts": settings.INTERVIEWER_TTS,
+            "stt": settings.INTERVIEWER_STT,
         }
 
     @staticmethod
