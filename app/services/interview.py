@@ -12,6 +12,7 @@ from fastapi import status
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.llm import generate_structured_output
 from app.core.responses import APIError
 from app.core.utils import get_user_workspace, safe_notify
@@ -826,12 +827,9 @@ Keep all text suitable for a live audio call (concise and natural).
             ),
             "participationMode": interview.participation_mode or "standard",
             "aiTone": interview.ai_tone,
-            "model": os.getenv("INTERVIEWER_LLM", "openai/gpt-5.2-chat-latest"),
-            "voice": os.getenv(
-                "INTERVIEWER_TTS_VOICE",
-                "9626c31c-bec5-4cca-baa8-f8ba9e84c8bc",
-            ),
-            "language": os.getenv("INTERVIEWER_STT_LANGUAGE", "multi"),
+            "model": settings.INTERVIEWER_LLM
+            "voice": settings.INTERVIEWER_TTS_VOICE,
+            "language": settings.INTERVIEWER_STT_LANGUAGE,
         }
 
     @staticmethod
