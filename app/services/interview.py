@@ -916,18 +916,24 @@ Keep all text suitable for a live audio call (concise and natural).
             score_pct = criterion.get("percentage")
             if score_pct is None and criterion.get("score") is not None:
                 score_pct = criterion["score"] * 20
+            confidence_val = criterion.get("confidence", 0)
+            justification_val = criterion.get("justification")
 
             if not score:
                 score = ScorecardScore(
                     scorecard_id=scorecard.id,
                     category_id=category.id,
                     score_pct=score_pct,
+                    confidence=confidence_val,
+                    justification=justification_val,
                     completed=True,
                 )
                 db.add(score)
                 await db.flush()
             else:
                 score.score_pct = score_pct
+                score.confidence = confidence_val
+                score.justification = justification_val
                 score.completed = True
                 await db.flush()
 
@@ -948,15 +954,19 @@ Keep all text suitable for a live audio call (concise and natural).
                     )
                 )
 
-            signals_to_add = list(criterion.get("signals", []))
-            if criterion.get("justification"):
-                signals_to_add.append(criterion["justification"])
+            signals_with_prefix = []
+            for s_label in criterion.get("strengths", []):
+                signals_with_prefix.append(f"[strength] {s_label}")
+            for s_label in criterion.get("weaknesses", []):
+                signals_with_prefix.append(f"[weakness] {s_label}")
+            for s_label in criterion.get("signals", []):
+                signals_with_prefix.append(s_label)
 
-            for s_idx, s_label in enumerate(signals_to_add):
+            for s_idx, s_label in enumerate(signals_with_prefix):
                 db.add(
                     ScorecardSignal(
                         score_id=score.id,
-                        label=s_label[:80],
+                        label=s_label,
                         sort_order=s_idx,
                     )
                 )
@@ -1321,21 +1331,50 @@ Keep all text suitable for a live audio call (concise and natural).
                 .where(ScorecardSignal.score_id == score.id)
                 .order_by(ScorecardSignal.sort_order)
             )
-            signals = [s.label for s in signals_result.scalars().all()]
+            raw_signals = [s.label for s in signals_result.scalars().all()]
+
+            strengths = []
+            weaknesses = []
+            clean_signals = []
+            for label in raw_signals:
+                lower = label.lower()
+                if lower.startswith("[strength]"):
+                    clean = label[len("[strength]"):].strip()
+                    strengths.append(clean)
+                    clean_signals.append(clean)
+                elif lower.startswith("[weakness]"):
+                    clean = label[len("[weakness]"):].strip()
+                    weaknesses.append(clean)
+                    clean_signals.append(clean)
+                else:
+                    clean_signals.append(label)
 
             sections.append(
                 {
                     "title": category_name,
                     "score": score.score_pct or 0,
+                    "confidence": score.confidence or 0,
                     "score_bar_percent": score.score_pct or 0,
                     "questions_asked": questions,
-                    "signals_detected": signals,
+                    "signals_detected": clean_signals,
+                    "strengths": strengths,
+                    "weaknesses": weaknesses,
+                    "justification": score.justification,
                     "expanded": idx == 0,
                 }
             )
 
+        scores_list = [s.score_pct or 0 for s in scores]
+        total_score = round(sum(scores_list) / len(scores_list)) if scores_list else 0
+        confidences = [s.confidence or 0 for s in scores]
+        overall_confidence = (
+            round(sum(confidences) / len(confidences)) if confidences else 0
+        )
+
         return InterviewScorecardResponse(
             interview_id=interview_id,
+            total_score=total_score,
+            overall_confidence=overall_confidence,
             sections=[ScorecardSection(**s) for s in sections],
         )
 

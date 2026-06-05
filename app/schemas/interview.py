@@ -255,14 +255,20 @@ class InterviewSessionStatusResponse(BaseModel):
 class ScorecardSection(BaseModel):
     title: str
     score: int
+    confidence: int = 0
     score_bar_percent: int
     questions_asked: list[str]
     signals_detected: list[str]
+    strengths: list[str] = []
+    weaknesses: list[str] = []
+    justification: str | None = None
     expanded: bool
 
 
 class InterviewScorecardResponse(BaseModel):
     interview_id: UUID
+    total_score: int = 0
+    overall_confidence: int = 0
     sections: list[ScorecardSection]
 
 
