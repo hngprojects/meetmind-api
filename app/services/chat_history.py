@@ -216,9 +216,7 @@ class ChatHistoryService:
         partial_saved: bool | None = None
 
         if response_status == "idle":
-            message = (
-                "Live transcription will appear here when an interview begins."
-            )
+            message = "Live transcription will appear here when an interview begins."
         elif response_status == "connecting":
             message = "Connecting to live transcript stream…"
         elif response_status == "interrupted":
