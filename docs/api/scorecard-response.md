@@ -27,6 +27,28 @@ GET /api/v1/interviews/019e976e-.../scorecard?view=detailed
 
 **Important:** The scorecard is only generated when `/complete` is called. Calling `/scorecard` before `/complete` or before the background task finishes will return `sections: []`.
 
+### Triggering Scorecard Generation
+
+1. **Call `POST /api/v1/interviews/{id}/complete`** — this marks the interview as completed and enqueues scorecard generation as a **background task**
+2. **Wait for the notification** — the background task persists the scorecard to the database, then creates a notification of type `"report"` with title `"Interview Summary Ready"`
+3. **Poll for notifications** via `GET /api/v1/notifications` — when you see the `"Interview Summary Ready"` notification, the scorecard is ready
+4. **Call `GET /api/v1/interviews/{id}/scorecard`** — returns the full evaluation
+
+The notification payload looks like:
+```json
+{
+  "id": "uuid",
+  "type": "report",
+  "title": "Interview Summary Ready",
+  "description": "Jane Doe - Software Engineer",
+  "action_url": "/interviews/<interview_id>",
+  "read": false,
+  "created_at": "2026-06-05T12:00:00Z"
+}
+```
+
+Do not call `/scorecard` before receiving this notification — it will return `sections: []`.
+
 ### Response Schema
 
 ```json
