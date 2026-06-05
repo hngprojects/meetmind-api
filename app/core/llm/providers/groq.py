@@ -23,7 +23,7 @@ _client = _make_client()
 async def generate_text(
     system_instruction: str, user_content: str, temperature: float, max_tokens: int
 ) -> str:
-    response = await _client().chat.completions.create(
+    response = await _client.chat.completions.create(
         model=MODEL,
         messages=[
             {"role": "system", "content": system_instruction},
@@ -43,7 +43,7 @@ async def generate_structured_output(
     temperature: float,
     max_tokens: int,
 ) -> dict:
-    response = await _client().chat.completions.create(
+    response = await _client.chat.completions.create(
         model=MODEL,
         messages=[
             {"role": "system", "content": system_instruction},

@@ -23,7 +23,7 @@ _client = _make_client()
 async def generate_text(
     system_instruction: str, user_content: str, temperature: float, max_tokens: int
 ) -> str:
-    response = await _client().models.generate_content(
+    response = await _client.models.generate_content(
         model=MODEL,
         contents=user_content,
         config=types.GenerateContentConfig(
@@ -39,7 +39,7 @@ async def generate_text(
 async def generate_structured_output(
     system_instruction, user_content, output_schema, temperature, max_tokens
 ) -> dict:
-    response = await _client().models.generate_content(
+    response = await _client.models.generate_content(
         model=MODEL,
         contents=user_content,
         config=types.GenerateContentConfig(

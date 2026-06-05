@@ -27,6 +27,7 @@ from app.models.interview import (
 from app.models.user import User
 from app.schemas.assessment import AssessmentOutput
 from app.schemas.interview import InterviewPlanOutput
+from app.services.interview import InterviewService
 from app.services.interview_context_service import InterviewContextService
 from app.services.notification_service import NotificationService
 
@@ -218,9 +219,13 @@ class AIGenerationService:
         ai_tone: str | None,
         db: AsyncSession,
     ) -> str:
-        resume_context = await cls._retrieve_resume_context(
-            candidate_id, job_description, db
-        )
+        try:
+            resume_context = await cls._retrieve_resume_context(
+                candidate_id, job_description, db
+            )
+        except Exception:
+            logger.warning("Failed to retrieve resume context, proceeding without it")
+            resume_context = "No resume context available."
         tone_map = {
             "professional": "Maintain a professional and formal tone.",
             "friendly": "Keep the tone warm and approachable.",
@@ -263,9 +268,13 @@ class AIGenerationService:
         scorecard: str,
         db: AsyncSession,
     ) -> str:
-        resume_context = await cls._retrieve_resume_context(
-            candidate_id, job_description, db
-        )
+        try:
+            resume_context = await cls._retrieve_resume_context(
+                candidate_id, job_description, db
+            )
+        except Exception:
+            logger.warning("Failed to retrieve resume context for assessment, proceeding without it")
+            resume_context = "No resume context available."
         return dedent(f"""
             You are MeetMind, an expert Technical Recruiter evaluating a candidate after an interview.
 
@@ -430,10 +439,21 @@ class AIGenerationService:
                         Cover each criterion, note strengths and weaknesses, flag any red flags,
                         and provide an overall recommendation.
                         
+                        For each criterion in the scorecard:
+                        - Assign a score (0-100)
+                        - Assign a confidence level (0-100) indicating how certain you are of this score based on transcript quality, answer clarity, and evidence sufficiency
+                        - List 2-4 key signals (competencies/traits detected)
+                        - List 2-3 specific strengths demonstrated by the candidate for this criterion
+                        - List 1-2 areas for improvement or weaknesses for this criterion
+                        - List the questions asked that relate to this criterion
+                        - Provide a brief justification grounded in the transcript
+                        Then provide overall highlights and red flags.
+
                         You MUST return your response strictly as a valid JSON object.
                         Do NOT wrap the output in a parent key like "evaluation" or "data".
                         Your JSON must be flat and contain EXACTLY the following root keys:
                         - "observation" (string)
+                        - "criteria" (list of objects with "name", "score" 0-100, "confidence" 0-100, "signals" list of strings, "strengths" list of strings, "weaknesses" list of strings, "questions" list of strings, "justification" string)
                         - "highlights" (list of strings)
                         - "red_flags" (list of strings)
                     """).strip(),
@@ -450,6 +470,35 @@ class AIGenerationService:
                 summary.status = "completed"
                 summary.generated_at = datetime.now(timezone.utc)
                 await db.commit()
+
+                # Persist scorecard data so GET /scorecard returns results
+                report = {
+                    "criteria": [
+                        {
+                            "name": c["name"],
+                            "percentage": c["score"],
+                            "confidence": c.get("confidence", 0),
+                            "questions": c.get("questions", []),
+                            "signals": c.get("signals", []),
+                            "strengths": c.get("strengths", []),
+                            "weaknesses": c.get("weaknesses", []),
+                            "justification": c.get("justification", ""),
+                        }
+                        for c in result.get("criteria", [])
+                    ],
+                    "overall": "",
+                    "summary": result.get("observation", ""),
+                }
+                try:
+                    await InterviewService._persist_scorecard_report(
+                        interview, report, db
+                    )
+                    await db.commit()
+                except Exception:
+                    logger.exception(
+                        "Failed to persist scorecard for interview %s", interview_id
+                    )
+                    await db.rollback()
 
                 try:
                     await NotificationService.create(
