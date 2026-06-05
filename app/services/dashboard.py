@@ -146,7 +146,7 @@ async def get_schedule(
     return [
         ScheduledInterviewItem(
             interview_id=str(row.id),
-            candidate_name=row.full_name,
+            candidate_name=row.full_name or "Candidate",
             role=row.role_title,
             start_time=row.scheduled_start.isoformat() if row.scheduled_start else None,
             end_time=row.scheduled_end.isoformat() if row.scheduled_end else None,
@@ -180,7 +180,7 @@ async def get_completed(
     return [
         CompletedInterviewItem(
             interview_id=str(row.id),
-            candidate_name=row.full_name,
+            candidate_name=row.full_name or "Candidate",
             role=row.role_title,
             score=row.rating,
             completed_at=row.updated_at.isoformat() if row.updated_at else None,
