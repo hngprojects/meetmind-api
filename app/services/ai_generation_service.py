@@ -273,7 +273,9 @@ class AIGenerationService:
                 candidate_id, job_description, db
             )
         except Exception:
-            logger.warning("Failed to retrieve resume context for assessment, proceeding without it")
+            logger.warning(
+                "Failed to retrieve resume context for assessment, proceeding without it"
+            )
             resume_context = "No resume context available."
         return dedent(f"""
             You are MeetMind, an expert Technical Recruiter evaluating a candidate after an interview.
