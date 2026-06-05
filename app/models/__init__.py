@@ -120,6 +120,8 @@ __all__ = [
     "ScorecardScore",
     "ScorecardQuestion",
     "ScorecardSignal",
+    "ScorecardEvidence",
+    "ScorecardSubRubric",
     # Documents
     "DocumentChunk",
     "CandidateDocument",

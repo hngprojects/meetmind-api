@@ -1,6 +1,14 @@
 import uuid
 
-from sqlalchemy import Boolean, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 

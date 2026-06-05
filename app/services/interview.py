@@ -981,21 +981,23 @@ Keep all text suitable for a live audio call (concise and natural).
 
             # Delete old evidence first (FK depends on sub_rubrics), then sub-rubrics
             sr_ids = (
-                await db.execute(
-                    select(ScorecardSubRubric.id).where(
-                        ScorecardSubRubric.score_id == score.id
+                (
+                    await db.execute(
+                        select(ScorecardSubRubric.id).where(
+                            ScorecardSubRubric.score_id == score.id
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             await db.execute(
                 delete(ScorecardEvidence).where(
                     ScorecardEvidence.sub_rubric_id.in_(sr_ids)
                 )
             )
             await db.execute(
-                delete(ScorecardEvidence).where(
-                    ScorecardEvidence.score_id == score.id
-                )
+                delete(ScorecardEvidence).where(ScorecardEvidence.score_id == score.id)
             )
             await db.execute(
                 delete(ScorecardSubRubric).where(
