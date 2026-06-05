@@ -42,6 +42,7 @@ dependencies = [
     "opentelemetry-instrumentation-sqlalchemy",
     "opentelemetry-instrumentation-redis",
     "opentelemetry-exporter-otlp",
+    "weasyprint>=69.0",
 ]
 
 [dependency-groups]

@@ -452,7 +452,7 @@ Keep all text suitable for a live audio call (concise and natural).
                 raise APIError(message, status_code=status_code, code=code)
 
     @staticmethod
-    async def _get_summary(
+    async def get_summary(
         interview_id: uuid.UUID, db: AsyncSession
     ) -> InterviewSummary | None:
         result = await db.execute(
@@ -486,7 +486,7 @@ Keep all text suitable for a live audio call (concise and natural).
         return interview
 
     @staticmethod
-    async def _fetch_interview(
+    async def fetch_interview(
         interview_id: uuid.UUID,
         db: AsyncSession,
         user: User,
@@ -586,14 +586,14 @@ Keep all text suitable for a live audio call (concise and natural).
         db: AsyncSession,
         user: User,
     ) -> InterviewResponse:
-        interview = await InterviewService._fetch_interview(interview_id, db, user)
+        interview = await InterviewService.fetch_interview(interview_id, db, user)
 
         candidate_result = await db.execute(
             select(Candidate).where(Candidate.id == interview.candidate_id)
         )
         candidate = candidate_result.scalar_one_or_none()
 
-        summary = await InterviewService._get_summary(interview_id, db)
+        summary = await InterviewService.get_summary(interview_id, db)
 
         return InterviewService._build_interview_response(interview, candidate, summary)
 
@@ -604,7 +604,7 @@ Keep all text suitable for a live audio call (concise and natural).
         db: AsyncSession,
         user: User,
     ) -> CriteriaUpdateResponse:
-        interview = await InterviewService._fetch_interview(interview_id, db, user)
+        interview = await InterviewService.fetch_interview(interview_id, db, user)
 
         if interview.status not in ["draft", "scheduled"]:
             raise APIError(
@@ -614,7 +614,7 @@ Keep all text suitable for a live audio call (concise and natural).
             )
 
         workspace_id = interview.workspace_id
-        summary = await InterviewService._get_summary(interview_id, db)
+        summary = await InterviewService.get_summary(interview_id, db)
         if summary:
             summary.key_skills = ", ".join(request.criteria)
 
@@ -649,7 +649,7 @@ Keep all text suitable for a live audio call (concise and natural).
         db: AsyncSession,
         user: User,
     ) -> ContextUpdateResponse:
-        interview = await InterviewService._fetch_interview(interview_id, db, user)
+        interview = await InterviewService.fetch_interview(interview_id, db, user)
         if interview.status not in ["draft", "scheduled"]:
             raise APIError(
                 "Cannot update an active or completed interview", status_code=400
@@ -658,7 +658,7 @@ Keep all text suitable for a live audio call (concise and natural).
         if interview.role_title is None and request.role_title:
             interview.role_title = request.role_title
 
-        summary = await InterviewService._get_summary(interview_id, db)
+        summary = await InterviewService.get_summary(interview_id, db)
         if not summary:
             summary = InterviewSummary(interview_id=interview.id)
             db.add(summary)
@@ -685,7 +685,7 @@ Keep all text suitable for a live audio call (concise and natural).
         db: AsyncSession,
         user: User,
     ) -> AIConfigUpdateResponse:
-        interview = await InterviewService._fetch_interview(interview_id, db, user)
+        interview = await InterviewService.fetch_interview(interview_id, db, user)
 
         if interview.status not in ["draft", "scheduled"]:
             raise APIError(
@@ -718,7 +718,7 @@ Keep all text suitable for a live audio call (concise and natural).
         db: AsyncSession,
         user: User,
     ) -> dict:
-        interview = await InterviewService._fetch_interview(interview_id, db, user)
+        interview = await InterviewService.fetch_interview(interview_id, db, user)
         if interview.status == "scheduled":
             return {
                 "interview_id": str(interview.id),
@@ -733,7 +733,7 @@ Keep all text suitable for a live audio call (concise and natural).
                 code="invalid_status",
             )
 
-        summary = await InterviewService._get_summary(interview.id, db)
+        summary = await InterviewService.get_summary(interview.id, db)
         if not summary or not summary.job_description:
             raise APIError(
                 "Cannot confirm without job description. Complete context setup first.",
@@ -778,7 +778,7 @@ Keep all text suitable for a live audio call (concise and natural).
             if interview.session_id
             else None
         )
-        summary = await InterviewService._get_summary(interview.id, db)
+        summary = await InterviewService.get_summary(interview.id, db)
 
         if interview.status == "scheduled":
             interview.status = "in_progress"
@@ -974,7 +974,7 @@ Keep all text suitable for a live audio call (concise and natural).
         db: AsyncSession,
     ) -> None:
         """Merge AI report data into the InterviewSummary and mark it completed."""
-        summary = await InterviewService._get_summary(interview.id, db)
+        summary = await InterviewService.get_summary(interview.id, db)
         if not summary:
             summary = InterviewSummary(interview_id=interview.id)
             db.add(summary)
@@ -1085,7 +1085,7 @@ Keep all text suitable for a live audio call (concise and natural).
         db: AsyncSession,
         user: User,
     ) -> TranscriptStopResponse:
-        interview = await InterviewService._fetch_interview(interview_id, db, user)
+        interview = await InterviewService.fetch_interview(interview_id, db, user)
 
         InterviewService._assert_status_not_in(interview, "completed", "cancelled")
 
@@ -1153,7 +1153,7 @@ Keep all text suitable for a live audio call (concise and natural).
         db: AsyncSession,
         user: User,
     ) -> InterviewResponse:
-        interview = await InterviewService._fetch_interview(interview_id, db, user)
+        interview = await InterviewService.fetch_interview(interview_id, db, user)
 
         if interview.status in ("cancelled", "completed"):
             raise APIError(
@@ -1170,7 +1170,7 @@ Keep all text suitable for a live audio call (concise and natural).
         )
         candidate = candidate_result.scalar_one_or_none()
 
-        summary = await InterviewService._get_summary(interview_id, db)
+        summary = await InterviewService.get_summary(interview_id, db)
         criteria = await InterviewService._fetch_criteria(db, interview.id)
         await db.commit()
 
@@ -1179,14 +1179,14 @@ Keep all text suitable for a live audio call (concise and natural).
         )
 
     @staticmethod
-    async def get_summary(
+    async def get_summary_record(
         interview_id: uuid.UUID,
         db: AsyncSession,
         user: User,
     ) -> InterviewSummaryDetailResponse:
-        await InterviewService._fetch_interview(interview_id, db, user)
+        await InterviewService.fetch_interview(interview_id, db, user)
 
-        summary = await InterviewService._get_summary(interview_id, db)
+        summary = await InterviewService.get_summary(interview_id, db)
         if not summary:
             return {
                 "interview_id": str(interview_id),
@@ -1222,8 +1222,8 @@ Keep all text suitable for a live audio call (concise and natural).
         db: AsyncSession,
         user: User,
     ) -> dict:
-        await InterviewService._fetch_interview(interview_id, db, user)
-        summary = await InterviewService._get_summary(interview_id, db)
+        await InterviewService.fetch_interview(interview_id, db, user)
+        summary = await InterviewService.get_summary(interview_id, db)
         if not summary or summary.status != "failed":
             raise APIError(
                 "Summary is not in a failed state",
@@ -1245,7 +1245,7 @@ Keep all text suitable for a live audio call (concise and natural).
         db: AsyncSession,
         user: User,
     ) -> dict:
-        interview = await InterviewService._fetch_interview(interview_id, db, user)
+        interview = await InterviewService.fetch_interview(interview_id, db, user)
 
         session_phase_map = {
             "draft": "connecting",
@@ -1285,7 +1285,7 @@ Keep all text suitable for a live audio call (concise and natural).
         """Retrieve the evaluated scorecard with HSL scores, categories,
         questions, and signals.
         """
-        interview = await InterviewService._fetch_interview(interview_id, db, user)
+        interview = await InterviewService.fetch_interview(interview_id, db, user)
 
         sc_result = await db.execute(
             select(InterviewScorecard).where(
@@ -1351,7 +1351,7 @@ Keep all text suitable for a live audio call (concise and natural).
         db: AsyncSession,
         user: User,
     ) -> dict:
-        interview = await InterviewService._fetch_interview(interview_id, db, user)
+        interview = await InterviewService.fetch_interview(interview_id, db, user)
 
         candidate = None
         if interview.candidate_id:
@@ -1401,7 +1401,7 @@ Keep all text suitable for a live audio call (concise and natural).
         user: User,
     ) -> RejoinSessionResponse:
         """Idempotently reset interview state to reconnect an active session."""
-        interview = await InterviewService._fetch_interview(interview_id, db, user)
+        interview = await InterviewService.fetch_interview(interview_id, db, user)
         # Update status of Interview to in_progress
         interview.status = "in_progress"
         await db.commit()
