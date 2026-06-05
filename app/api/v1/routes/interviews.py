@@ -8,12 +8,14 @@ from typing import Literal
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response, status
 from fastapi.responses import StreamingResponse
 from pydantic import EmailStr
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import VerifiedUser
-from app.core.responses import APIResponse, paginated, success
+from app.core.responses import APIError, APIResponse, paginated, success
 from app.core.utils import safe_notify
 from app.db.session import get_session
+from app.models.candidate import Candidate
 from app.schemas.chat import ChatHistoryResponse
 from app.schemas.interview import (
     AIConfigUpdateResponse,
@@ -38,6 +40,9 @@ from app.services.chat_history import ChatHistoryService
 from app.services.email_service import send_interview_link_email
 from app.services.export import ExportService
 from app.services.interview import InterviewService
+from app.utils.jwt_helper import decode_interview_token, create_interview_token
+
+
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -123,6 +128,48 @@ async def get_interview(
     return success(
         interview.model_dump(mode="json"),
         message="Interview session retrieved successfully",
+    )
+
+
+@router.get(
+    "/call/{interview_id}",
+    response_model=APIResponse[InterviewResponse],
+    status_code=status.HTTP_200_OK,
+)
+async def get_interview_public(
+    interview_id: uuid.UUID,
+    token: str = Query(..., description="JWT token granting access to interview details"),
+    db: AsyncSession = Depends(get_session),
+):
+    """Retrieve interview details using a signed JWT token without requiring user authentication.
+
+    The token must contain the interview ID in the ``sub`` claim and be within the valid
+    time window (30 minutes before start until 30 minutes after end).
+    """
+    # Decode and validate token
+    payload = decode_interview_token(token)
+    token_interview_id = payload.get("sub")
+    if not token_interview_id or uuid.UUID(token_interview_id) != interview_id:
+        raise APIError(
+            "Invalid token for requested interview",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            code="unauthorized",
+        )
+
+    # Fetch interview, candidate, and summary directly from DB
+    interview = await InterviewService._resolve_interview(interview_id, db)
+    # Fetch candidate
+    candidate_result = await db.execute(
+        select(Candidate).where(Candidate.id == interview.candidate_id)
+    )
+    candidate = candidate_result.scalar_one_or_none()
+    # Fetch summary
+    summary = await InterviewService.get_summary(interview_id, db)
+    # Build response using existing helper
+    response = InterviewService._build_interview_response(interview, candidate, summary)
+    return success(
+        response.model_dump(mode="json"),
+        message="Interview session retrieved via token",
     )
 
 
@@ -369,6 +416,12 @@ async def send_interview_link(
     """
     interview = await InterviewService.get_interview(interview_id, db, user)
 
+    token = create_interview_token(
+        interview_id=interview.id,
+        scheduled_start=interview.scheduled_start,
+        scheduled_end=interview.scheduled_end,
+    )
+
     recipient_email = email or user.email
     recipient_name = user.name if not email else None
 
@@ -378,6 +431,7 @@ async def send_interview_link(
         interview_id=interview.id,
         role_title=interview.role_title or "Candidate Screening",
         background_tasks=background_tasks,
+        token=token,
     )
 
     return success(
