@@ -3,8 +3,9 @@ and scorecard endpoints."""
 
 import logging
 import uuid
+from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response, status
 from fastapi.responses import StreamingResponse
 from pydantic import EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +36,7 @@ from app.schemas.interview import (
 from app.schemas.transcript import TranscriptResponse
 from app.services.chat_history import ChatHistoryService
 from app.services.email_service import send_interview_link_email
+from app.services.export import ExportService
 from app.services.interview import InterviewService
 
 router = APIRouter()
@@ -288,7 +290,7 @@ async def get_interview_summary(
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
 ):
-    summary = await InterviewService.get_summary(interview_id, db, user)
+    summary = await InterviewService.get_summary_record(interview_id, db, user)
     return success(summary, message="Summary retrieved successfully")
 
 
@@ -380,4 +382,41 @@ async def send_interview_link(
 
     return success(
         message=f"Interview link email sent successfully to {recipient_email}"
+    )
+
+
+@router.get("/{interview_id}/summary/export", response_model=None)
+async def export_summary(
+    interview_id: uuid.UUID,
+    format: Literal["pdf", "markdown"],
+    user: VerifiedUser,
+    db: AsyncSession = Depends(get_session),
+):
+    if format == "markdown":
+        content = await ExportService.build_markdown(
+            interview_id,
+            db,
+            user,
+        )
+
+        filename = f"interview_{interview_id}_report.md"
+
+        return StreamingResponse(
+            iter([content]),
+            media_type="text/markdown",
+            headers={"Content-Disposition": (f'attachment; filename="{filename}"')},
+        )
+
+    pdf_bytes = await ExportService.build_pdf(
+        interview_id,
+        db,
+        user,
+    )
+
+    filename = f"interview_{interview_id}_report.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": (f'attachment; filename="{filename}"')},
     )
