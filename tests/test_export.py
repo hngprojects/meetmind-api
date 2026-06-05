@@ -23,8 +23,8 @@ from app.models.interview import Interview, InterviewSummary
 from app.models.scorecard import (
     InterviewScorecard,
     ScorecardCategory,
-    ScorecardScore,
     ScorecardQuestion,
+    ScorecardScore,
     ScorecardSignal,
 )
 from app.models.user import User
@@ -76,11 +76,13 @@ async def create_summary(
 ) -> InterviewSummary:
     assessment = None
     if with_assessment:
-        assessment = json.dumps({
-            "observation": "Strong candidate with solid backend fundamentals.",
-            "highlights": ["Clear communicator", "Solid Python knowledge"],
-            "red_flags": ["Limited experience with distributed systems"],
-        })
+        assessment = json.dumps(
+            {
+                "observation": "Strong candidate with solid backend fundamentals.",
+                "highlights": ["Clear communicator", "Solid Python knowledge"],
+                "red_flags": ["Limited experience with distributed systems"],
+            }
+        )
 
     summary = InterviewSummary(
         interview_id=interview.id,
@@ -95,9 +97,7 @@ async def create_summary(
     return summary
 
 
-async def create_scorecard(
-    db: AsyncSession, interview: Interview
-) -> None:
+async def create_scorecard(db: AsyncSession, interview: Interview) -> None:
     """Seed a scorecard with one category, score, question, and signal."""
     scorecard = InterviewScorecard(interview_id=interview.id)
     db.add(scorecard)
@@ -120,16 +120,20 @@ async def create_scorecard(
     db.add(score)
     await db.flush()
 
-    db.add(ScorecardQuestion(
-        score_id=score.id,
-        content="Walk me through a system you built at scale.",
-        sort_order=0,
-    ))
-    db.add(ScorecardSignal(
-        score_id=score.id,
-        label="Demonstrated systems thinking",
-        sort_order=0,
-    ))
+    db.add(
+        ScorecardQuestion(
+            score_id=score.id,
+            content="Walk me through a system you built at scale.",
+            sort_order=0,
+        )
+    )
+    db.add(
+        ScorecardSignal(
+            score_id=score.id,
+            label="Demonstrated systems thinking",
+            sort_order=0,
+        )
+    )
     await db.commit()
 
 
@@ -312,12 +316,28 @@ class TestMarkdownExport:
     @pytest.mark.anyio
     async def test_returns_401_without_token(self, client: AsyncClient):
         response = await client.get(
-            EXPORT_URL.format(id=uuid.uuid4(), params={"format": "markdown"},)
+            EXPORT_URL.format(
+                id=uuid.uuid4(),
+                params={"format": "markdown"},
+            )
         )
         assert response.status_code == 401
 
 
+# Check if WeasyPrint's system dependencies (GTK, GObject) are installed and importable
+try:
+    import weasyprint  # noqa: F401
+    from weasyprint.text.ffi import pango  # noqa: F401
 
+    weasyprint_available = True
+except (ImportError, OSError):
+    weasyprint_available = False
+
+
+@pytest.mark.skipif(
+    not weasyprint_available,
+    reason="WeasyPrint system dependencies (GTK3/GObject) are not installed.",
+)
 class TestPdfExport:
     @pytest.mark.anyio
     async def test_returns_200_with_pdf_content_type(
@@ -428,10 +448,12 @@ class TestPdfExport:
     @pytest.mark.anyio
     async def test_pdf_returns_401_without_token(self, client: AsyncClient):
         response = await client.get(
-            EXPORT_URL.format(id=uuid.uuid4(), params={"format": "pdf"},)
+            EXPORT_URL.format(
+                id=uuid.uuid4(),
+                params={"format": "pdf"},
+            )
         )
         assert response.status_code == 401
-
 
     @pytest.mark.anyio
     async def test_returns_400_when_pdf_exceeds_5mb(
@@ -444,9 +466,7 @@ class TestPdfExport:
 
         # Patch weasyprint to return an oversized byte blob
         oversized = b"x" * (5 * 1024 * 1024 + 1)
-        with patch(
-            "app.services.export.weasyprint.HTML"
-        ) as mock_html:
+        with patch("weasyprint.HTML") as mock_html:
             mock_html.return_value.write_pdf.return_value = oversized
 
             response = await client.get(
