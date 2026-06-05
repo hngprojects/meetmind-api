@@ -2,9 +2,19 @@
 
 from __future__ import annotations
 
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+
+TranscriptStatus = Literal[
+    "idle",
+    "connecting",
+    "transcribing",
+    "interrupted",
+    "completed",
+    "failed",
+]
 
 
 class TranscriptTurnResponse(BaseModel):
@@ -31,5 +41,8 @@ class TranscriptResponse(BaseModel):
     total_turns: int
     turns: list[TranscriptTurnResponse]
     is_live: bool = False
-    status: str = "completed"
+    status: TranscriptStatus = "completed"
     messages: list[TranscriptTurnResponse] = Field(default_factory=list)
+    error: str | None = None
+    message: str | None = None
+    partial_saved: bool | None = None

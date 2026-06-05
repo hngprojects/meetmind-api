@@ -252,17 +252,45 @@ class InterviewSessionStatusResponse(BaseModel):
     connection_status: str
 
 
-class ScorecardSection(BaseModel):
+class ScorecardEvidence(BaseModel):
+    question_turn_id: int | str
+    response_turn_id: int | str
+    reason: str
+
+
+class ScorecardSubRubric(BaseModel):
+    id: str
     title: str
     score: int
+    confidence: int = 0
+    score_bar_percent: int
+    strengths: list[str] = []
+    weaknesses: list[str] = []
+    justification: str | None = None
+    evidence: list[ScorecardEvidence] = []
+    expanded: bool = False
+
+
+class ScorecardSection(BaseModel):
+    id: str
+    title: str
+    score: int
+    confidence: int = 0
     score_bar_percent: int
     questions_asked: list[str]
     signals_detected: list[str]
+    strengths: list[str] = []
+    weaknesses: list[str] = []
+    justification: str | None = None
+    evidence: list[ScorecardEvidence] = []
     expanded: bool
+    sub_rubrics: list[ScorecardSubRubric] = []
 
 
 class InterviewScorecardResponse(BaseModel):
     interview_id: UUID
+    total_score: int = 0
+    overall_confidence: int = 0
     sections: list[ScorecardSection]
 
 

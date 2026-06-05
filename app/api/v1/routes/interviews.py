@@ -251,8 +251,12 @@ async def get_transcript(
     interview_id: uuid.UUID,
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
+    live: bool = Query(default=False),
+    after_sequence_no: int | None = Query(default=None),
 ):
-    transcript = await ChatHistoryService.get_transcript(interview_id, db, user)
+    transcript = await ChatHistoryService.get_transcript(
+        interview_id, db, user, live=live, after_sequence_no=after_sequence_no
+    )
     return success(
         transcript.model_dump(mode="json"),
         message="Transcript retrieved",
@@ -377,9 +381,14 @@ async def get_interview_scorecard(
     interview_id: uuid.UUID,
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
+    view: str = Query("detailed", pattern="^(summary|detailed)$"),
 ):
-    """Retrieve scorecard evaluated details for an interview."""
-    scorecard = await InterviewService.get_scorecard(interview_id, db, user)
+    """Retrieve scorecard evaluated details for an interview.
+
+    - `view=detailed` (default): full scorecard with questions, signals, justification.
+    - `view=summary`: only scores, confidence, strengths, weaknesses, and evidence.
+    """
+    scorecard = await InterviewService.get_scorecard(interview_id, db, user, view=view)
     return success(scorecard, message="Scorecard retrieved successfully")
 
 

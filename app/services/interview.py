@@ -26,9 +26,11 @@ from app.models.interview import (
 from app.models.scorecard import (
     InterviewScorecard,
     ScorecardCategory,
+    ScorecardEvidence,
     ScorecardQuestion,
     ScorecardScore,
     ScorecardSignal,
+    ScorecardSubRubric,
 )
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
@@ -922,18 +924,24 @@ Keep all text suitable for a live audio call (concise and natural).
             score_pct = criterion.get("percentage")
             if score_pct is None and criterion.get("score") is not None:
                 score_pct = criterion["score"] * 20
+            confidence_val = criterion.get("confidence", 0)
+            justification_val = criterion.get("justification")
 
             if not score:
                 score = ScorecardScore(
                     scorecard_id=scorecard.id,
                     category_id=category.id,
                     score_pct=score_pct,
+                    confidence=confidence_val,
+                    justification=justification_val,
                     completed=True,
                 )
                 db.add(score)
                 await db.flush()
             else:
                 score.score_pct = score_pct
+                score.confidence = confidence_val
+                score.justification = justification_val
                 score.completed = True
                 await db.flush()
 
@@ -954,16 +962,83 @@ Keep all text suitable for a live audio call (concise and natural).
                     )
                 )
 
-            signals_to_add = list(criterion.get("signals", []))
-            if criterion.get("justification"):
-                signals_to_add.append(criterion["justification"])
+            signals_with_prefix = []
+            for s_label in criterion.get("strengths", []):
+                signals_with_prefix.append(f"[strength] {s_label}")
+            for s_label in criterion.get("weaknesses", []):
+                signals_with_prefix.append(f"[weakness] {s_label}")
+            for s_label in criterion.get("signals", []):
+                signals_with_prefix.append(s_label)
 
-            for s_idx, s_label in enumerate(signals_to_add):
+            for s_idx, s_label in enumerate(signals_with_prefix):
                 db.add(
                     ScorecardSignal(
                         score_id=score.id,
-                        label=s_label[:80],
+                        label=s_label,
                         sort_order=s_idx,
+                    )
+                )
+
+            # Delete old evidence first (FK depends on sub_rubrics), then sub-rubrics
+            sr_ids = (
+                (
+                    await db.execute(
+                        select(ScorecardSubRubric.id).where(
+                            ScorecardSubRubric.score_id == score.id
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            await db.execute(
+                delete(ScorecardEvidence).where(
+                    ScorecardEvidence.sub_rubric_id.in_(sr_ids)
+                )
+            )
+            await db.execute(
+                delete(ScorecardEvidence).where(ScorecardEvidence.score_id == score.id)
+            )
+            await db.execute(
+                delete(ScorecardSubRubric).where(
+                    ScorecardSubRubric.score_id == score.id
+                )
+            )
+
+            # Persist sub-rubrics
+            for sr_idx, sub_rubric in enumerate(criterion.get("sub_rubrics", [])):
+                sr = ScorecardSubRubric(
+                    score_id=score.id,
+                    name=sub_rubric["name"],
+                    score_pct=sub_rubric.get("percentage")
+                    or sub_rubric.get("score", 0),
+                    confidence=sub_rubric.get("confidence", 0),
+                    justification=sub_rubric.get("justification"),
+                    strengths=sub_rubric.get("strengths", []),
+                    weaknesses=sub_rubric.get("weaknesses", []),
+                    sort_order=sr_idx,
+                )
+                db.add(sr)
+                await db.flush()
+
+                for ev in sub_rubric.get("evidence", []):
+                    db.add(
+                        ScorecardEvidence(
+                            sub_rubric_id=sr.id,
+                            question_turn_id=str(ev["question_turn_id"]).strip("[]"),
+                            response_turn_id=str(ev["response_turn_id"]).strip("[]"),
+                            reason=ev["reason"],
+                        )
+                    )
+
+            # Persist section-level evidence
+            for ev in criterion.get("evidence", []):
+                db.add(
+                    ScorecardEvidence(
+                        score_id=score.id,
+                        question_turn_id=str(ev["question_turn_id"]).strip("[]"),
+                        response_turn_id=str(ev["response_turn_id"]).strip("[]"),
+                        reason=ev["reason"],
                     )
                 )
 
@@ -1281,9 +1356,15 @@ Keep all text suitable for a live audio call (concise and natural).
         interview_id: uuid.UUID,
         db: AsyncSession,
         user: User,
+        view: str = "detailed",
     ) -> InterviewScorecardResponse:
         """Retrieve the evaluated scorecard with HSL scores, categories,
         questions, and signals.
+
+        - `view=detailed` (default): full scorecard with questions, signals,
+          justification.
+        - `view=summary`: only scores, confidence, strengths, weaknesses, and
+          evidence.
         """
         interview = await InterviewService.fetch_interview(interview_id, db, user)
 
@@ -1327,21 +1408,113 @@ Keep all text suitable for a live audio call (concise and natural).
                 .where(ScorecardSignal.score_id == score.id)
                 .order_by(ScorecardSignal.sort_order)
             )
-            signals = [s.label for s in signals_result.scalars().all()]
+            raw_signals = [s.label for s in signals_result.scalars().all()]
+
+            strengths = []
+            weaknesses = []
+            clean_signals = []
+            for label in raw_signals:
+                lower = label.lower()
+                if lower.startswith("[strength]"):
+                    clean = label[len("[strength]") :].strip()
+                    strengths.append(clean)
+                    clean_signals.append(clean)
+                elif lower.startswith("[weakness]"):
+                    clean = label[len("[weakness]") :].strip()
+                    weaknesses.append(clean)
+                    clean_signals.append(clean)
+                else:
+                    clean_signals.append(label)
+
+            # Load sub-rubrics
+            sub_rubrics_result = await db.execute(
+                select(ScorecardSubRubric)
+                .where(ScorecardSubRubric.score_id == score.id)
+                .order_by(ScorecardSubRubric.sort_order)
+            )
+            sub_rubrics_db = sub_rubrics_result.scalars().all()
+
+            sub_rubrics = []
+            for sr in sub_rubrics_db:
+                sr_evidence_result = await db.execute(
+                    select(ScorecardEvidence).where(
+                        ScorecardEvidence.sub_rubric_id == sr.id
+                    )
+                )
+                sr_evidence = [
+                    {
+                        "question_turn_id": e.question_turn_id,
+                        "response_turn_id": e.response_turn_id,
+                        "reason": e.reason,
+                    }
+                    for e in sr_evidence_result.scalars().all()
+                ]
+
+                sub_rubrics.append(
+                    {
+                        "id": sr.name.lower().replace(" ", "_"),
+                        "title": sr.name,
+                        "score": sr.score_pct or 0,
+                        "confidence": sr.confidence or 0,
+                        "score_bar_percent": sr.score_pct or 0,
+                        "strengths": sr.strengths or [],
+                        "weaknesses": sr.weaknesses or [],
+                        "justification": sr.justification,
+                        "evidence": sr_evidence,
+                        "expanded": False,
+                    }
+                )
+
+            # Load section-level evidence
+            section_evidence_result = await db.execute(
+                select(ScorecardEvidence).where(
+                    ScorecardEvidence.score_id == score.id,
+                    ScorecardEvidence.sub_rubric_id.is_(None),
+                )
+            )
+            section_evidence = [
+                {
+                    "question_turn_id": e.question_turn_id,
+                    "response_turn_id": e.response_turn_id,
+                    "reason": e.reason,
+                }
+                for e in section_evidence_result.scalars().all()
+            ]
 
             sections.append(
                 {
+                    "id": category_name.lower().replace(" ", "_"),
                     "title": category_name,
                     "score": score.score_pct or 0,
+                    "confidence": score.confidence or 0,
                     "score_bar_percent": score.score_pct or 0,
                     "questions_asked": questions,
-                    "signals_detected": signals,
+                    "signals_detected": clean_signals,
+                    "strengths": strengths,
+                    "weaknesses": weaknesses,
+                    "justification": score.justification,
+                    "evidence": section_evidence,
                     "expanded": idx == 0,
+                    "sub_rubrics": sub_rubrics,
                 }
             )
 
+        if view == "summary":
+            for section in sections:
+                section["questions_asked"] = []
+                section["signals_detected"] = []
+
+        scores_list = [s.score_pct or 0 for s in scores]
+        total_score = round(sum(scores_list) / len(scores_list)) if scores_list else 0
+        confidences = [s.confidence or 0 for s in scores]
+        overall_confidence = (
+            round(sum(confidences) / len(confidences)) if confidences else 0
+        )
+
         return InterviewScorecardResponse(
             interview_id=interview_id,
+            total_score=total_score,
+            overall_confidence=overall_confidence,
             sections=[ScorecardSection(**s) for s in sections],
         )
 

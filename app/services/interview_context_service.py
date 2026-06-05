@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.document import CandidateDocument, DocumentChunk
-from app.services.document_service import DocumentService
+from app.services.document_service import _gemini_client
 
 
 class InterviewContextService:
@@ -14,7 +14,7 @@ class InterviewContextService:
         candidate_id: UUID, query: str, db: AsyncSession, limit: int = 5
     ) -> list[str]:
         try:
-            query_response = await DocumentService._client().models.embed_content(
+            query_response = await _gemini_client.models.embed_content(
                 model="gemini-embedding-001",
                 contents=query,
                 config=types.EmbedContentConfig(
