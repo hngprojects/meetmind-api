@@ -30,6 +30,7 @@ from app.agent.interview import (
 )
 from app.agent.report import generate_report
 from app.agent.transcript import extract_turns, save_transcript
+from app.services.session_cleanup import schedule_cleanup
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -196,6 +197,9 @@ async def interview_session(ctx: agents.JobContext):
         except Exception:
             logger.exception("failed to generate report")
         await post_result(session_id, turns, report)
+
+        # Schedule privacy cleanup after 10-minute window
+        await schedule_cleanup(session_id)
 
     ctx.add_shutdown_callback(on_shutdown)
 
