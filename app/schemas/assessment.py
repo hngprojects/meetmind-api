@@ -14,6 +14,6 @@ class AssessmentCriterionScore(BaseModel):
 
 class AssessmentOutput(BaseModel):
     observation: str
-    criteria: list[AssessmentCriterionScore]
+    criteria: list[AssessmentCriterionScore] = []
     highlights: list[str]
     red_flags: list[str]
