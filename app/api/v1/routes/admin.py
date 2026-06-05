@@ -48,15 +48,11 @@ async def list_deletion_audits(
     # Apply filters
     if session_id:
         query = query.where(DataDeletionAuditLog.session_id == session_id)
-        count_query = count_query.where(
-            DataDeletionAuditLog.session_id == session_id
-        )
+        count_query = count_query.where(DataDeletionAuditLog.session_id == session_id)
 
     if audit_status:
         query = query.where(DataDeletionAuditLog.status == audit_status)
-        count_query = count_query.where(
-            DataDeletionAuditLog.status == audit_status
-        )
+        count_query = count_query.where(DataDeletionAuditLog.status == audit_status)
 
     if triggered_by:
         query = query.where(DataDeletionAuditLog.triggered_by == triggered_by)
@@ -66,15 +62,11 @@ async def list_deletion_audits(
 
     if from_date:
         query = query.where(DataDeletionAuditLog.deleted_at >= from_date)
-        count_query = count_query.where(
-            DataDeletionAuditLog.deleted_at >= from_date
-        )
+        count_query = count_query.where(DataDeletionAuditLog.deleted_at >= from_date)
 
     if to_date:
         query = query.where(DataDeletionAuditLog.deleted_at <= to_date)
-        count_query = count_query.where(
-            DataDeletionAuditLog.deleted_at <= to_date
-        )
+        count_query = count_query.where(DataDeletionAuditLog.deleted_at <= to_date)
 
     # Execute count
     total_result = await db.execute(count_query)
@@ -90,7 +82,5 @@ async def list_deletion_audits(
         for row in rows
     ]
 
-    data = DeletionAuditListResponse(total=total, audits=audits).model_dump(
-        mode="json"
-    )
+    data = DeletionAuditListResponse(total=total, audits=audits).model_dump(mode="json")
     return success(data, message="Deletion audit logs retrieved")

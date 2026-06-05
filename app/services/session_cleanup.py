@@ -84,9 +84,7 @@ async def execute_cleanup(
                 )
 
                 # 1. Purge transcript turns (child rows first)
-                turns_deleted = await _purge_transcript_turns(
-                    resolved_interview_id, db
-                )
+                turns_deleted = await _purge_transcript_turns(resolved_interview_id, db)
                 await _log_deletion(
                     db,
                     session_id=session_id,
