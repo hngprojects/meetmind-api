@@ -377,9 +377,14 @@ async def get_interview_scorecard(
     interview_id: uuid.UUID,
     user: VerifiedUser,
     db: AsyncSession = Depends(get_session),
+    view: str = Query("detailed", pattern="^(summary|detailed)$"),
 ):
-    """Retrieve scorecard evaluated details for an interview."""
-    scorecard = await InterviewService.get_scorecard(interview_id, db, user)
+    """Retrieve scorecard evaluated details for an interview.
+
+    - `view=detailed` (default): full scorecard with questions, signals, justification.
+    - `view=summary`: only scores, confidence, strengths, weaknesses, and evidence.
+    """
+    scorecard = await InterviewService.get_scorecard(interview_id, db, user, view=view)
     return success(scorecard, message="Scorecard retrieved successfully")
 
 

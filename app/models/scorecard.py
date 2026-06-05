@@ -1,6 +1,14 @@
 import uuid
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -36,6 +44,8 @@ class ScorecardScore(Base, UUIDPrimaryKey, TimestampMixin):
         UUID(as_uuid=True), ForeignKey("scorecard_categories.id"), nullable=False
     )
     score_pct: Mapped[int | None] = mapped_column(Integer)
+    confidence: Mapped[int | None] = mapped_column(Integer, default=0)
+    justification: Mapped[str | None] = mapped_column(Text)
     completed: Mapped[bool | None] = mapped_column(Boolean, default=False)
 
 
@@ -55,5 +65,34 @@ class ScorecardSignal(Base, UUIDPrimaryKey, TimestampMixin):
     score_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("scorecard_scores.id"), nullable=False
     )
-    label: Mapped[str] = mapped_column(String(80), nullable=False)
+    label: Mapped[str] = mapped_column(Text, nullable=False)
     sort_order: Mapped[int | None] = mapped_column(Integer)
+
+
+class ScorecardSubRubric(Base, UUIDPrimaryKey, TimestampMixin):
+    __tablename__ = "scorecard_sub_rubrics"
+
+    score_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("scorecard_scores.id"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    score_pct: Mapped[int | None] = mapped_column(Integer)
+    confidence: Mapped[int | None] = mapped_column(Integer, default=0)
+    justification: Mapped[str | None] = mapped_column(Text)
+    strengths: Mapped[list[str] | None] = mapped_column(JSON, default=list)
+    weaknesses: Mapped[list[str] | None] = mapped_column(JSON, default=list)
+    sort_order: Mapped[int | None] = mapped_column(Integer)
+
+
+class ScorecardEvidence(Base, UUIDPrimaryKey, TimestampMixin):
+    __tablename__ = "scorecard_evidence"
+
+    score_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("scorecard_scores.id"), nullable=True
+    )
+    sub_rubric_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("scorecard_sub_rubrics.id"), nullable=True
+    )
+    question_turn_id: Mapped[str] = mapped_column(Text, nullable=False)
+    response_turn_id: Mapped[str] = mapped_column(Text, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
