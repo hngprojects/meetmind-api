@@ -12,7 +12,6 @@ import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
-import weasyprint
 from fastapi import status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -270,6 +269,8 @@ class ExportService:
         data = await _collect(interview_id, db, user)
 
         try:
+            import weasyprint
+
             html = render_template(
                 "reports/interview_report.html",
                 role_title=data.role_title,
