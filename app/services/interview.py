@@ -827,9 +827,11 @@ Keep all text suitable for a live audio call (concise and natural).
             ),
             "participationMode": interview.participation_mode or "standard",
             "aiTone": interview.ai_tone,
-            "model": settings.INTERVIEWER_LLM
+            "model": settings.INTERVIEWER_LLM,
             "voice": settings.INTERVIEWER_TTS_VOICE,
             "language": settings.INTERVIEWER_STT_LANGUAGE,
+            "tts": settings.INTERVIEWER_TTS,
+            "stt": settings.INTERVIEWER_STT,
         }
 
     @staticmethod
