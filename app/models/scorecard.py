@@ -36,6 +36,8 @@ class ScorecardScore(Base, UUIDPrimaryKey, TimestampMixin):
         UUID(as_uuid=True), ForeignKey("scorecard_categories.id"), nullable=False
     )
     score_pct: Mapped[int | None] = mapped_column(Integer)
+    confidence: Mapped[int | None] = mapped_column(Integer, default=0)
+    justification: Mapped[str | None] = mapped_column(Text)
     completed: Mapped[bool | None] = mapped_column(Boolean, default=False)
 
 
@@ -55,5 +57,5 @@ class ScorecardSignal(Base, UUIDPrimaryKey, TimestampMixin):
     score_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("scorecard_scores.id"), nullable=False
     )
-    label: Mapped[str] = mapped_column(String(80), nullable=False)
+    label: Mapped[str] = mapped_column(Text, nullable=False)
     sort_order: Mapped[int | None] = mapped_column(Integer)
