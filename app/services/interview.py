@@ -1290,8 +1290,10 @@ Keep all text suitable for a live audio call (concise and natural).
         """Retrieve the evaluated scorecard with HSL scores, categories,
         questions, and signals.
 
-        - `view=detailed` (default): full scorecard with questions, signals, justification.
-        - `view=summary`: only scores, confidence, strengths, weaknesses, and evidence.
+        - `view=detailed` (default): full scorecard with questions, signals,
+          justification.
+        - `view=summary`: only scores, confidence, strengths, weaknesses, and
+          evidence.
         """
         interview = await InterviewService._fetch_interview(interview_id, db, user)
 
@@ -1343,11 +1345,11 @@ Keep all text suitable for a live audio call (concise and natural).
             for label in raw_signals:
                 lower = label.lower()
                 if lower.startswith("[strength]"):
-                    clean = label[len("[strength]"):].strip()
+                    clean = label[len("[strength]") :].strip()
                     strengths.append(clean)
                     clean_signals.append(clean)
                 elif lower.startswith("[weakness]"):
-                    clean = label[len("[weakness]"):].strip()
+                    clean = label[len("[weakness]") :].strip()
                     weaknesses.append(clean)
                     clean_signals.append(clean)
                 else:
