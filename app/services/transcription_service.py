@@ -19,6 +19,7 @@ _MIME_MAP = {
     "m4a": "audio/mp4",
     "ogg": "audio/ogg",
     "flac": "audio/flac",
+    "aac": "audio/aac",
 }
 
 

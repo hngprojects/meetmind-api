@@ -70,7 +70,7 @@ POST /api/v1/interviews/{interview_id}/chat/voice
 
 | Field | Type | Description |
 |---|---|---|
-| `file` | `UploadFile` | Audio file. Supported formats: `webm`, `wav`, `mp3`, `m4a`, `ogg`, `flac`. Max size: **25 MB**. |
+| `file` | `UploadFile` | Audio file. Supported formats: `webm`, `wav`, `mp3`, `m4a`, `ogg`, `flac`, `aac`. Max size: **25 MB**. |
 
 ### Response `200 OK`
 

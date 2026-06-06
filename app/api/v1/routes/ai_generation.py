@@ -152,6 +152,10 @@ SUPPORTED_AUDIO_FORMATS = {
     "audio/flac",
     "audio/x-m4a",
     "audio/x-wav",
+    "audio/aac",
+    "audio/x-aac",
+    "audio/vnd.dlna.adts",
+    "audio/aacp",
 }
 SUPPORTED_DOCUMENT_FORMATS = {".pdf", ".docx", ".txt"}
 
