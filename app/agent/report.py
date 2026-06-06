@@ -38,6 +38,21 @@ Score the CANDIDATE only. For each rubric criterion:
 
 Then give an overall weighted recommendation: one of strong_yes, yes, no, strong_no.
 
+Also generate:
+- "summary": a concise, objective recruiter recap of the candidate's professional
+  background, skills, and overall interview performance. Strip conversational
+  fluff and use only evidence from the transcript.
+- "highlights": standout positive moments, exceptional alignment, clear STAR-style
+  answers, or major achievements evidenced in the transcript. Return [] if none.
+- "red_flags": warning signs only from these categories: vague/evasive
+  communication, unexplained job hopping, poor professional conduct, lack of
+  genuine interest, unwarranted overconfidence/discrepancies, or defensiveness
+  regarding background verification. Return [] if none.
+- "confidence": a number from 0 to 1 reflecting how reliable this assessment is
+  given transcript completeness and quality. If the transcript appears degraded
+  by accent, background noise, microphone issues, missing context, or ambiguous
+  wording, still score it but lower this confidence.
+
 Rubric:
 {rubric_block}
 
@@ -56,7 +71,10 @@ Respond with ONLY JSON, no prose or markdown fences:
     }}
   ],
   "overall": "...",
-  "summary": "..."
+  "summary": "...",
+  "highlights": ["...", "..."],
+  "red_flags": ["...", "..."],
+  "confidence": 0.0
 }}"""
 
     ctx = llm.ChatContext.empty()

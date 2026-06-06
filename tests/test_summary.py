@@ -66,8 +66,10 @@ async def create_summary(
         assessment = json.dumps(
             {
                 "observation": "Strong candidate",
+                "summary": "Strong candidate with clear backend experience.",
                 "highlights": ["Clear communication", "Structured thinking"],
                 "red_flags": ["Struggled with ambiguity"],
+                "confidence": 0.82,
             }
         )
 
@@ -105,9 +107,11 @@ class TestGetSummary:
         assert response.status_code == 200
         data = response.json()["data"]
         assert data["status"] == "completed"
+        assert data["summary"] == "Strong candidate with clear backend experience."
         assert data["observation"] == "Strong candidate"
         assert data["highlights"] == ["Clear communication", "Structured thinking"]
         assert data["red_flags"] == ["Struggled with ambiguity"]
+        assert data["confidence"] == 0.82
         assert data["key_skills"] == ["Python", "FastAPI", "PostgreSQL"]
 
     @pytest.mark.anyio
@@ -126,8 +130,10 @@ class TestGetSummary:
         assert response.status_code == 200
         data = response.json()["data"]
         assert data["status"] == "pending"
+        assert data["summary"] is None
         assert data["highlights"] == []
         assert data["red_flags"] == []
+        assert data["confidence"] is None
         assert data["key_skills"] == []
 
     @pytest.mark.anyio
@@ -191,6 +197,7 @@ class TestGetSummary:
         assert data["highlights"] == []
         assert data["red_flags"] == []
         assert data["observation"] is None
+        assert data["summary"] is None
 
 
 # ── POST /summary/retry ────────────────────────────────────────────────────────

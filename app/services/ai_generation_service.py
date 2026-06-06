@@ -307,6 +307,7 @@ class AIGenerationService:
         user: User,
     ) -> str:
         """Generate the next interview question using context and conversation history."""
+        logger.info(f"\n🤖 DYNAMIC QUESTION GENERATION for interview {interview_id}")
         interview = await cls.get_interview_for_user(interview_id, user, db)
 
         candidate = (
@@ -344,6 +345,7 @@ class AIGenerationService:
             if turns_text is not None
             else "No conversation yet — this is the beginning of the interview."
         )
+        logger.info("   Analyzing conversation context...")
 
         question = await retry_async(
             generate_text,
@@ -364,6 +366,7 @@ class AIGenerationService:
             backoff_factor=2.0,
             task_name=f"Generate next question for interview {interview_id}",
         )
+        logger.info(f"✅ GENERATED QUESTION: {question}\n")
 
         transcript = await cls._get_or_create_transcript(interview_id, db)
         seq = await cls._next_sequence(transcript.id, db)
