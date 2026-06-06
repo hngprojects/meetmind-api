@@ -235,9 +235,11 @@ class InterviewListItem(BaseModel):
 class InterviewSummaryDetailResponse(BaseModel):
     interview_id: UUID
     status: str | None
+    summary: str | None = None
     observation: str | None
     highlights: list[str]
     red_flags: list[str]
+    confidence: float | None = None
     custom_question: str | None
     key_skills: list[str]
 
