@@ -13,6 +13,7 @@ from app.models.interview import (
     InterviewTranscript,
     InterviewTranscriptTurn,
 )
+from app.models.recruiter_chat import RecruiterChatMessage
 from app.models.user import User
 from app.schemas.chat import ChatHistoryResponse, ChatMessageResponse
 from app.schemas.transcript import TranscriptResponse, TranscriptTurnResponse
@@ -92,7 +93,7 @@ class ChatHistoryService:
         db: AsyncSession,
         user: User,
     ) -> ChatHistoryResponse:
-        """Return all transcript turns for an interview, ordered by sequence_no.
+        """Return all recruiter chat messages for an interview, ordered by sequence_no.
 
         Scopes the lookup to the requesting user's own interviews — matching
         the same guard used in InterviewService.get_interview.
@@ -109,79 +110,30 @@ class ChatHistoryService:
             APIError: 404 if the interview does not exist or does not belong
                 to the requesting user. Same message in both cases — no leakage.
         """
-        # 1. Verify interview exists and belongs to the requesting user.
-        interview = await ChatHistoryService._assert_interview_belongs_to_user(
+        await ChatHistoryService._assert_interview_belongs_to_user(
             interview_id, db, user
         )
 
-        # 2. Fetch the associated transcript record.
-        transcript_result = await db.execute(
-            select(InterviewTranscript).where(
-                InterviewTranscript.interview_id == interview_id
-            )
+        messages_result = await db.execute(
+            select(RecruiterChatMessage)
+            .where(RecruiterChatMessage.interview_id == interview_id)
+            .order_by(RecruiterChatMessage.sequence_no.asc())
         )
-        transcript = transcript_result.scalar_one_or_none()
-
-        turns = []
-        if transcript is not None:
-            # 3. Fetch all turns ordered by sequence_no ascending.
-            turns_result = await db.execute(
-                select(InterviewTranscriptTurn)
-                .where(InterviewTranscriptTurn.transcript_id == transcript.id)
-                .order_by(InterviewTranscriptTurn.sequence_no.asc())
-            )
-            turns = turns_result.scalars().all()
-
-        messages = []
-        if turns:
-            messages = [
-                ChatMessageResponse(
-                    id=turn.id,
-                    role=turn.speaker,
-                    content=turn.content,
-                    sent_at=turn.created_at,
-                    sequence_no=turn.sequence_no,
-                )
-                for turn in turns
-            ]
-        else:
-            # Fallback to session JSON
-            fallback_turns = await ChatHistoryService._get_fallback_turns_from_session(
-                interview,
-                db,
-            )
-            from datetime import datetime, timedelta, timezone
-
-            base_time = interview.started_at or interview.created_at
-            if base_time is None:
-                base_time = datetime.now(timezone.utc)
-            else:
-                if base_time.tzinfo is None:
-                    base_time = base_time.replace(tzinfo=timezone.utc)
-
-            messages = []
-            for idx, turn_data in enumerate(fallback_turns):
-                seq_no = turn_data.get("sequence_no") or (idx + 1)
-                messages.append(
-                    ChatMessageResponse(
-                        id=uuid.uuid5(
-                            uuid.NAMESPACE_DNS,
-                            f"meetmind-turn-{interview_id}-{seq_no}",
-                        ),
-                        role=turn_data.get("speaker", "unknown"),
-                        content=turn_data.get("content") or turn_data.get("text") or "",
-                        sent_at=base_time
-                        + timedelta(
-                            seconds=turn_data.get("timestamp_sec") or 0,
-                        ),
-                        sequence_no=seq_no,
-                    )
-                )
+        messages = messages_result.scalars().all()
 
         return ChatHistoryResponse(
             interview_id=interview_id,
             total_messages=len(messages),
-            messages=messages,
+            messages=[
+                ChatMessageResponse(
+                    id=msg.id,
+                    role=msg.role,
+                    content=msg.content,
+                    sent_at=msg.created_at,
+                    sequence_no=msg.sequence_no,
+                )
+                for msg in messages
+            ],
         )
 
     @staticmethod
