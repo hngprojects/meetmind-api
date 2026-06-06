@@ -125,15 +125,19 @@ def _fallback_interview_plan(
     if track == "design":
         question_specs = [
             (
-                "Walk me through a design project from problem discovery to final solution.",
-                "Probe their process, constraints, research inputs, iterations, and impact.",
+                "Walk me through a design project from problem"
+                " discovery to final solution.",
+                "Probe their process, constraints, research"
+                " inputs, iterations, and impact.",
             ),
             (
                 "How do you decide whether a design is successful?",
-                "Listen for user outcomes, usability signals, business goals, and trade-offs.",
+                "Listen for user outcomes, usability signals,"
+                " business goals, and trade-offs.",
             ),
             (
-                "Tell me about a time you handled conflicting feedback from stakeholders.",
+                "Tell me about a time you handled conflicting"
+                " feedback from stakeholders.",
                 "Probe collaboration, prioritization, communication, and rationale.",
             ),
             (
@@ -141,7 +145,8 @@ def _fallback_interview_plan(
                 "Look for concrete examples and how insights changed the final work.",
             ),
             (
-                "What is one portfolio piece you would improve today, and what would you change?",
+                "What is one portfolio piece you would improve"
+                " today, and what would you change?",
                 "Probe self-awareness, craft standards, and product thinking.",
             ),
         ]
@@ -155,7 +160,8 @@ def _fallback_interview_plan(
     elif track == "product":
         question_specs = [
             (
-                "Tell me about a product decision you made with incomplete information.",
+                "Tell me about a product decision you made"
+                " with incomplete information.",
                 "Probe customer insight, prioritization, risk, and outcome.",
             ),
             (
@@ -167,11 +173,13 @@ def _fallback_interview_plan(
                 "Probe metrics, qualitative signals, launch learning, and iteration.",
             ),
             (
-                "Describe a time you aligned engineering, design, and business stakeholders.",
+                "Describe a time you aligned engineering,"
+                " design, and business stakeholders.",
                 "Look for clarity, influence, conflict handling, and follow-through.",
             ),
             (
-                "How do you learn from a product launch that did not meet expectations?",
+                "How do you learn from a product launch"
+                " that did not meet expectations?",
                 "Probe accountability, analysis, and concrete changes.",
             ),
         ]
@@ -185,7 +193,8 @@ def _fallback_interview_plan(
     elif track == "engineering":
         question_specs = [
             (
-                f"Walk me through a technical project relevant to {role} that you are proud of.",
+                f"Walk me through a technical project relevant"
+                f" to {role} that you are proud of.",
                 "Probe ownership, architecture, constraints, trade-offs, and impact.",
             ),
             (
@@ -197,7 +206,8 @@ def _fallback_interview_plan(
                 "Probe method, observability, communication, and prevention.",
             ),
             (
-                "Describe a time you improved quality, reliability, or maintainability.",
+                "Describe a time you improved quality,"
+                " reliability, or maintainability.",
                 "Look for measurable impact and practical engineering judgment.",
             ),
             (
@@ -215,7 +225,8 @@ def _fallback_interview_plan(
     else:
         question_specs = [
             (
-                f"Walk me through work you have done that best prepares you for {role}.",
+                f"Walk me through work you have done that"
+                f" best prepares you for {role}.",
                 "Probe scope, ownership, outcomes, and relevance to the role.",
             ),
             (
@@ -223,7 +234,8 @@ def _fallback_interview_plan(
                 "Listen for problem solving, judgment, and follow-through.",
             ),
             (
-                "Describe a time you had to learn something quickly to deliver results.",
+                "Describe a time you had to learn something"
+                " quickly to deliver results.",
                 "Probe learning approach, resourcefulness, and impact.",
             ),
             (
@@ -231,7 +243,8 @@ def _fallback_interview_plan(
                 "Look for communication, alignment, and practical next steps.",
             ),
             (
-                "What strengths would you bring to this role, and where are you still growing?",
+                "What strengths would you bring to this role,"
+                " and where are you still growing?",
                 "Probe self-awareness, specificity, and fit.",
             ),
         ]
@@ -246,7 +259,8 @@ def _fallback_interview_plan(
     if custom_question:
         question_specs[-1] = (
             custom_question,
-            "Ask concise follow-ups to clarify the candidate's experience and evidence.",
+            "Ask concise follow-ups to clarify the candidate's"
+            " experience and evidence.",
         )
 
     return InterviewPlanOutput(
@@ -384,7 +398,10 @@ Keep all text suitable for a live audio call (concise and natural).
             response = await retry_async(
                 _gemini_client.models.generate_content,
                 model="gemini-flash-lite-latest",
-                contents=f"{system_instruction}\n\nGenerate the complete interview plan based on the provided context.",
+                contents=(
+                    f"{system_instruction}\n\nGenerate the complete"
+                    " interview plan based on the provided context."
+                ),
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     response_schema=InterviewPlanOutput,
@@ -1023,7 +1040,9 @@ Keep all text suitable for a live audio call (concise and natural).
         logger.info(f"   Candidate: {candidate.full_name if candidate else 'Unknown'}")
         logger.info(f"   Role: {interview.role_title}")
         logger.info(
-            f"   Duration: {cls._duration_from_schedule_or_session(interview, session)} minutes"
+            f"   Duration: "
+            f"{cls._duration_from_schedule_or_session(interview, session)}"
+            f" minutes"
         )
         logger.info(f"   Sending {len(questions)} questions to LiveKit agent:")
         for idx, q in enumerate(questions, 1):

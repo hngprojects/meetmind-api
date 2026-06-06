@@ -34,7 +34,9 @@ DEFAULT_INTERVIEW_CONFIG = {
     "questions": [
         {
             "text": ("Walk me through work you have done that best matches this role."),
-            "followUpHint": "Probe scope, their contribution, outcomes, and trade-offs.",
+            "followUpHint": (
+                "Probe scope, their contribution, outcomes, and trade-offs."
+            ),
             "maxFollowUps": 2,
         },
         {
