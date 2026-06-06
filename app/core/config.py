@@ -52,7 +52,7 @@ class Settings(BaseSettings):
 
     REDIS_URL: str = "redis://127.0.0.1:6379/0"
 
-    CORS_ORIGINS: list[str] = ["http://localhost:3000"]
+    CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:3001"]
 
     FRONTEND_URL: str
     # When true, the application will not call external email providers and
