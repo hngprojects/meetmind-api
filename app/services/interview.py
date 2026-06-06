@@ -986,12 +986,78 @@ Keep all text suitable for a live audio call (concise and natural).
             except Exception:
                 assessment = {}
 
-        assessment["overview"] = report.get("summary")
+        summary_text = (
+            report.get("summary")
+            or report.get("overview")
+            or report.get("observation")
+        )
+
+        if summary_text is not None:
+            assessment["summary"] = summary_text
+            assessment["overview"] = summary_text
+            assessment["observation"] = summary_text
+
+        if "highlights" in report:
+            assessment["highlights"] = InterviewService._clean_string_list(
+                report.get("highlights")
+            )
+
+        red_flags = (
+            report.get("red_flags")
+            if "red_flags" in report
+            else report.get("redFlags", report.get("redflags"))
+        )
+        if red_flags is not None:
+            assessment["red_flags"] = InterviewService._clean_string_list(red_flags)
+
+        confidence = InterviewService._coerce_confidence(
+            report.get("confidence", report.get("confidence_score"))
+        )
+        if confidence is not None:
+            assessment["confidence"] = confidence
+
         assessment["overall_recommendation"] = report.get("overall")
 
         summary.ai_assessment = json.dumps(assessment)
         summary.status = "completed"
         summary.generated_at = datetime.now(timezone.utc)
+
+    @staticmethod
+    def _clean_string_list(value: object) -> list[str]:
+        """Normalize LLM/list payloads into compact string arrays for the UI."""
+        if value is None:
+            return []
+        if isinstance(value, str):
+            value = [value]
+        if not isinstance(value, list):
+            return []
+
+        cleaned: list[str] = []
+        for item in value:
+            if isinstance(item, dict):
+                item = (
+                    item.get("description")
+                    or item.get("content")
+                    or item.get("text")
+                )
+            if not isinstance(item, str):
+                continue
+            text = item.strip()
+            if text:
+                cleaned.append(text)
+        return cleaned
+
+    @staticmethod
+    def _coerce_confidence(value: object) -> float | None:
+        if value is None:
+            return None
+        try:
+            confidence = float(value)
+        except (TypeError, ValueError):
+            return None
+        if confidence > 1:
+            confidence = confidence / 100
+        return max(0.0, min(confidence, 1.0))
 
     @staticmethod
     async def _persist_transcript(
@@ -1191,9 +1257,11 @@ Keep all text suitable for a live audio call (concise and natural).
             return {
                 "interview_id": str(interview_id),
                 "status": "pending",
+                "summary": None,
                 "observation": None,
                 "highlights": [],
                 "red_flags": [],
+                "confidence": None,
                 "custom_question": None,
                 "key_skills": [],
             }
@@ -1205,12 +1273,21 @@ Keep all text suitable for a live audio call (concise and natural).
             except (json.JSONDecodeError, ValueError):
                 assessment = {}
 
+        summary_text = (
+            assessment.get("summary")
+            or assessment.get("overview")
+            or assessment.get("observation")
+        )
         result_dict = {
             "interview_id": str(interview_id),
             "status": summary.status,
-            "observation": assessment.get("observation"),
+            "summary": summary_text,
+            "observation": assessment.get("observation") or summary_text,
             "highlights": assessment.get("highlights", []),
             "red_flags": assessment.get("red_flags", []),
+            "confidence": InterviewService._coerce_confidence(
+                assessment.get("confidence")
+            ),
             "custom_question": summary.custom_question,
             "key_skills": summary.key_skills.split(",") if summary.key_skills else [],
         }
