@@ -539,7 +539,12 @@ async def google_callback(
             code="internal_error",
         )
 
-    response.set_cookie(
+    redirect = RedirectResponse(
+        url=settings.FRONTEND_URL,
+        status_code=302,
+    )
+
+    redirect.set_cookie(
         key="access_token",
         value=access_token,
         httponly=True,
@@ -547,7 +552,8 @@ async def google_callback(
         secure=True,
         samesite="lax",
     )
-    response.set_cookie(
+
+    redirect.set_cookie(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
@@ -556,5 +562,4 @@ async def google_callback(
         samesite="lax",
     )
 
-    frontend_dashboard_url = f"{settings.FRONTEND_URL}/dashboard"
-    return RedirectResponse(url=frontend_dashboard_url)
+    return redirect
