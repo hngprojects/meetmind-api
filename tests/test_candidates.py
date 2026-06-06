@@ -7,7 +7,7 @@ test_<action>_<expected_outcome>_<condition>
 """
 
 import uuid
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import select
@@ -553,8 +553,8 @@ class TestListCandidates:
 
     @pytest.mark.anyio
     async def test_list_candidates_filters_by_status(self, client, db_session):
-        from app.services.auth import AuthService
         from app.models.interview import Interview
+        from app.services.auth import AuthService
 
         user, workspace = await create_user_with_workspace(db_session)
         token = await AuthService.create_access_token(user)

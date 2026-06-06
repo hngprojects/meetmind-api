@@ -3,11 +3,11 @@
 import logging
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, Depends, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import VerifiedUser
-from app.core.responses import APIResponse, success
+from app.core.responses import APIError, APIResponse, success
 from app.core.utils import safe_notify
 from app.db.session import get_session
 from app.schemas.ai_generation import (
@@ -18,7 +18,13 @@ from app.schemas.ai_generation import (
     SummaryGeneratingData,
     SummaryRetryData,
 )
-from app.schemas.chat import AskRequest, ChatHistoryResponse, RespondRequest
+from app.schemas.chat import (
+    AskRequest,
+    ChatDocumentUploadResponse,
+    ChatHistoryResponse,
+    ChatVoiceUploadResponse,
+    RespondRequest,
+)
 from app.services.ai_generation_service import AIGenerationService
 from app.services.interview import InterviewService
 
@@ -132,6 +138,98 @@ async def get_chat_history(
         history.model_dump(mode="json"),
         message="Chat history retrieved successfully",
     )
+
+
+MAX_AUDIO_FILE_SIZE = 25 * 1024 * 1024
+MAX_DOCUMENT_FILE_SIZE = 10 * 1024 * 1024
+
+SUPPORTED_AUDIO_FORMATS = {
+    "audio/webm",
+    "audio/wav",
+    "audio/mpeg",
+    "audio/mp4",
+    "audio/ogg",
+    "audio/flac",
+    "audio/x-m4a",
+    "audio/x-wav",
+    "audio/aac",
+    "audio/x-aac",
+    "audio/vnd.dlna.adts",
+    "audio/aacp",
+}
+SUPPORTED_DOCUMENT_FORMATS = {".pdf", ".docx", ".txt"}
+
+
+@router.post(
+    "/{interview_id}/chat/voice",
+    response_model=APIResponse[ChatVoiceUploadResponse],
+)
+async def ask_question_voice(
+    interview_id: uuid.UUID,
+    user: VerifiedUser,
+    db: AsyncSession = Depends(get_session),
+    file: UploadFile = File(..., description="Audio file"),
+):
+    if file.content_type not in SUPPORTED_AUDIO_FORMATS:
+        raise APIError(
+            f"Unsupported audio format: {file.content_type}",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            code="unsupported_audio_format",
+        )
+    content = await file.read()
+    if len(content) > MAX_AUDIO_FILE_SIZE:
+        raise APIError(
+            "Audio file too large (max 25 MB)",
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            code="file_too_large",
+        )
+    result = await AIGenerationService.send_chat_voice(
+        interview_id=interview_id,
+        audio_content=content,
+        filename=file.filename or "audio.webm",
+        user=user,
+        db=db,
+    )
+    return success(result, message="Voice query answered")
+
+
+@router.post(
+    "/{interview_id}/chat/document",
+    response_model=APIResponse[ChatDocumentUploadResponse],
+)
+async def ask_question_document(
+    interview_id: uuid.UUID,
+    user: VerifiedUser,
+    db: AsyncSession = Depends(get_session),
+    file: UploadFile = File(..., description="Document file (PDF, DOCX, TXT)"),
+):
+    ext = "." + file.filename.rsplit(".", 1)[-1].lower() if file.filename else ""
+    if ext not in SUPPORTED_DOCUMENT_FORMATS:
+        raise APIError(
+            f"Unsupported document format: {ext}",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            code="unsupported_document_format",
+        )
+    content = await file.read()
+    if len(content) > MAX_DOCUMENT_FILE_SIZE:
+        raise APIError(
+            "Document file too large (max 10 MB)",
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            code="file_too_large",
+        )
+    try:
+        result = await AIGenerationService.send_chat_document(
+            interview_id=interview_id,
+            file_content=content,
+            filename=file.filename or "document.txt",
+            user=user,
+            db=db,
+        )
+    except ValueError as e:
+        raise APIError(
+            str(e), status_code=status.HTTP_400_BAD_REQUEST, code="invalid_file"
+        )
+    return success(result, message="Document query answered")
 
 
 @router.post(

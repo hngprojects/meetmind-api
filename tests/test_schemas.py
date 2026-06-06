@@ -1,16 +1,15 @@
 """Smoke tests: every new response schema validates against real-shaped data."""
+
 import uuid
 from datetime import datetime
 
-import pytest
-
+from app.schemas.calendar import AvailabilitySlot, CalendarUserItem
+from app.schemas.candidate import CandidateListItem
 from app.schemas.dashboard import (
     CompletedInterviewItem,
     DashboardLiveInterviewItem,
     ScheduledInterviewItem,
 )
-from app.schemas.calendar import AvailabilitySlot, CalendarUserItem
-from app.schemas.candidate import CandidateListItem
 from app.schemas.interview import (
     AIConfigUpdateResponse,
     ContextUpdateResponse,
@@ -33,7 +32,7 @@ def test_completed_interview_item():
         role="Backend Engineer",
         score=85,
         completed_at="2026-05-30T10:00:00",
-        status="completed", 
+        status="completed",
     )
     assert item.score == 85
 
@@ -132,22 +131,24 @@ def test_scorecard_section_and_response():
 
 
 def test_interview_profile_response():
-    resp = InterviewProfileResponse.model_validate({
-        "candidate": {
-            "name": "Jane",
-            "email": "jane@example.com",
-            "phone": "+1234",
-            "resume_url": None,
-            "portfolio_url": None,
-        },
-        "interview": {
-            "platform": "zoom",
-            "duration": "45min",
-            "questions_answered": 3,
-            "questions_total": 5,
-            "status": "in_progress",
-        },
-    })
+    resp = InterviewProfileResponse.model_validate(
+        {
+            "candidate": {
+                "name": "Jane",
+                "email": "jane@example.com",
+                "phone": "+1234",
+                "resume_url": None,
+                "portfolio_url": None,
+            },
+            "interview": {
+                "platform": "zoom",
+                "duration": "45min",
+                "questions_answered": 3,
+                "questions_total": 5,
+                "status": "in_progress",
+            },
+        }
+    )
     assert resp.interview.platform == "zoom"
 
 

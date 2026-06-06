@@ -38,3 +38,23 @@ class ChatHistoryResponse(BaseModel):
     interview_id: UUID
     total_messages: int
     messages: list[ChatMessageResponse]
+
+
+class ChatVoiceUploadResponse(BaseModel):
+    """Response after uploading and transcribing an audio query."""
+
+    role: str = "assistant"
+    content: str
+    transcription: str
+    sent_at: datetime | None = None
+    sequence_no: int
+
+
+class ChatDocumentUploadResponse(BaseModel):
+    """Response after uploading a document as a chat query."""
+
+    role: str = "assistant"
+    content: str
+    document_text_preview: str
+    sent_at: datetime | None = None
+    sequence_no: int

@@ -1,5 +1,5 @@
 import uuid
-import pytest
+
 from app.models.base import Base
 from app.models.notification import Notification
 
@@ -11,9 +11,19 @@ class TestNotificationModel:
     def test_has_expected_columns(self):
         table = Base.metadata.tables["notifications"]
         cols = {c.name for c in table.columns}
-        expected = {"id", "user_id", "type", "title", "description",
-                    "is_read", "action_label", "action_url",
-                    "created_at", "updated_at", "deleted_at"}
+        expected = {
+            "id",
+            "user_id",
+            "type",
+            "title",
+            "description",
+            "is_read",
+            "action_label",
+            "action_url",
+            "created_at",
+            "updated_at",
+            "deleted_at",
+        }
         assert expected.issubset(cols)
 
     def test_user_id_foreign_key(self):

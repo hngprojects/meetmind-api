@@ -8,7 +8,6 @@ from app.services.notification_service import NotificationService, time_display
 
 
 class TestNotificationService:
-
     @pytest.mark.anyio
     async def test_create_persists_notification(self, db_session):
         user_id = uuid.uuid4()
@@ -36,17 +35,24 @@ class TestNotificationService:
         now = datetime.now(timezone.utc)
         user_id = uuid.uuid4()
         n1 = await NotificationService.create(
-            db=db_session, user_id=user_id, type="report", title="Older",
+            db=db_session,
+            user_id=user_id,
+            type="report",
+            title="Older",
         )
         n1.created_at = now - timedelta(seconds=5)
         n2 = await NotificationService.create(
-            db=db_session, user_id=user_id, type="report", title="Newer",
+            db=db_session,
+            user_id=user_id,
+            type="report",
+            title="Newer",
         )
         n2.created_at = now
         await db_session.commit()
 
         notifs, total = await NotificationService.list_for_user(
-            db=db_session, user_id=user_id,
+            db=db_session,
+            user_id=user_id,
         )
         assert total == 2
         assert [n.id for n in notifs] == [n2.id, n1.id]
@@ -55,16 +61,23 @@ class TestNotificationService:
     async def test_list_for_user_excludes_soft_deleted(self, db_session):
         user_id = uuid.uuid4()
         await NotificationService.create(
-            db=db_session, user_id=user_id, type="report", title="Active",
+            db=db_session,
+            user_id=user_id,
+            type="report",
+            title="Active",
         )
         deleted = await NotificationService.create(
-            db=db_session, user_id=user_id, type="report", title="Deleted",
+            db=db_session,
+            user_id=user_id,
+            type="report",
+            title="Deleted",
         )
         deleted.deleted_at = datetime.now(timezone.utc)
         await db_session.commit()
 
         notifs, total = await NotificationService.list_for_user(
-            db=db_session, user_id=user_id,
+            db=db_session,
+            user_id=user_id,
         )
         assert total == 1
         assert notifs[0].title == "Active"
@@ -73,16 +86,24 @@ class TestNotificationService:
     async def test_filter_unread_returns_only_unread(self, db_session):
         user_id = uuid.uuid4()
         read = await NotificationService.create(
-            db=db_session, user_id=user_id, type="report", title="Read",
+            db=db_session,
+            user_id=user_id,
+            type="report",
+            title="Read",
         )
         read.is_read = True
         unread = await NotificationService.create(
-            db=db_session, user_id=user_id, type="report", title="Unread",
+            db=db_session,
+            user_id=user_id,
+            type="report",
+            title="Unread",
         )
         await db_session.commit()
 
         notifs, total = await NotificationService.list_for_user(
-            db=db_session, user_id=user_id, filter="unread",
+            db=db_session,
+            user_id=user_id,
+            filter="unread",
         )
         assert total == 1
         assert notifs[0].title == "Unread"
@@ -91,10 +112,15 @@ class TestNotificationService:
     async def test_mark_read_sets_is_read_true(self, db_session):
         user_id = uuid.uuid4()
         notif = await NotificationService.create(
-            db=db_session, user_id=user_id, type="report", title="Test",
+            db=db_session,
+            user_id=user_id,
+            type="report",
+            title="Test",
         )
         updated = await NotificationService.mark_read(
-            db=db_session, notification_id=notif.id, user_id=user_id,
+            db=db_session,
+            notification_id=notif.id,
+            user_id=user_id,
         )
         assert updated.is_read is True
 
@@ -102,14 +128,21 @@ class TestNotificationService:
     async def test_mark_all_read_marks_all_as_read(self, db_session):
         user_id = uuid.uuid4()
         await NotificationService.create(
-            db=db_session, user_id=user_id, type="report", title="A",
+            db=db_session,
+            user_id=user_id,
+            type="report",
+            title="A",
         )
         await NotificationService.create(
-            db=db_session, user_id=user_id, type="report", title="B",
+            db=db_session,
+            user_id=user_id,
+            type="report",
+            title="B",
         )
         await NotificationService.mark_all_read(db=db_session, user_id=user_id)
 
         from sqlalchemy import select
+
         result = await db_session.execute(
             select(Notification).where(Notification.user_id == user_id)
         )
@@ -120,14 +153,21 @@ class TestNotificationService:
     async def test_soft_delete_all_sets_deleted_at_does_not_delete(self, db_session):
         user_id = uuid.uuid4()
         await NotificationService.create(
-            db=db_session, user_id=user_id, type="report", title="A",
+            db=db_session,
+            user_id=user_id,
+            type="report",
+            title="A",
         )
         await NotificationService.create(
-            db=db_session, user_id=user_id, type="report", title="B",
+            db=db_session,
+            user_id=user_id,
+            type="report",
+            title="B",
         )
         await NotificationService.soft_delete_all(db=db_session, user_id=user_id)
 
         from sqlalchemy import select
+
         result = await db_session.execute(
             select(Notification).where(Notification.user_id == user_id)
         )
@@ -137,7 +177,6 @@ class TestNotificationService:
 
 
 class TestTimeDisplay:
-
     def test_just_now(self):
         now = datetime.now(timezone.utc)
         dt = now - timedelta(seconds=10)
@@ -150,7 +189,7 @@ class TestTimeDisplay:
 
     def test_hours_ago(self):
         now = datetime(2025, 6, 15, 15, 0, 0, tzinfo=timezone.utc)  # 3pm
-        dt = datetime(2025, 6, 15, 12, 0, 0, tzinfo=timezone.utc)   # noon same day
+        dt = datetime(2025, 6, 15, 12, 0, 0, tzinfo=timezone.utc)  # noon same day
         assert time_display(dt, now=now) == "3 hours ago"
 
     def test_yesterday(self):
