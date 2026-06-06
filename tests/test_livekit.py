@@ -371,9 +371,7 @@ async def test_result_sets_interview_completed(
     await db_session.commit()
 
     payload = {"transcript": [], "report": None}
-    response = await client.post(
-        f"{LIVEKIT_URL}/{interview.id}/result", json=payload
-    )
+    response = await client.post(f"{LIVEKIT_URL}/{interview.id}/result", json=payload)
     assert response.status_code == 200
     await db_session.refresh(interview)
     assert interview.status == "completed"
@@ -489,8 +487,7 @@ async def test_result_writes_summary_assessment(
 
     assessment = json.loads(summary.ai_assessment)
     assert (
-        assessment["overview"]
-        == "Excellent candidate who demonstrated clear thinking."
+        assessment["overview"] == "Excellent candidate who demonstrated clear thinking."
     )
     assert (
         assessment["summary"]

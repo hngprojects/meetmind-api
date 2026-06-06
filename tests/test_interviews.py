@@ -12,9 +12,9 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.user import User
+from app.services.auth import AuthService
 from tests.test_helpers import (
-    build_interview_payload,
-    create_candidate_for_user,
     create_interview_via_route,
 )
 
@@ -294,6 +294,7 @@ class TestMissingFrontendEndpoints:
         interview_id = uuid.UUID(create_res.json()["data"]["id"])
 
         from app.models.interview import Interview
+
         interview = await db_session.get(Interview, interview_id)
         workspace_id = interview.workspace_id
 
@@ -379,6 +380,7 @@ class TestMissingFrontendEndpoints:
         interview_id = uuid.UUID(create_res.json()["data"]["id"])
 
         from app.models.interview import Candidate, Interview
+
         interview = await db_session.get(Interview, interview_id)
         candidate = await db_session.get(Candidate, interview.candidate_id)
 
@@ -393,7 +395,9 @@ class TestMissingFrontendEndpoints:
         assert data["candidate"]["name"] == candidate.full_name
         assert data["candidate"]["email"] == candidate.email
         assert data["interview"]["platform"] == interview.platform
-        assert data["interview"]["questions_answered"] == (interview.questions_asked or 0)
+        assert data["interview"]["questions_answered"] == (
+            interview.questions_asked or 0
+        )
         assert data["interview"]["questions_total"] == (interview.questions_total or 0)
 
     @pytest.mark.anyio
@@ -424,6 +428,7 @@ class TestMissingFrontendEndpoints:
         interview_id = uuid.UUID(create_res.json()["data"]["id"])
 
         from app.models.interview import Interview
+
         interview = await db_session.get(Interview, interview_id)
         interview.status = "in_progress"
         await db_session.commit()
@@ -449,6 +454,7 @@ class TestDeadSessionsRoute:
         self, client: AsyncClient, db_session: AsyncSession
     ):
         from app.models.interview import Interview, InterviewSession
+
         user = await create_user(db_session)
         token = await AuthService.create_access_token(user)
         response = await create_interview_via_route(client, db_session, token)

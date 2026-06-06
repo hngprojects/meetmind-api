@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,9 +15,10 @@ from app.models.interview import (
 )
 from app.models.user import User
 from app.services.auth import AuthService
-from tests.test_helpers import create_interview_via_route, patch_generate_interview_plan
+from tests.test_helpers import create_interview_via_route
 
 INTERVIEWS_URL = "/api/v1/interviews"
+
 
 # --- Teammate's fast Auth Helper ---
 async def create_user(db: AsyncSession, email: str | None = None) -> User:
@@ -25,8 +27,10 @@ async def create_user(db: AsyncSession, email: str | None = None) -> User:
     await db.flush()
     return user
 
+
 def auth_headers(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
+
 
 # --- Reconciled Creation Helper ---
 async def create_interview(client: AsyncClient, db: AsyncSession, token: str) -> str:
@@ -36,13 +40,10 @@ async def create_interview(client: AsyncClient, db: AsyncSession, token: str) ->
         "job_description": "Test APIs and edge cases.",
         "skills_to_assess": ["Communication", "Problem Solving"],
         "platform": "zoom",
-        "ai_tone": "professional"
+        "ai_tone": "professional",
     }
     response = await create_interview_via_route(
-        client=client,
-        db_session=db,
-        token=token,
-        interview_overrides=payload
+        client=client, db_session=db, token=token, interview_overrides=payload
     )
     assert response.status_code == 201
     return response.json()["data"]["id"]
@@ -83,23 +84,25 @@ class TestTranscriptEndpoints:
         transcript = InterviewTranscript(interview_id=interview.id)
         db_session.add(transcript)
         await db_session.flush()
-        
-        db_session.add_all([
-            InterviewTranscriptTurn(
-                transcript_id=transcript.id,
-                speaker="ai",
-                content="Tell me about your approach.",
-                timestamp_sec=60, # Start offset
-                sequence_no=1,
-            ),
-            InterviewTranscriptTurn(
-                transcript_id=transcript.id,
-                speaker="candidate",
-                content="I start by clarifying requirements.",
-                timestamp_sec=125, # 65s after first turn
-                sequence_no=2,
-            ),
-        ])
+
+        db_session.add_all(
+            [
+                InterviewTranscriptTurn(
+                    transcript_id=transcript.id,
+                    speaker="ai",
+                    content="Tell me about your approach.",
+                    timestamp_sec=60,  # Start offset
+                    sequence_no=1,
+                ),
+                InterviewTranscriptTurn(
+                    transcript_id=transcript.id,
+                    speaker="candidate",
+                    content="I start by clarifying requirements.",
+                    timestamp_sec=125,  # 65s after first turn
+                    sequence_no=2,
+                ),
+            ]
+        )
         await db_session.flush()
 
         response = await client.get(
@@ -107,10 +110,10 @@ class TestTranscriptEndpoints:
             headers=auth_headers(token),
         )
         data = response.json()["data"]
-        
+
         # Kept: Your logic for relative timestamps
-        assert data["turns"][0]["timestamp"] == "00:00:00" 
-        assert data["turns"][1]["timestamp"] == "00:01:05" 
+        assert data["turns"][0]["timestamp"] == "00:00:00"
+        assert data["turns"][1]["timestamp"] == "00:01:05"
 
         # Kept: Export assertions
         response_export = await client.get(
@@ -121,13 +124,15 @@ class TestTranscriptEndpoints:
         assert "[00:01:05]" in response_export.text
 
     @pytest.mark.anyio
-    async def test_get_transcript_access_control(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_get_transcript_access_control(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         # Adopted teammate's two-user isolation check logic
         owner = await create_user(db_session)
         owner_token = await AuthService.create_access_token(owner)
         other = await create_user(db_session)
         other_token = await AuthService.create_access_token(other)
-        
+
         interview_id = await create_interview(client, db_session, owner_token)
 
         resp = await client.get(

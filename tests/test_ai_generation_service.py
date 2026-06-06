@@ -38,7 +38,6 @@ from app.models.user import User
 from app.models.workspace import Workspace
 from app.services.ai_generation_service import AIGenerationService
 
-
 # ── helpers ──────────────────────────────────────────────────────────
 
 

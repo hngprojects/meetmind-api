@@ -24,12 +24,15 @@ from app.models.interview import (
     InterviewTranscript,
     InterviewTranscriptTurn,
 )
+from app.models.recruiter_chat import RecruiterChatMessage
 from app.models.user import User
 from app.schemas.assessment import AssessmentOutput
 from app.schemas.interview import InterviewPlanOutput
+from app.services.document_service import DocumentService
 from app.services.interview import InterviewService
 from app.services.interview_context_service import InterviewContextService
 from app.services.notification_service import NotificationService
+from app.services.transcription_service import transcribe_audio
 
 logger = logging.getLogger(__name__)
 
@@ -647,6 +650,11 @@ class AIGenerationService:
                 You are MeetMind, an AI assistant that helps users
                 understand and extract insights from interview sessions. Answer questions based
                 only on the provided transcript and context. Do not make up information.
+
+                If the user's question is vague, ambiguous, or doesn't exactly match the
+                transcript content, interpret the closest possible meaning based on the
+                interview session and answer accordingly. If no reasonable connection can
+                be made, say the information is not available in the transcript.
             """).strip(),
             user_content=dedent(f"""
                 # JOB DESCRIPTION
@@ -726,12 +734,30 @@ class AIGenerationService:
         user: User,
         db: AsyncSession,
     ) -> dict:
-        """Answer a recruiter chat message statelessly (no DB save)."""
+        """Answer a recruiter chat message and persist both query and answer."""
 
         await cls.get_interview_for_user(interview_id, user, db)
 
-        transcript = await cls._get_or_create_transcript(interview_id, db)
-        real_next_seq = await cls._next_sequence(transcript.id, db)
+        last_seq = (
+            await db.execute(
+                select(RecruiterChatMessage.sequence_no)
+                .where(RecruiterChatMessage.interview_id == interview_id)
+                .order_by(RecruiterChatMessage.sequence_no.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none() or 0
+
+        user_seq = last_seq + 1
+        db.add(
+            RecruiterChatMessage(
+                interview_id=interview_id,
+                user_id=user.id,
+                role="user",
+                content=content,
+                sequence_no=user_seq,
+            )
+        )
+        await db.flush()
 
         answer = await cls.answer_query(
             interview_id=interview_id,
@@ -740,12 +766,65 @@ class AIGenerationService:
             db=db,
         )
 
+        answer_seq = user_seq + 1
+        db.add(
+            RecruiterChatMessage(
+                interview_id=interview_id,
+                user_id=user.id,
+                role="assistant",
+                content=answer,
+                sequence_no=answer_seq,
+            )
+        )
+        await db.commit()
+
         return {
             "role": "assistant",
             "content": answer,
             "sent_at": datetime.now(timezone.utc),
-            "sequence_no": real_next_seq + 1,
+            "sequence_no": answer_seq,
         }
+
+    @classmethod
+    async def send_chat_voice(
+        cls,
+        interview_id: uuid.UUID,
+        audio_content: bytes,
+        filename: str,
+        user: User,
+        db: AsyncSession,
+    ) -> dict:
+        """Transcribe audio, answer the query, and persist both."""
+        transcription = await transcribe_audio(audio_content, filename)
+        result = await cls.send_chat_message(
+            interview_id=interview_id,
+            content=transcription,
+            user=user,
+            db=db,
+        )
+        result["transcription"] = transcription
+        return result
+
+    @classmethod
+    async def send_chat_document(
+        cls,
+        interview_id: uuid.UUID,
+        file_content: bytes,
+        filename: str,
+        user: User,
+        db: AsyncSession,
+    ) -> dict:
+        """Extract text from a document, answer the query, and persist both."""
+        raw_text = await DocumentService.extract_text(filename, file_content)
+        preview = raw_text[:500]
+        result = await cls.send_chat_message(
+            interview_id=interview_id,
+            content=raw_text,
+            user=user,
+            db=db,
+        )
+        result["document_text_preview"] = preview
+        return result
 
     @classmethod
     async def generate_interview_plan(
