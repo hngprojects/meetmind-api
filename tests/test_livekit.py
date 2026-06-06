@@ -10,14 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.models.interview import (
     Interview,
+    InterviewSummary,
     InterviewTranscript,
     InterviewTranscriptTurn,
-    InterviewSummary,
 )
 from app.models.user import User
 from app.services.auth import AuthService
 from tests.test_helpers import create_interview_via_route
-
 
 LIVEKIT_URL = "/api/v1/livekit"
 INTERVIEWS_URL = "/api/v1/interviews"
@@ -398,7 +397,11 @@ async def test_result_writes_scorecard_scores(
         "report": {
             "criteria": [
                 {"name": "Communication", "score": 4, "justification": "Clear answers"},
-                {"name": "Technical depth", "score": 3, "justification": "Solid basics"},
+                {
+                    "name": "Technical depth",
+                    "score": 3,
+                    "justification": "Solid basics",
+                },
             ],
             "overall": "yes",
             "summary": "Strong candidate overall.",
@@ -434,6 +437,9 @@ async def test_result_writes_summary_assessment(
             "criteria": [],
             "overall": "strong_yes",
             "summary": "Excellent candidate who demonstrated clear thinking.",
+            "highlights": ["Explained a complex API migration with clear tradeoffs."],
+            "red_flags": ["Gave vague answers about day-to-day responsibilities."],
+            "confidence": 0.91,
         },
     }
     await client.post(f"{LIVEKIT_URL}/{interview.id}/result", json=payload)
@@ -450,6 +456,21 @@ async def test_result_writes_summary_assessment(
         assessment["overview"]
         == "Excellent candidate who demonstrated clear thinking."
     )
+    assert (
+        assessment["summary"]
+        == "Excellent candidate who demonstrated clear thinking."
+    )
+    assert (
+        assessment["observation"]
+        == "Excellent candidate who demonstrated clear thinking."
+    )
+    assert assessment["highlights"] == [
+        "Explained a complex API migration with clear tradeoffs."
+    ]
+    assert assessment["red_flags"] == [
+        "Gave vague answers about day-to-day responsibilities."
+    ]
+    assert assessment["confidence"] == 0.91
     assert assessment["overall_recommendation"] == "strong_yes"
     assert summary.status == "completed"
 
@@ -463,5 +484,3 @@ async def test_result_404_for_unknown_interview(
         json={"transcript": [], "report": None},
     )
     assert response.status_code == 404
-
-
