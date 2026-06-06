@@ -11,7 +11,6 @@ from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
 from app.services.auth import AuthService
 
-
 SUMMARY_URL = "/api/v1/interviews/{id}/summary"
 RETRY_URL = "/api/v1/interviews/{id}/summary/retry"
 SESSION_URL = "/api/v1/interviews/{id}/session"

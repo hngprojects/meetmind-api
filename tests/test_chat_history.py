@@ -5,14 +5,14 @@ Tests for GET /api/v1/interviews/{interview_id}/chat/history
 from __future__ import annotations
 
 import uuid
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tests.test_helpers import create_interview_via_route
 from app.models.user import User
 from app.services.auth import AuthService
-
+from tests.test_helpers import create_interview_via_route
 
 # ── URLs ─────────────────────────────────────────────────────────────
 
@@ -22,12 +22,10 @@ CHAT_HISTORY_URL = "/api/v1/interviews/{id}/chat/history"
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
+
 async def create_user(db: AsyncSession, email: str | None = None) -> User:
     """Teammate's helper: directly creates a user in the DB for speed."""
-    user = User(
-        email=email or f"{uuid.uuid4().hex[:8]}@example.com",
-        is_verified=True
-    )
+    user = User(email=email or f"{uuid.uuid4().hex[:8]}@example.com", is_verified=True)
     db.add(user)
     await db.flush()
     return user
@@ -49,6 +47,7 @@ VALID_INTERVIEW_PAYLOAD = {
 
 
 # ── Tests ────────────────────────────────────────────────────────────
+
 
 class TestGetChatHistory:
     @pytest.mark.anyio

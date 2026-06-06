@@ -4,20 +4,18 @@ import uuid
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
-from sqlalchemy import select
+from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.interview import Candidate
 from app.models.user import User
-from httpx import AsyncClient
-from app.services.auth import AuthService
-from app.services.interview import _get_or_create_workspace
 from app.schemas.interview import (
     InterviewPlanOutput,
     InterviewQuestionSchema,
     RubricCriterion,
 )
-
+from app.services.auth import AuthService
+from app.services.interview import _get_or_create_workspace
 
 DEFAULT_INTERVIEW_CONFIG: dict[str, Any] = {
     "role_title": "Senior Backend Engineer",
@@ -45,13 +43,11 @@ async def get_user_from_token(db_session: AsyncSession, token: str) -> User:
 
 
 async def create_candidate_for_user(
-    db_session: AsyncSession,
-    token: str,
-    **kwargs
+    db_session: AsyncSession, token: str, **kwargs
 ) -> Candidate:
     user = await get_user_from_token(db_session, token)
     workspace_id = await _get_or_create_workspace(db_session, user)
-    
+
     # Convert list to string if provided
     skills = kwargs.get("skills")
     skills_str = ", ".join(skills) if isinstance(skills, list) else skills
@@ -67,9 +63,10 @@ async def create_candidate_for_user(
         location=kwargs.get("location", "Remote"),
     )
     db_session.add(candidate)
-    await db_session.flush() # Use flush so we don't end the transaction early
+    await db_session.flush()  # Use flush so we don't end the transaction early
     await db_session.refresh(candidate)
     return candidate
+
 
 async def create_interview_via_route(
     client: AsyncClient,
@@ -81,14 +78,12 @@ async def create_interview_via_route(
 ):
     # 1. Create the candidate in the DB first
     candidate = await create_candidate_for_user(
-        db_session=db_session,
-        token=token,
-        ** (candidate_kwargs or {})
+        db_session=db_session, token=token, **(candidate_kwargs or {})
     )
-    
+
     # 2. Build the payload using that candidate's REAL ID
     payload = build_interview_payload(candidate, interview_overrides)
-    
+
     # 3. Patch the AI call so it doesn't hit Gemini
     with patch_generate_interview_plan():
         response = await client.post(
@@ -96,7 +91,7 @@ async def create_interview_via_route(
             json=payload,
             headers={"Authorization": f"Bearer {token}"},
         )
-    
+
     # We remove the hard assertion here so the test can handle the status check
     return response
 
