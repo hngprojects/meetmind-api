@@ -20,6 +20,7 @@ from tests.test_helpers import (
 
 from app.models.user import User
 from app.services.auth import AuthService
+from app.services.interview import InterviewService
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +103,24 @@ class TestCreateInterview:
         assert data["status"] == "scheduled"
         assert data["candidate_name"] == "John Doe"
 
+@pytest.mark.anyio
+async def test_generate_interview_plan_fallback_matches_design_role():
+    from app.services.interview import _fallback_interview_plan
+
+    plan = _fallback_interview_plan(
+        role_title="Product Designer",
+        skills_to_assess=["UX Research", "Visual Design"],
+    )
+
+    assert "Product Designer" in plan.intro
+    assert "Welcome to the interview" in plan.intro
+
+    question_text = " ".join(q.text.lower() for q in plan.questions)
+    assert "design" in question_text
+    assert "backend" not in question_text
+    assert "database" not in question_text
+    assert len(plan.questions) == 5
+    assert [r.name for r in plan.rubric] == ["UX Research", "Visual Design"]
 
 class TestGetInterview:
     @pytest.mark.anyio
@@ -439,7 +458,6 @@ class TestDeadSessionsRoute:
         session = await db_session.get(InterviewSession, interview.session_id)
         assert session is not None
         assert session.questions_json is not None
-
 
 
 
