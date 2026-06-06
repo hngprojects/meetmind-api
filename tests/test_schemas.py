@@ -116,6 +116,7 @@ def test_interview_summary_detail_response():
 
 def test_scorecard_section_and_response():
     section = ScorecardSection(
+        id="technical_depth",
         title="Technical Depth",
         score=80,
         score_bar_percent=80,

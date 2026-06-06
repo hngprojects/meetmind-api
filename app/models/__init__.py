@@ -26,9 +26,11 @@ from app.models.notification import Notification
 from app.models.scorecard import (
     InterviewScorecard,
     ScorecardCategory,
+    ScorecardEvidence,
     ScorecardQuestion,
     ScorecardScore,
     ScorecardSignal,
+    ScorecardSubRubric,
 )
 from app.models.subscription import EmailSubscription
 from app.models.support import SupportTicket
@@ -118,6 +120,8 @@ __all__ = [
     "ScorecardScore",
     "ScorecardQuestion",
     "ScorecardSignal",
+    "ScorecardEvidence",
+    "ScorecardSubRubric",
     # Documents
     "DocumentChunk",
     "CandidateDocument",
