@@ -33,16 +33,12 @@ DEFAULT_INTERVIEW_CONFIG = {
     "closing": "Thanks for your time. A recruiter will follow up with next steps.",
     "questions": [
         {
-            "text": (
-                "Walk me through work you have done that best matches this role."
-            ),
+            "text": ("Walk me through work you have done that best matches this role."),
             "followUpHint": "Probe scope, their contribution, outcomes, and trade-offs.",
             "maxFollowUps": 2,
         },
         {
-            "text": (
-                "Tell me about a challenging project and how you approached it."
-            ),
+            "text": ("Tell me about a challenging project and how you approached it."),
             "followUpHint": (
                 "Probe problem solving, collaboration, constraints, and impact."
             ),

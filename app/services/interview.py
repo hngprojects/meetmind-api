@@ -8,11 +8,10 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import status
-from sqlalchemy import delete, func, or_, select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from google import genai
 from google.genai import types
+from sqlalchemy import delete, func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.responses import APIError
@@ -70,7 +69,9 @@ def _build_candidate_context(candidate: Candidate) -> str:
     return _join_non_empty(
         [
             f"Name: {candidate.full_name}" if candidate.full_name else None,
-            f"Current role: {candidate.current_role}" if candidate.current_role else None,
+            f"Current role: {candidate.current_role}"
+            if candidate.current_role
+            else None,
             (
                 f"Years of experience: {candidate.years_of_experience}"
                 if candidate.years_of_experience is not None
@@ -78,7 +79,9 @@ def _build_candidate_context(candidate: Candidate) -> str:
             ),
             f"Skills: {candidate.skills}" if candidate.skills else None,
             f"Location: {candidate.location}" if candidate.location else None,
-            f"Portfolio: {candidate.portfolio_url}" if candidate.portfolio_url else None,
+            f"Portfolio: {candidate.portfolio_url}"
+            if candidate.portfolio_url
+            else None,
         ]
     )
 
@@ -392,13 +395,15 @@ Keep all text suitable for a live audio call (concise and natural).
                 task_name=f"Generate interview plan for {role_title}",
             )
             plan = InterviewPlanOutput.model_validate_json(response.text)
-            logger.info(f"✅ INTERVIEW PLAN GENERATED SUCCESSFULLY")
+            logger.info("✅ INTERVIEW PLAN GENERATED SUCCESSFULLY")
             logger.info(f"   Intro: {plan.intro}")
             logger.info(f"   Questions ({len(plan.questions)}):")
             for idx, q in enumerate(plan.questions, 1):
                 logger.info(f"     {idx}. {q.text}")
                 logger.info(f"        Follow-up hint: {q.followUpHint}")
-            logger.info(f"   Rubric criteria: {', '.join([r.name for r in plan.rubric])}")
+            logger.info(
+                f"   Rubric criteria: {', '.join([r.name for r in plan.rubric])}"
+            )
             logger.info(f"   Closing: {plan.closing}\n")
             return plan
         except Exception as e:
@@ -412,7 +417,7 @@ Keep all text suitable for a live audio call (concise and natural).
                 skills_to_assess=skills_to_assess,
                 custom_question=custom_question,
             )
-            logger.info(f"✅ FALLBACK INTERVIEW PLAN USED")
+            logger.info("✅ FALLBACK INTERVIEW PLAN USED")
             logger.info(f"   Questions ({len(fallback.questions)}):")
             for idx, q in enumerate(fallback.questions, 1):
                 logger.info(f"     {idx}. {q.text}\n")
@@ -476,7 +481,9 @@ Keep all text suitable for a live audio call (concise and natural).
             custom_question=request.custom_question,
             candidate_context=_build_candidate_context(candidate),
         )
-        logger.info(f"📋 CREATING INTERVIEW SESSION with {len(plan.questions)} questions")
+        logger.info(
+            f"📋 CREATING INTERVIEW SESSION with {len(plan.questions)} questions"
+        )
 
         if request.scheduled_start and request.scheduled_end:
             duration_minutes = int(
@@ -976,7 +983,7 @@ Keep all text suitable for a live audio call (concise and natural).
         """Return the full LiveKit agent context for an interview."""
         logger = logging.getLogger("app.services.interview")
         logger.info(f"\n🎙️ LIVEKIT AGENT CONFIG REQUEST for interview {interview_id}")
-        
+
         interview = await cls._resolve_interview(interview_id, db)
 
         candidate = (
@@ -1008,10 +1015,16 @@ Keep all text suitable for a live audio call (concise and natural).
         await db.commit()
 
         # Parse and log questions being sent to agent
-        questions = json.loads(session.questions_json) if session and session.questions_json else []
+        questions = (
+            json.loads(session.questions_json)
+            if session and session.questions_json
+            else []
+        )
         logger.info(f"   Candidate: {candidate.full_name if candidate else 'Unknown'}")
         logger.info(f"   Role: {interview.role_title}")
-        logger.info(f"   Duration: {cls._duration_from_schedule_or_session(interview, session)} minutes")
+        logger.info(
+            f"   Duration: {cls._duration_from_schedule_or_session(interview, session)} minutes"
+        )
         logger.info(f"   Sending {len(questions)} questions to LiveKit agent:")
         for idx, q in enumerate(questions, 1):
             logger.info(f"     {idx}. {q.get('text', 'N/A')}")
@@ -1282,9 +1295,7 @@ Keep all text suitable for a live audio call (concise and natural).
                 assessment = {}
 
         summary_text = (
-            report.get("summary")
-            or report.get("overview")
-            or report.get("observation")
+            report.get("summary") or report.get("overview") or report.get("observation")
         )
 
         if summary_text is not None:
@@ -1331,9 +1342,7 @@ Keep all text suitable for a live audio call (concise and natural).
         for item in value:
             if isinstance(item, dict):
                 item = (
-                    item.get("description")
-                    or item.get("content")
-                    or item.get("text")
+                    item.get("description") or item.get("content") or item.get("text")
                 )
             if not isinstance(item, str):
                 continue
