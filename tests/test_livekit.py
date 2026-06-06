@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.agent.interview import build_instructions, interview_from_api
 from app.models.interview import (
     Interview,
     InterviewSummary,
@@ -100,6 +101,41 @@ async def test_agent_config_returns_full_context(
     assert len(data["rubric"]) > 0
     assert data["jobDescription"] is not None
     assert data["participationMode"] == "standard"
+
+
+def test_livekit_agent_prompt_includes_context_and_avoids_backend_default():
+    interview = interview_from_api(
+        {
+            "role": "Product Designer",
+            "intro": "a design interview",
+            "candidateName": "Ada Lovelace",
+            "durationMinutes": 30,
+            "closing": "Thanks for speaking with us.",
+            "jobDescription": "Design accessible dashboards for analytics teams.",
+            "keySkills": ["UX Research", "Interaction Design"],
+            "aiTone": "warm",
+            "questions": [
+                {
+                    "text": "Walk me through a design project.",
+                    "followUpHint": "Probe process and impact.",
+                    "maxFollowUps": 2,
+                }
+            ],
+            "rubric": [
+                {
+                    "name": "Design Process",
+                    "description": "Uses a clear user-centered process.",
+                    "weight": 3,
+                }
+            ],
+        }
+    )
+
+    instructions = build_instructions(interview)
+
+    assert "Design accessible dashboards" in instructions
+    assert "UX Research, Interaction Design" in instructions
+    assert "backend system" not in instructions
 
 
 @pytest.mark.anyio
