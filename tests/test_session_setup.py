@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,8 +23,9 @@ VALID_STEP1_PAYLOAD = {
     "skills_to_assess": ["Coding"],
     "scheduled_start": "2026-06-01T10:00:00Z",
     "scheduled_end": "2026-06-01T11:00:00Z",
-    "ai_tone": "professional"
+    "ai_tone": "professional",
 }
+
 
 # --- Teammate's Auth Helper (from dev) ---
 async def create_user(db: AsyncSession, email: str | None = None) -> User:
@@ -32,8 +34,10 @@ async def create_user(db: AsyncSession, email: str | None = None) -> User:
     await db.flush()
     return user
 
+
 def auth_headers(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
+
 
 class TestCreateInterviewStep1:
     @pytest.mark.anyio
@@ -43,14 +47,17 @@ class TestCreateInterviewStep1:
         # Merge: Teammate's auth + Your T-Minus 0 Helper
         user = await create_user(db_session)
         token = await AuthService.create_access_token(user)
-        
+
         response = await create_interview_via_route(
             client=client,
             db_session=db_session,
             token=token,
-            interview_overrides={**VALID_STEP1_PAYLOAD, "role_title": "Product Manager"},
+            interview_overrides={
+                **VALID_STEP1_PAYLOAD,
+                "role_title": "Product Manager",
+            },
         )
-        
+
         assert response.status_code == 201
         data = response.json()["data"]
         # Reconciliation: New flow results in 'scheduled'
@@ -71,8 +78,11 @@ class TestCreateInterviewStep1:
         token = await AuthService.create_access_token(user)
         # New logic requires the 'candidate' dictionary
         payload = {k: v for k, v in VALID_STEP1_PAYLOAD.items() if k != "candidate"}
-        response = await client.post(INTERVIEWS_URL, json=payload, headers=auth_headers(token))
+        response = await client.post(
+            INTERVIEWS_URL, json=payload, headers=auth_headers(token)
+        )
         assert response.status_code == 422
+
 
 class TestUpdateContext:
     @pytest.mark.anyio
@@ -101,6 +111,7 @@ class TestUpdateContext:
         assert response.status_code == 200
         assert response.json()["data"]["status"] == "scheduled"
 
+
 class TestConfirmInterview:
     @pytest.mark.anyio
     async def test_confirm_transitions_to_scheduled(
@@ -112,7 +123,7 @@ class TestConfirmInterview:
             client=client,
             db_session=db_session,
             token=token,
-            interview_overrides=VALID_STEP1_PAYLOAD
+            interview_overrides=VALID_STEP1_PAYLOAD,
         )
         interview_id = create.json()["data"]["id"]
 
@@ -124,6 +135,7 @@ class TestConfirmInterview:
         assert response.status_code == 200
         assert response.json()["data"]["status"] == "scheduled"
 
+
 class TestDashboardOverview:
     @pytest.mark.anyio
     async def test_returns_overview_with_stats(
@@ -131,7 +143,7 @@ class TestDashboardOverview:
     ):
         user = await create_user(db_session)
         token = await AuthService.create_access_token(user)
-        
+
         # Must use helper to ensure data exists in the workspace
         await create_interview_via_route(
             client=client,
@@ -140,7 +152,9 @@ class TestDashboardOverview:
             interview_overrides=VALID_STEP1_PAYLOAD,
         )
 
-        response = await client.get(f"{DASHBOARD_URL}/overview", headers=auth_headers(token))
+        response = await client.get(
+            f"{DASHBOARD_URL}/overview", headers=auth_headers(token)
+        )
         assert response.status_code == 200
         data = response.json()["data"]
         assert data["has_sessions"] is True

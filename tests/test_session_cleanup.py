@@ -31,7 +31,6 @@ from app.models.interview import (
 from app.models.user import User
 from app.services.auth import AuthService
 
-
 # ── Helpers ──────────────────────────────────────────────────────────
 
 
@@ -184,7 +183,7 @@ class TestCleanupPurgeOperations:
     @pytest.mark.anyio
     async def test_purge_local_files(self, tmp_path):
         """Local JSON transcript files matching session_id are deleted."""
-        from app.services.session_cleanup import _purge_local_files, TRANSCRIPTS_DIR
+        from app.services.session_cleanup import TRANSCRIPTS_DIR, _purge_local_files
 
         # Create a fake transcript file in the transcripts dir
         TRANSCRIPTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -423,9 +422,7 @@ class TestDeletionAuditsEndpoint:
         assert res.status_code == 401
 
     @pytest.mark.anyio
-    async def test_pagination(
-        self, client: AsyncClient, db_session: AsyncSession
-    ):
+    async def test_pagination(self, client: AsyncClient, db_session: AsyncSession):
         """Limit and offset params work correctly."""
         user = await create_user(db_session)
         token = await AuthService.create_access_token(user)

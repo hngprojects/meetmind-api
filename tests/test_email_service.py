@@ -8,7 +8,9 @@ from app.services import email_service
 @pytest.fixture(autouse=True)
 def enable_mock_emails(monkeypatch):
     monkeypatch.setattr(email_service.settings, "MOCK_EMAILS", True)
-    monkeypatch.setattr(email_service.settings, "FRONTEND_URL", "https://app.meetmind.test")
+    monkeypatch.setattr(
+        email_service.settings, "FRONTEND_URL", "https://app.meetmind.test"
+    )
 
 
 @pytest.mark.asyncio

@@ -26,33 +26,31 @@ logger = logging.getLogger(__name__)
 
 # Schema-compliant sandbox fallback for developer local testing
 DEFAULT_INTERVIEW_CONFIG = {
-    "role": "Software Engineer",
+    "role": "Interview Candidate",
     "intro": "an automated first-round screening interview",
     "candidateName": "Test Candidate",
     "durationMinutes": 20,
     "closing": "Thanks for your time. A recruiter will follow up with next steps.",
     "questions": [
         {
-            "text": (
-                "Walk me through a backend system you've built that you're proud of."
+            "text": ("Walk me through work you have done that best matches this role."),
+            "followUpHint": (
+                "Probe scope, their contribution, outcomes, and trade-offs."
             ),
-            "followUpHint": "Probe scale, their contribution, and trade-offs.",
             "maxFollowUps": 2,
         },
         {
-            "text": (
-                "How do you handle database migrations in a production environment?"
-            ),
+            "text": ("Tell me about a challenging project and how you approached it."),
             "followUpHint": (
-                "Probe migration tools, zero-downtime strategies, and rollbacks."
+                "Probe problem solving, collaboration, constraints, and impact."
             ),
             "maxFollowUps": 2,
         },
     ],
     "rubric": [
         {
-            "name": "Technical Depth",
-            "description": "Real, hands-on software engineering knowledge.",
+            "name": "Role Fit",
+            "description": "Relevant hands-on experience for the target role.",
             "weight": 3,
         },
         {
@@ -154,7 +152,6 @@ async def get_agent_config(interview_id: str, db: AsyncSession = Depends(get_ses
     interview_id = interview_id.strip()
     if interview_id == "test-room":
         return DEFAULT_INTERVIEW_CONFIG
-
     config = await InterviewService.get_agent_config(_parse_uuid(interview_id), db)
     return config
 

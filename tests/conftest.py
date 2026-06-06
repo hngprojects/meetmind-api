@@ -1,10 +1,5 @@
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
-from app.schemas.interview import (
-    InterviewPlanOutput,
-    InterviewQuestionSchema,
-    RubricCriterion,
-)
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -14,6 +9,12 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.pool import StaticPool
+
+from app.schemas.interview import (
+    InterviewPlanOutput,
+    InterviewQuestionSchema,
+    RubricCriterion,
+)
 
 # Stub heavy external modules before any app import to avoid
 # ModuleNotFoundError from transitive dependencies not related to tests.
@@ -213,8 +214,10 @@ def mock_ai_planner():
         )
         yield mock
 
+
 @pytest.fixture(autouse=True, scope="session")
 def disable_otel():
     from opentelemetry import trace
     from opentelemetry.sdk.trace import TracerProvider
+
     trace.set_tracer_provider(TracerProvider())

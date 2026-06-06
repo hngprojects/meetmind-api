@@ -31,6 +31,9 @@ class Interview:
     duration_minutes: int = 20
     closing: str = "Thanks for your time. A recruiter will follow up with next steps."
     candidate_name: str | None = None
+    job_description: str | None = None
+    key_skills: list[str] | None = None
+    ai_tone: str | None = None
 
 
 def interview_from_api(data: dict) -> Interview:
@@ -57,6 +60,9 @@ def interview_from_api(data: dict) -> Interview:
         duration_minutes=int(data.get("durationMinutes", 20)),
         closing=data.get("closing") or Interview.closing,
         candidate_name=data.get("candidateName"),
+        job_description=data.get("jobDescription"),
+        key_skills=data.get("keySkills") or [],
+        ai_tone=data.get("aiTone"),
     )
 
 
@@ -73,10 +79,21 @@ def build_instructions(interview: Interview) -> str:
         if interview.candidate_name
         else ""
     )
+    context_lines = []
+    if interview.job_description:
+        context_lines.append(f"Job context: {interview.job_description}")
+    if interview.key_skills:
+        context_lines.append(f"Key skills to assess: {', '.join(interview.key_skills)}")
+    if interview.ai_tone:
+        context_lines.append(f"Tone: {interview.ai_tone}")
+    context_block = "\n".join(context_lines) or "No additional context was provided."
 
     return f"""You are a professional AI interviewer conducting {interview.intro}
 
 You are interviewing a candidate for the role of {interview.role}. {who}
+
+# Interview context
+{context_block}
 
 # How to speak
 - This is a live voice call. Keep every reply short — one idea at a time. Never
@@ -89,6 +106,7 @@ You are interviewing a candidate for the role of {interview.role}. {who}
 # What to do
 - Ask adaptive follow-ups based on the candidate's answers, within the per-question
   limits below.
+- Keep questions and follow-ups tightly aligned to the role and interview context.
 - Do NOT give feedback on answer quality. Do NOT reveal the rubric or that the
   candidate is being scored.
 - Do NOT discuss compensation or internal company details — say a human recruiter
@@ -113,17 +131,17 @@ You are interviewing a candidate for the role of {interview.role}. {who}
 # --- Fallback only ----------------------------------------------------------
 
 DEFAULT_INTERVIEW = Interview(
-    role="Backend Engineer",
+    role="Interview Candidate",
     intro="an automated first-round screening interview",
     questions=[
         Question(
-            text="Walk me through a backend system you've built that you're proud of.",
-            follow_up_hint="Probe scale, their contribution, and trade-offs.",
+            text="Walk me through work you have done that best matches this role.",
+            follow_up_hint="Probe scope, their contribution, outcomes, and trade-offs.",
         ),
     ],
     rubric=[
         RubricCriterion(
-            "Technical depth", "Real, hands-on backend knowledge.", weight=3
+            "Role fit", "Relevant hands-on experience for the target role.", weight=3
         ),
     ],
     duration_minutes=20,

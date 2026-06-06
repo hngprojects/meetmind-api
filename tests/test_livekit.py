@@ -8,16 +8,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.agent.interview import build_instructions, interview_from_api
 from app.models.interview import (
     Interview,
+    InterviewSummary,
     InterviewTranscript,
     InterviewTranscriptTurn,
-    InterviewSummary,
 )
 from app.models.user import User
 from app.services.auth import AuthService
 from tests.test_helpers import create_interview_via_route
-
 
 LIVEKIT_URL = "/api/v1/livekit"
 INTERVIEWS_URL = "/api/v1/interviews"
@@ -101,6 +101,41 @@ async def test_agent_config_returns_full_context(
     assert len(data["rubric"]) > 0
     assert data["jobDescription"] is not None
     assert data["participationMode"] == "standard"
+
+
+def test_livekit_agent_prompt_includes_context_and_avoids_backend_default():
+    interview = interview_from_api(
+        {
+            "role": "Product Designer",
+            "intro": "a design interview",
+            "candidateName": "Ada Lovelace",
+            "durationMinutes": 30,
+            "closing": "Thanks for speaking with us.",
+            "jobDescription": "Design accessible dashboards for analytics teams.",
+            "keySkills": ["UX Research", "Interaction Design"],
+            "aiTone": "warm",
+            "questions": [
+                {
+                    "text": "Walk me through a design project.",
+                    "followUpHint": "Probe process and impact.",
+                    "maxFollowUps": 2,
+                }
+            ],
+            "rubric": [
+                {
+                    "name": "Design Process",
+                    "description": "Uses a clear user-centered process.",
+                    "weight": 3,
+                }
+            ],
+        }
+    )
+
+    instructions = build_instructions(interview)
+
+    assert "Design accessible dashboards" in instructions
+    assert "UX Research, Interaction Design" in instructions
+    assert "backend system" not in instructions
 
 
 @pytest.mark.anyio
@@ -336,9 +371,7 @@ async def test_result_sets_interview_completed(
     await db_session.commit()
 
     payload = {"transcript": [], "report": None}
-    response = await client.post(
-        f"{LIVEKIT_URL}/{interview.id}/result", json=payload
-    )
+    response = await client.post(f"{LIVEKIT_URL}/{interview.id}/result", json=payload)
     assert response.status_code == 200
     await db_session.refresh(interview)
     assert interview.status == "completed"
@@ -398,7 +431,11 @@ async def test_result_writes_scorecard_scores(
         "report": {
             "criteria": [
                 {"name": "Communication", "score": 4, "justification": "Clear answers"},
-                {"name": "Technical depth", "score": 3, "justification": "Solid basics"},
+                {
+                    "name": "Technical depth",
+                    "score": 3,
+                    "justification": "Solid basics",
+                },
             ],
             "overall": "yes",
             "summary": "Strong candidate overall.",
@@ -434,6 +471,9 @@ async def test_result_writes_summary_assessment(
             "criteria": [],
             "overall": "strong_yes",
             "summary": "Excellent candidate who demonstrated clear thinking.",
+            "highlights": ["Explained a complex API migration with clear tradeoffs."],
+            "red_flags": ["Gave vague answers about day-to-day responsibilities."],
+            "confidence": 0.91,
         },
     }
     await client.post(f"{LIVEKIT_URL}/{interview.id}/result", json=payload)
@@ -447,9 +487,23 @@ async def test_result_writes_summary_assessment(
 
     assessment = json.loads(summary.ai_assessment)
     assert (
-        assessment["overview"]
+        assessment["overview"] == "Excellent candidate who demonstrated clear thinking."
+    )
+    assert (
+        assessment["summary"]
         == "Excellent candidate who demonstrated clear thinking."
     )
+    assert (
+        assessment["observation"]
+        == "Excellent candidate who demonstrated clear thinking."
+    )
+    assert assessment["highlights"] == [
+        "Explained a complex API migration with clear tradeoffs."
+    ]
+    assert assessment["red_flags"] == [
+        "Gave vague answers about day-to-day responsibilities."
+    ]
+    assert assessment["confidence"] == 0.91
     assert assessment["overall_recommendation"] == "strong_yes"
     assert summary.status == "completed"
 
@@ -463,5 +517,3 @@ async def test_result_404_for_unknown_interview(
         json={"transcript": [], "report": None},
     )
     assert response.status_code == 404
-
-
