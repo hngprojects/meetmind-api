@@ -11,10 +11,12 @@ from fastapi import status
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from google import genai
+from google.genai import types
+
 from app.core.config import settings
-from app.core.llm import generate_structured_output
 from app.core.responses import APIError
-from app.core.utils import get_user_workspace, safe_notify
+from app.core.utils import get_user_workspace, retry_async, safe_notify
 from app.models.interview import (
     Candidate,
     Interview,
@@ -53,6 +55,218 @@ from app.schemas.interview import (
     UpdateContextRequest,
     UpdateCriteriaRequest,
 )
+
+_gemini_client = genai.Client(api_key=settings.GEMINI_API_KEY or "dummy_key").aio
+
+
+def _join_non_empty(parts: list[str | None]) -> str:
+    return "\n".join(part for part in parts if part)
+
+
+def _build_candidate_context(candidate: Candidate) -> str:
+    """Summarize candidate profile fields extracted from CV/upload payload."""
+    return _join_non_empty(
+        [
+            f"Name: {candidate.full_name}" if candidate.full_name else None,
+            f"Current role: {candidate.current_role}" if candidate.current_role else None,
+            (
+                f"Years of experience: {candidate.years_of_experience}"
+                if candidate.years_of_experience is not None
+                else None
+            ),
+            f"Skills: {candidate.skills}" if candidate.skills else None,
+            f"Location: {candidate.location}" if candidate.location else None,
+            f"Portfolio: {candidate.portfolio_url}" if candidate.portfolio_url else None,
+        ]
+    )
+
+
+def _infer_interview_track(role_title: str, skills_to_assess: list[str]) -> str:
+    text = " ".join([role_title, *skills_to_assess]).lower()
+    if any(
+        keyword in text
+        for keyword in (
+            "design",
+            "designer",
+            "ux",
+            "ui",
+            "product design",
+            "visual",
+            "brand",
+        )
+    ):
+        return "design"
+    if any(keyword in text for keyword in ("product manager", "product management")):
+        return "product"
+    if any(
+        keyword in text
+        for keyword in ("frontend", "backend", "fullstack", "software", "engineer")
+    ):
+        return "engineering"
+    return "general"
+
+
+def _fallback_interview_plan(
+    role_title: str,
+    skills_to_assess: list[str],
+    custom_question: str | None = None,
+) -> InterviewPlanOutput:
+    """Build a safe non-LLM plan that matches the requested role family."""
+    from app.schemas.interview import InterviewQuestionSchema, RubricCriterion
+
+    track = _infer_interview_track(role_title, skills_to_assess)
+    role = role_title or "the role"
+
+    if track == "design":
+        question_specs = [
+            (
+                "Walk me through a design project from problem discovery to final solution.",
+                "Probe their process, constraints, research inputs, iterations, and impact.",
+            ),
+            (
+                "How do you decide whether a design is successful?",
+                "Listen for user outcomes, usability signals, business goals, and trade-offs.",
+            ),
+            (
+                "Tell me about a time you handled conflicting feedback from stakeholders.",
+                "Probe collaboration, prioritization, communication, and rationale.",
+            ),
+            (
+                "How do you use research, data, or user feedback to improve a design?",
+                "Look for concrete examples and how insights changed the final work.",
+            ),
+            (
+                "What is one portfolio piece you would improve today, and what would you change?",
+                "Probe self-awareness, craft standards, and product thinking.",
+            ),
+        ]
+        rubric_names = skills_to_assess or [
+            "Design Process",
+            "User Empathy",
+            "Visual/Product Craft",
+            "Collaboration",
+            "Communication",
+        ]
+    elif track == "product":
+        question_specs = [
+            (
+                "Tell me about a product decision you made with incomplete information.",
+                "Probe customer insight, prioritization, risk, and outcome.",
+            ),
+            (
+                "How do you choose what not to build?",
+                "Listen for strategy, trade-offs, stakeholder alignment, and evidence.",
+            ),
+            (
+                "Walk me through how you define success for a new feature.",
+                "Probe metrics, qualitative signals, launch learning, and iteration.",
+            ),
+            (
+                "Describe a time you aligned engineering, design, and business stakeholders.",
+                "Look for clarity, influence, conflict handling, and follow-through.",
+            ),
+            (
+                "How do you learn from a product launch that did not meet expectations?",
+                "Probe accountability, analysis, and concrete changes.",
+            ),
+        ]
+        rubric_names = skills_to_assess or [
+            "Product Judgment",
+            "Prioritization",
+            "Customer Insight",
+            "Stakeholder Management",
+            "Communication",
+        ]
+    elif track == "engineering":
+        question_specs = [
+            (
+                f"Walk me through a technical project relevant to {role} that you are proud of.",
+                "Probe ownership, architecture, constraints, trade-offs, and impact.",
+            ),
+            (
+                "Tell me about a difficult technical trade-off you had to make.",
+                "Listen for reasoning, alternatives considered, and consequences.",
+            ),
+            (
+                "How do you approach debugging a complex production issue?",
+                "Probe method, observability, communication, and prevention.",
+            ),
+            (
+                "Describe a time you improved quality, reliability, or maintainability.",
+                "Look for measurable impact and practical engineering judgment.",
+            ),
+            (
+                "How do you collaborate with teammates when requirements are unclear?",
+                "Probe communication, assumptions, iteration, and delivery discipline.",
+            ),
+        ]
+        rubric_names = skills_to_assess or [
+            "Technical Depth",
+            "Problem Solving",
+            "Execution",
+            "Collaboration",
+            "Communication",
+        ]
+    else:
+        question_specs = [
+            (
+                f"Walk me through work you have done that best prepares you for {role}.",
+                "Probe scope, ownership, outcomes, and relevance to the role.",
+            ),
+            (
+                "Tell me about a challenging project and how you approached it.",
+                "Listen for problem solving, judgment, and follow-through.",
+            ),
+            (
+                "Describe a time you had to learn something quickly to deliver results.",
+                "Probe learning approach, resourcefulness, and impact.",
+            ),
+            (
+                "How do you collaborate when priorities or expectations are unclear?",
+                "Look for communication, alignment, and practical next steps.",
+            ),
+            (
+                "What strengths would you bring to this role, and where are you still growing?",
+                "Probe self-awareness, specificity, and fit.",
+            ),
+        ]
+        rubric_names = skills_to_assess or [
+            "Role Fit",
+            "Problem Solving",
+            "Execution",
+            "Collaboration",
+            "Communication",
+        ]
+
+    if custom_question:
+        question_specs[-1] = (
+            custom_question,
+            "Ask concise follow-ups to clarify the candidate's experience and evidence.",
+        )
+
+    return InterviewPlanOutput(
+        intro=(
+            f"Welcome to the interview for {role}. "
+            "I will ask a few focused questions about your experience and fit."
+        ),
+        questions=[
+            InterviewQuestionSchema(
+                text=text,
+                followUpHint=follow_up,
+                maxFollowUps=2,
+            )
+            for text, follow_up in question_specs
+        ],
+        rubric=[
+            RubricCriterion(
+                name=name,
+                description=f"Evidence of {name.lower()} relevant to {role}.",
+                weight=3 if idx == 0 else 2,
+            )
+            for idx, name in enumerate(rubric_names[:5])
+        ],
+        closing="Thanks for your time. A recruiter will follow up with next steps.",
+    )
 
 
 async def _get_or_create_workspace(db: AsyncSession, user: User) -> uuid.UUID:
@@ -129,7 +343,12 @@ class InterviewService:
         job_description: str,
         skills_to_assess: list[str],
         custom_question: str | None = None,
+        candidate_context: str | None = None,
     ) -> InterviewPlanOutput:
+        logger = logging.getLogger("app.services.interview")
+        logger.info(f"\n🤖 GENERATING INTERVIEW PLAN FOR ROLE: {role_title}")
+        logger.info(f"   Skills to assess: {', '.join(skills_to_assess)}")
+
         system_instruction = f"""
 You are an expert Technical Recruiter. Your task is to design a high-quality 
 structured interview plan for the role of '{role_title}'.
@@ -140,11 +359,15 @@ structured interview plan for the role of '{role_title}'.
 # CORE SKILLS TO EVALUATE
 {", ".join(skills_to_assess)}
 
+# CANDIDATE CONTEXT FROM CV/PROFILE
+{candidate_context or "No candidate CV/profile context was provided."}
+
 # SPECIFIC REQUESTS
 {f"Ensure you include this question:{custom_question}" if custom_question else "None"}
 
 # INSTRUCTIONS
 1. Design 5 specific, high-signal interview questions.
+   The questions must match the role, job description, and candidate CV/profile.
 2. For each question, provide a 'followUpHint' to help the AI bot probe deeper.
 3. Create a weighted scoring rubric based on the core skills.
 4. Write a concise, warm intro and a professional closing.
@@ -153,65 +376,45 @@ Keep all text suitable for a live audio call (concise and natural).
 """
 
         try:
-            result = await generate_structured_output(
-                system_instruction=system_instruction,
-                user_content="Generate the complete interview plan \
-                    based on the provided context.",
-                output_schema=InterviewPlanOutput,
-                temperature=0.7,
-                max_tokens=2000,
+            response = await retry_async(
+                _gemini_client.models.generate_content,
+                model="gemini-flash-lite-latest",
+                contents=f"{system_instruction}\n\nGenerate the complete interview plan based on the provided context.",
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=InterviewPlanOutput,
+                ),
+                max_retries=3,
+                initial_delay=1.0,
+                backoff_factor=2.0,
+                task_name=f"Generate interview plan for {role_title}",
             )
-            return InterviewPlanOutput.model_validate(result)
+            plan = InterviewPlanOutput.model_validate_json(response.text)
+            logger.info(f"✅ INTERVIEW PLAN GENERATED SUCCESSFULLY")
+            logger.info(f"   Intro: {plan.intro}")
+            logger.info(f"   Questions ({len(plan.questions)}):")
+            for idx, q in enumerate(plan.questions, 1):
+                logger.info(f"     {idx}. {q.text}")
+                logger.info(f"        Follow-up hint: {q.followUpHint}")
+            logger.info(f"   Rubric criteria: {', '.join([r.name for r in plan.rubric])}")
+            logger.info(f"   Closing: {plan.closing}\n")
+            return plan
         except Exception as e:
-            logging.getLogger("app.services.interview").warning(
+            logger.warning(
                 "Gemini API call failed or key invalid. "
-                "Falling back to default interview plan. Error: %s",
+                "Falling back to role-aware interview plan. Error: %s",
                 e,
             )
-            from app.schemas.interview import (
-                InterviewQuestionSchema,
-                RubricCriterion,
+            fallback = _fallback_interview_plan(
+                role_title=role_title,
+                skills_to_assess=skills_to_assess,
+                custom_question=custom_question,
             )
-
-            return InterviewPlanOutput(
-                intro=(
-                    f"Welcome to the interview for {role_title}. "
-                    "I will ask you a series of questions to assess your fit."
-                ),
-                questions=[
-                    InterviewQuestionSchema(
-                        text=(
-                            "Walk me through a backend system you've built "
-                            "that you're proud of."
-                        ),
-                        followUpHint="Probe scale, their contribution, and trade-offs.",
-                        maxFollowUps=2,
-                    ),
-                    InterviewQuestionSchema(
-                        text=(
-                            "How do you handle database migrations in a "
-                            "production environment?"
-                        ),
-                        followUpHint="Probe zero-downtime strategies and rollbacks.",
-                        maxFollowUps=2,
-                    ),
-                ],
-                rubric=[
-                    RubricCriterion(
-                        name="Technical Depth",
-                        description="Real, hands-on software engineering knowledge.",
-                        weight=3,
-                    ),
-                    RubricCriterion(
-                        name="Communication",
-                        description="Clear and structured explanations.",
-                        weight=2,
-                    ),
-                ],
-                closing=(
-                    "Thanks for your time. A recruiter will follow up with next steps."
-                ),
-            )
+            logger.info(f"✅ FALLBACK INTERVIEW PLAN USED")
+            logger.info(f"   Questions ({len(fallback.questions)}):")
+            for idx, q in enumerate(fallback.questions, 1):
+                logger.info(f"     {idx}. {q.text}\n")
+            return fallback
 
     @classmethod
     async def create_interview(
@@ -263,12 +466,15 @@ Keep all text suitable for a live audio call (concise and natural).
         if request.candidate.portfolio_url:
             candidate.portfolio_url = str(request.candidate.portfolio_url)
 
+        logger = logging.getLogger("app.services.interview")
         plan = await cls.generate_interview_plan(
             role_title=request.role_title or "Candidate",
             job_description=request.job_description or "",
             skills_to_assess=request.skills_to_assess or [],
             custom_question=request.custom_question,
+            candidate_context=_build_candidate_context(candidate),
         )
+        logger.info(f"📋 CREATING INTERVIEW SESSION with {len(plan.questions)} questions")
 
         if request.scheduled_start and request.scheduled_end:
             duration_minutes = int(
@@ -766,6 +972,9 @@ Keep all text suitable for a live audio call (concise and natural).
     @classmethod
     async def get_agent_config(cls, interview_id: uuid.UUID, db: AsyncSession) -> dict:
         """Return the full LiveKit agent context for an interview."""
+        logger = logging.getLogger("app.services.interview")
+        logger.info(f"\n🎙️ LIVEKIT AGENT CONFIG REQUEST for interview {interview_id}")
+        
         interview = await cls._resolve_interview(interview_id, db)
 
         candidate = (
@@ -795,6 +1004,17 @@ Keep all text suitable for a live audio call (concise and natural).
             db.add(InterviewTranscript(interview_id=interview.id, status="processing"))
 
         await db.commit()
+
+        # Parse and log questions being sent to agent
+        questions = json.loads(session.questions_json) if session and session.questions_json else []
+        logger.info(f"   Candidate: {candidate.full_name if candidate else 'Unknown'}")
+        logger.info(f"   Role: {interview.role_title}")
+        logger.info(f"   Duration: {cls._duration_from_schedule_or_session(interview, session)} minutes")
+        logger.info(f"   Sending {len(questions)} questions to LiveKit agent:")
+        for idx, q in enumerate(questions, 1):
+            logger.info(f"     {idx}. {q.get('text', 'N/A')}")
+        logger.info(f"   AI Tone: {interview.ai_tone}")
+        logger.info(f"   LLM Model: {settings.INTERVIEWER_LLM}\n")
 
         return {
             "role": interview.role_title or (session.role if session else None),
