@@ -37,6 +37,9 @@ docker-compose.override.yml
 .pytest_cache/
 .coverage
 htmlcov/
+
+public/fonts/
+branch_structure.json
 temp_auto_push.bat
 temp_interactive_push.bat
 .gitignore
